@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 type Status = "idle" | "loading" | "success" | "error";
 
@@ -8,11 +8,6 @@ export default function EmbedPage() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState("");
-
-  useEffect(() => {
-    document.body.classList.add("embed");
-    return () => document.body.classList.remove("embed");
-  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -44,7 +39,7 @@ export default function EmbedPage() {
   }
 
   return (
-    <div className="flex items-center justify-center bg-transparent p-4">
+    <div className="flex min-h-screen items-center justify-center bg-transparent p-4">
       <div className="w-full max-w-md">
         {status !== "success" ? (
           <form onSubmit={handleSubmit} className="flex flex-col gap-2 sm:flex-row">
@@ -62,30 +57,30 @@ export default function EmbedPage() {
                 if (status === "error") setStatus("idle");
               }}
               placeholder="your@email.com"
-              className="w-full flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-white placeholder-zinc-500 outline-none transition focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
+              className="w-full flex-1 rounded-lg border border-white/40 bg-white/20 px-4 py-3 text-sm text-white placeholder-white/60 outline-none transition focus:border-white focus:ring-1 focus:ring-white"
             />
             <button
               type="submit"
               disabled={status === "loading"}
-              className="rounded-lg bg-amber-400 px-6 py-3 text-sm font-bold text-black transition hover:bg-amber-300 active:scale-95 disabled:opacity-60 whitespace-nowrap"
+              className="rounded-lg bg-white px-6 py-3 text-sm font-bold text-orange-500 transition hover:bg-white/90 active:scale-95 disabled:opacity-60 whitespace-nowrap"
             >
               {status === "loading" ? "Joining…" : "Join the list"}
             </button>
           </form>
         ) : (
-          <div className="rounded-lg border border-zinc-700 bg-zinc-900 px-6 py-4">
-            <p className="text-sm font-medium text-amber-400">
+          <div className="rounded-lg border border-white/40 bg-white/20 px-6 py-4">
+            <p className="text-sm font-medium text-white">
               You&apos;re in. Check your inbox to confirm.
             </p>
-            <p className="mt-1 text-xs text-zinc-500">Welcome to the system.</p>
+            <p className="mt-1 text-xs text-white/60">Welcome to the system.</p>
           </div>
         )}
 
         {status === "error" && (
-          <p className="mt-2 text-xs text-red-400">{message}</p>
+          <p className="mt-2 text-xs text-white/80">{message}</p>
         )}
 
-        <p className="mt-3 text-xs text-zinc-600">
+        <p className="mt-3 text-xs text-white/50">
           No spam. No sharing. Unsubscribe any time.
         </p>
       </div>
