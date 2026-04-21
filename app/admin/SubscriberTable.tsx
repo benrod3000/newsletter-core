@@ -91,6 +91,7 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
   const [countryFilter, setCountryFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
   const [search, setSearch] = useState("");
+  const [copyFeedback, setCopyFeedback] = useState("");
 
   const countries = useMemo(() => unique(subscribers.map((s) => s.country)), [subscribers]);
   const sources = useMemo(() => unique(subscribers.map((s) => s.utm_source)), [subscribers]);
@@ -107,6 +108,17 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
   }, [subscribers, statusFilter, countryFilter, sourceFilter, search]);
 
   const hasFilters = statusFilter !== "all" || countryFilter || sourceFilter || search;
+
+  async function copyEmail(email: string) {
+    try {
+      await navigator.clipboard.writeText(email);
+      setCopyFeedback(`Copied ${email}`);
+      window.setTimeout(() => setCopyFeedback(""), 1800);
+    } catch {
+      setCopyFeedback("Could not copy email.");
+      window.setTimeout(() => setCopyFeedback(""), 1800);
+    }
+  }
 
   return (
     <section className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-4 sm:p-5">
@@ -210,6 +222,8 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
         >
           Export CSV
         </button>
+
+        {copyFeedback && <span className="self-center text-xs text-emerald-400">{copyFeedback}</span>}
       </div>
 
       <div className="space-y-3 lg:hidden">
@@ -251,6 +265,42 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
                   <dd className="mt-0.5 text-zinc-300">{formatSignupTime(s.created_at)}</dd>
                 </div>
               </dl>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => copyEmail(s.email)}
+                  className="rounded-md border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 hover:border-zinc-500"
+                >
+                  Copy email
+                </button>
+                <a
+                  href={`mailto:${encodeURIComponent(s.email)}`}
+                  className="rounded-md border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 hover:border-zinc-500"
+                >
+                  Email
+                </a>
+                <details className="group min-w-[160px] flex-1 rounded-md border border-zinc-800 bg-zinc-900/60 px-2 py-1">
+                  <summary className="cursor-pointer list-none text-xs text-zinc-300">View raw attribution</summary>
+                  <div className="mt-2 space-y-1 text-[11px] text-zinc-400">
+                    <p>
+                      <span className="text-zinc-500">UTM Source:</span> {s.utm_source || "-"}
+                    </p>
+                    <p>
+                      <span className="text-zinc-500">UTM Medium:</span> {s.utm_medium || "-"}
+                    </p>
+                    <p>
+                      <span className="text-zinc-500">UTM Campaign:</span> {s.utm_campaign || "-"}
+                    </p>
+                    <p>
+                      <span className="text-zinc-500">Landing Path:</span> {s.landing_path || "-"}
+                    </p>
+                    <p>
+                      <span className="text-zinc-500">Referrer:</span> {s.referrer || "-"}
+                    </p>
+                  </div>
+                </details>
+              </div>
             </article>
           ))
         )}
