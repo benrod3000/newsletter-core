@@ -34,12 +34,24 @@ export default function ClientWorkspaceManager() {
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<Role>("editor");
   const [clientId, setClientId] = useState("");
+  const [userSearch, setUserSearch] = useState("");
 
   const workspaceNameById = useMemo(() => {
     const map = new Map<string, string>();
     for (const ws of workspaces) map.set(ws.id, ws.name);
     return map;
   }, [workspaces]);
+
+  const filteredUsers = useMemo(() => {
+    const term = userSearch.trim().toLowerCase();
+    if (!term) return users;
+    return users.filter((user) => {
+      const workspaceLabel = user.client_id ? workspaceNameById.get(user.client_id) ?? "workspace" : "global";
+      return `${user.username} ${user.role} ${workspaceLabel}`.toLowerCase().includes(term);
+    });
+  }, [users, userSearch, workspaceNameById]);
+
+  const activeUsers = users.filter((user) => user.active).length;
 
   async function loadData() {
     setLoading(true);
@@ -205,6 +217,21 @@ export default function ClientWorkspaceManager() {
         </p>
       </div>
 
+      <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2">
+          <p className="text-xs uppercase tracking-wider text-zinc-500">Workspaces</p>
+          <p className="mt-1 text-xl font-semibold text-white">{workspaces.length}</p>
+        </div>
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2">
+          <p className="text-xs uppercase tracking-wider text-zinc-500">Admin users</p>
+          <p className="mt-1 text-xl font-semibold text-white">{users.length}</p>
+        </div>
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2">
+          <p className="text-xs uppercase tracking-wider text-zinc-500">Active</p>
+          <p className="mt-1 text-xl font-semibold text-emerald-300">{activeUsers}</p>
+        </div>
+      </div>
+
       <div className="grid gap-4 lg:grid-cols-2">
         <form onSubmit={handleCreateWorkspace} className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4 space-y-3">
           <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">Create workspace</h3>
@@ -307,14 +334,23 @@ export default function ClientWorkspaceManager() {
         </div>
 
         <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
-          <h3 className="mb-2 text-sm font-semibold uppercase tracking-wider text-zinc-400">Admin users</h3>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">Admin users</h3>
+            <input
+              type="search"
+              value={userSearch}
+              onChange={(e) => setUserSearch(e.target.value)}
+              placeholder="Search users"
+              className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200 outline-none focus:border-amber-400"
+            />
+          </div>
           {loading ? (
             <p className="text-xs text-zinc-600">Loading...</p>
-          ) : users.length === 0 ? (
+          ) : filteredUsers.length === 0 ? (
             <p className="text-xs text-zinc-600">No admin users yet.</p>
           ) : (
             <ul className="space-y-2 text-sm text-zinc-300">
-              {users.map((u) => (
+              {filteredUsers.map((u) => (
                 <li key={u.id} className="rounded border border-zinc-800 px-2 py-2">
                   <div className="flex items-center justify-between gap-2">
                     <div>

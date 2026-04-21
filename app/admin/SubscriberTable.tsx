@@ -96,8 +96,44 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
   const hasFilters = statusFilter !== "all" || countryFilter || sourceFilter || search;
 
   return (
-    <>
-      {/* Filter bar */}
+    <section className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-4 sm:p-5">
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-amber-400">Subscribers</p>
+          <h2 className="mt-1 text-lg font-semibold text-white">Audience list</h2>
+          <p className="mt-1 text-sm text-zinc-500">Filter, inspect attribution, and export subscriber data.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setStatusFilter("all")}
+            className={`rounded-full border px-3 py-1.5 text-xs ${
+              statusFilter === "all" ? "border-amber-400 text-amber-300" : "border-zinc-700 text-zinc-400 hover:border-zinc-500"
+            }`}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter("confirmed")}
+            className={`rounded-full border px-3 py-1.5 text-xs ${
+              statusFilter === "confirmed" ? "border-emerald-500 text-emerald-300" : "border-zinc-700 text-zinc-400 hover:border-zinc-500"
+            }`}
+          >
+            Confirmed
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter("pending")}
+            className={`rounded-full border px-3 py-1.5 text-xs ${
+              statusFilter === "pending" ? "border-zinc-500 text-zinc-200" : "border-zinc-700 text-zinc-400 hover:border-zinc-500"
+            }`}
+          >
+            Pending
+          </button>
+        </div>
+      </div>
+
       <div className="mb-4 flex flex-wrap gap-2">
         <input
           type="search"
@@ -106,16 +142,6 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
           onChange={(e) => setSearch(e.target.value)}
           className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-white placeholder-zinc-500 outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
         />
-
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-          className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-300 outline-none focus:border-amber-400"
-        >
-          <option value="all">All statuses</option>
-          <option value="confirmed">Confirmed</option>
-          <option value="pending">Pending</option>
-        </select>
 
         {countries.length > 0 && (
           <select
@@ -173,7 +199,6 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
         </button>
       </div>
 
-      {/* Table */}
       <div className="overflow-x-auto rounded-lg border border-zinc-800">
         <table className="w-full text-sm">
           <thead>
@@ -230,6 +255,6 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
           </tbody>
         </table>
       </div>
-    </>
+    </section>
   );
 }

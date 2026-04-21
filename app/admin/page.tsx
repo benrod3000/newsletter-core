@@ -10,6 +10,7 @@ export default async function AdminPage() {
   const requestHeaders = await headers();
   const role = requestHeaders.get("x-admin-role");
   const clientId = requestHeaders.get("x-admin-client-id");
+  const username = requestHeaders.get("x-admin-username");
 
   const supabase = getSupabaseClient();
   let query = supabase
@@ -26,19 +27,31 @@ export default async function AdminPage() {
   const subscribers = data ?? [];
   const confirmedCount = subscribers.filter((s) => s.confirmed).length;
   const pendingCount = subscribers.length - confirmedCount;
+  const confirmationRate = subscribers.length > 0 ? Math.round((confirmedCount / subscribers.length) * 100) : 0;
 
   return (
-    <main className="min-h-screen bg-[#0d0d0d] px-6 py-12">
-      <div className="mx-auto max-w-5xl">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-amber-400">
-          Admin
-        </p>
-        <h1 className="mb-1 text-3xl font-bold text-white">Subscribers</h1>
-        <p className="mb-8 text-sm text-zinc-500">
-          {subscribers.length} total &mdash; {confirmedCount} confirmed
-        </p>
+    <main className="min-h-screen bg-[#0d0d0d] px-4 py-8 sm:px-6 sm:py-10">
+      <div className="mx-auto max-w-6xl">
+        <div className="sticky top-3 z-10 mb-6 rounded-xl border border-zinc-800 bg-zinc-950/90 px-4 py-4 backdrop-blur sm:px-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest text-amber-400">Admin</p>
+              <h1 className="mt-1 text-2xl font-bold text-white sm:text-3xl">Dashboard</h1>
+              <p className="mt-1 text-sm text-zinc-500">
+                Signed in as {username || "admin"} ({role || "unknown"})
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <a href="#campaigns" className="rounded-full border border-zinc-700 px-3 py-1.5 text-zinc-300 hover:border-zinc-500 hover:text-white">Campaigns</a>
+              {role === "owner" && (
+                <a href="#workspaces" className="rounded-full border border-zinc-700 px-3 py-1.5 text-zinc-300 hover:border-zinc-500 hover:text-white">Workspaces</a>
+              )}
+              <a href="#subscribers" className="rounded-full border border-zinc-700 px-3 py-1.5 text-zinc-300 hover:border-zinc-500 hover:text-white">Subscribers</a>
+            </div>
+          </div>
+        </div>
 
-        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 px-4 py-3">
             <p className="text-xs uppercase tracking-wider text-zinc-500">Total</p>
             <p className="mt-1 text-2xl font-semibold text-white">{subscribers.length}</p>
@@ -51,6 +64,10 @@ export default async function AdminPage() {
             <p className="text-xs uppercase tracking-wider text-zinc-500">Pending</p>
             <p className="mt-1 text-2xl font-semibold text-zinc-300">{pendingCount}</p>
           </div>
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 px-4 py-3">
+            <p className="text-xs uppercase tracking-wider text-zinc-500">Confirm rate</p>
+            <p className="mt-1 text-2xl font-semibold text-amber-300">{confirmationRate}%</p>
+          </div>
         </div>
 
         {error && (
@@ -59,15 +76,23 @@ export default async function AdminPage() {
           </p>
         )}
 
-        {role === "owner" && <ClientWorkspaceManager />}
+        {role === "owner" && (
+          <div id="workspaces" className="scroll-mt-24">
+            <ClientWorkspaceManager />
+          </div>
+        )}
 
-        <AdminMailer
-          totalCount={subscribers.length}
-          confirmedCount={confirmedCount}
-          subscribers={subscribers}
-        />
+        <div id="campaigns" className="scroll-mt-24">
+          <AdminMailer
+            totalCount={subscribers.length}
+            confirmedCount={confirmedCount}
+            subscribers={subscribers}
+          />
+        </div>
 
-        <SubscriberTable subscribers={subscribers} />
+        <div id="subscribers" className="scroll-mt-24">
+          <SubscriberTable subscribers={subscribers} />
+        </div>
       </div>
     </main>
   );

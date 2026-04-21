@@ -139,6 +139,8 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
   const [geoCountry, setGeoCountry] = useState("");
   const [geoRegions, setGeoRegions] = useState<string[]>([]);
   const [geoCities, setGeoCities] = useState<string[]>([]);
+  const [regionSearch, setRegionSearch] = useState("");
+  const [citySearch, setCitySearch] = useState("");
   const [geoRadiusValue, setGeoRadiusValue] = useState("");
   const [geoRadiusUnit, setGeoRadiusUnit] = useState<"km" | "mi">("km");
   const [previewCount, setPreviewCount] = useState<number | null>(null);
@@ -216,6 +218,18 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
     [subscribers, geoCountry, geoRegions]
   );
 
+  const filteredRegionOptions = useMemo(() => {
+    const term = regionSearch.trim().toLowerCase();
+    if (!term) return regionOptions;
+    return regionOptions.filter((item) => item.toLowerCase().includes(term));
+  }, [regionOptions, regionSearch]);
+
+  const filteredCityOptions = useMemo(() => {
+    const term = citySearch.trim().toLowerCase();
+    if (!term) return cityOptions;
+    return cityOptions.filter((item) => item.toLowerCase().includes(term));
+  }, [cityOptions, citySearch]);
+
   useEffect(() => {
     setGeoRegions((current) => current.filter((value) => regionOptions.includes(value)));
   }, [regionOptions]);
@@ -242,6 +256,18 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
       radius_value: geoRadiusValue ? Number.parseFloat(geoRadiusValue) : null,
       radius_unit: geoRadiusUnit,
     };
+  }
+
+  function toggleRegion(value: string) {
+    setGeoRegions((current) =>
+      current.includes(value) ? current.filter((item) => item !== value) : [...current, value]
+    );
+  }
+
+  function toggleCity(value: string) {
+    setGeoCities((current) =>
+      current.includes(value) ? current.filter((item) => item !== value) : [...current, value]
+    );
   }
 
   const canEdit = role === "owner" || role === "editor";
@@ -652,48 +678,116 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
 
           <div>
             <label htmlFor="geoRegion" className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-500">
-              Regions (multi-select)
+              Regions
             </label>
-            <select
+            <input
               id="geoRegion"
-              multiple
-              value={geoRegions}
-              onChange={(e) => {
-                const values = Array.from(e.target.selectedOptions).map((opt) => opt.value);
-                setGeoRegions(values);
-              }}
-              className="h-32 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-400"
-            >
-              {regionOptions.map((region) => (
-                <option key={region} value={region}>
-                  {region}
-                </option>
-              ))}
-            </select>
-            <p className="mt-1 text-xs text-zinc-600">Hold Cmd/Ctrl to select multiple regions.</p>
+              type="search"
+              value={regionSearch}
+              onChange={(e) => setRegionSearch(e.target.value)}
+              placeholder="Search regions"
+              className="mb-2 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-400"
+            />
+            <div className="max-h-28 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950/60 p-2">
+              <div className="flex flex-wrap gap-1.5">
+                {filteredRegionOptions.length === 0 ? (
+                  <span className="text-xs text-zinc-600">No matching regions</span>
+                ) : (
+                  filteredRegionOptions.map((region) => (
+                    <button
+                      key={region}
+                      type="button"
+                      onClick={() => toggleRegion(region)}
+                      className={`rounded-full border px-2 py-1 text-xs transition ${
+                        geoRegions.includes(region)
+                          ? "border-amber-400 bg-amber-400/20 text-amber-200"
+                          : "border-zinc-700 text-zinc-300 hover:border-zinc-500"
+                      }`}
+                    >
+                      {region}
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+            {geoRegions.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {geoRegions.map((region) => (
+                  <button
+                    key={region}
+                    type="button"
+                    onClick={() => toggleRegion(region)}
+                    className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2 py-1 text-xs text-amber-200"
+                  >
+                    {region} x
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setGeoRegions([])}
+                  className="rounded-full border border-zinc-700 px-2 py-1 text-xs text-zinc-400 hover:border-zinc-500"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
           </div>
 
           <div>
             <label htmlFor="geoCity" className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-500">
-              Cities (multi-select)
+              Cities
             </label>
-            <select
+            <input
               id="geoCity"
-              multiple
-              value={geoCities}
-              onChange={(e) => {
-                const values = Array.from(e.target.selectedOptions).map((opt) => opt.value);
-                setGeoCities(values);
-              }}
-              className="h-32 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-400"
-            >
-              {cityOptions.map((city) => (
-                <option key={city} value={city}>
-                  {city}
-                </option>
-              ))}
-            </select>
-            <p className="mt-1 text-xs text-zinc-600">Hold Cmd/Ctrl to select multiple cities.</p>
+              type="search"
+              value={citySearch}
+              onChange={(e) => setCitySearch(e.target.value)}
+              placeholder="Search cities"
+              className="mb-2 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-400"
+            />
+            <div className="max-h-28 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950/60 p-2">
+              <div className="flex flex-wrap gap-1.5">
+                {filteredCityOptions.length === 0 ? (
+                  <span className="text-xs text-zinc-600">No matching cities</span>
+                ) : (
+                  filteredCityOptions.map((city) => (
+                    <button
+                      key={city}
+                      type="button"
+                      onClick={() => toggleCity(city)}
+                      className={`rounded-full border px-2 py-1 text-xs transition ${
+                        geoCities.includes(city)
+                          ? "border-amber-400 bg-amber-400/20 text-amber-200"
+                          : "border-zinc-700 text-zinc-300 hover:border-zinc-500"
+                      }`}
+                    >
+                      {city}
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+            {geoCities.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {geoCities.map((city) => (
+                  <button
+                    key={city}
+                    type="button"
+                    onClick={() => toggleCity(city)}
+                    className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2 py-1 text-xs text-amber-200"
+                  >
+                    {city} x
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setGeoCities([])}
+                  className="rounded-full border border-zinc-700 px-2 py-1 text-xs text-zinc-400 hover:border-zinc-500"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
