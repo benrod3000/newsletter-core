@@ -46,8 +46,47 @@ export default async function AdminPage() {
           </p>
         )}
 
+        <div className="mb-6 xl:hidden">
+          <details className="rounded-lg border border-zinc-800 bg-zinc-900/70">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-zinc-200">
+              Dashboard controls
+            </summary>
+            <div className="space-y-4 border-t border-zinc-800 px-4 py-4">
+              <nav className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-zinc-500">Quick jump</p>
+                <div className="flex flex-wrap gap-2 text-sm">
+                  <a href="#campaigns" className="rounded-md border border-zinc-700 px-3 py-2 text-zinc-300 hover:border-zinc-500 hover:text-white">Campaigns</a>
+                  {role === "owner" && (
+                    <a href="#workspaces" className="rounded-md border border-zinc-700 px-3 py-2 text-zinc-300 hover:border-zinc-500 hover:text-white">Workspaces</a>
+                  )}
+                  <a href="#subscribers" className="rounded-md border border-zinc-700 px-3 py-2 text-zinc-300 hover:border-zinc-500 hover:text-white">Subscribers</a>
+                </div>
+              </nav>
+
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2">
+                  <p className="text-xs uppercase tracking-wider text-zinc-500">Total</p>
+                  <p className="mt-1 text-xl font-semibold text-white">{subscribers.length}</p>
+                </div>
+                <div className="rounded-lg border border-emerald-900/50 bg-emerald-950/30 px-3 py-2">
+                  <p className="text-xs uppercase tracking-wider text-emerald-500">Confirmed</p>
+                  <p className="mt-1 text-xl font-semibold text-emerald-300">{confirmedCount}</p>
+                </div>
+                <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2">
+                  <p className="text-xs uppercase tracking-wider text-zinc-500">Pending</p>
+                  <p className="mt-1 text-xl font-semibold text-zinc-300">{pendingCount}</p>
+                </div>
+                <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2">
+                  <p className="text-xs uppercase tracking-wider text-zinc-500">Confirm rate</p>
+                  <p className="mt-1 text-xl font-semibold text-amber-300">{confirmationRate}%</p>
+                </div>
+              </div>
+            </div>
+          </details>
+        </div>
+
         <div className="grid gap-6 xl:grid-cols-[280px,1fr]">
-          <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
+          <aside className="hidden space-y-4 xl:sticky xl:top-4 xl:block xl:self-start">
             <nav className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-3">
               <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-zinc-500">Quick jump</p>
               <div className="flex flex-col gap-2 text-sm">
