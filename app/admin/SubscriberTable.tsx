@@ -40,6 +40,39 @@ function unique(values: (string | null)[]): string[] {
   return Array.from(new Set(values.filter((v): v is string => Boolean(v)))).sort();
 }
 
+function escapeCsv(value: string | null | boolean): string {
+  if (value === null || value === undefined) return "";
+  const str = String(value);
+  if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+function exportToCsv(rows: Subscriber[], filename: string) {
+  const headers = ["email", "confirmed", "country", "region", "city", "timezone", "locale", "utm_source", "utm_medium", "utm_campaign", "referrer", "landing_path", "created_at"];
+  const lines = [
+    headers.join(","),
+    ...rows.map((s) =>
+      [
+        s.email, s.confirmed, s.country, s.region, s.city,
+        s.timezone, s.locale, s.utm_source, s.utm_medium,
+        s.utm_campaign, s.referrer, s.landing_path, s.created_at,
+      ]
+        .map(escapeCsv)
+        .join(",")
+    ),
+  ];
+
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function SubscriberTable({ subscribers }: { subscribers: Subscriber[] }) {
   const [statusFilter, setStatusFilter] = useState<"all" | "confirmed" | "pending">("all");
   const [countryFilter, setCountryFilter] = useState("");
@@ -127,6 +160,17 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
         <span className="ml-auto self-center text-xs text-zinc-600">
           {filtered.length} of {subscribers.length}
         </span>
+
+        <button
+          onClick={() => {
+            const timestamp = new Date().toISOString().slice(0, 10);
+            const label = filtered.length < subscribers.length ? "filtered" : "all";
+            exportToCsv(filtered, `subscribers-${label}-${timestamp}.csv`);
+          }}
+          className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 hover:border-amber-400 hover:text-amber-400 transition-colors"
+        >
+          Export CSV
+        </button>
       </div>
 
       {/* Table */}
