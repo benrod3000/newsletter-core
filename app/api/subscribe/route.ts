@@ -1,41 +1,53 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import sgMail from "@sendgrid/mail";
+import { getSupabaseClient } from "@/lib/supabase";
 
-// Rate limit: max 3 attempts per IP per hour (in-memory, resets on cold start)
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
 
-function isRateLimited(ip: string): boolean {
-  const now = Date.now();
-  const windowMs = 60 * 60 * 1000;
-  const maxAttempts = 3;
-  const entry = rateLimitMap.get(ip);
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(ip, { count: 1, resetAt: now + windowMs });
-    return false;
-  }
-  if (entry.count >= maxAttempts) return true;
-  entry.count++;
-  return false;
+// Handle preflight requests
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }
 
-async function getGeoData(ip: string): Promise<{ country: string | null; region: string | null; city: string | null }> {
-  if (!ip || ip === "::1" || ip.startsWith("127.") || ip.startsWith("192.168.")) {
-    return { country: null, region: null, city: null };
+// Durable rate limit: max 3 attempts per IP per hour (stored in DB)
+async function isRateLimited(ip: string): Promise<boolean> {
+  const supabase = getSupabaseClient();
+  const windowStart = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const maxAttempts = 3;
+
+  const { count, error } = await supabase
+    .from("subscribe_attempts")
+    .select("id", { count: "exact", head: true })
+    .eq("ip", ip)
+    .gte("created_at", windowStart);
+
+  if (error) {
+    console.error("[subscribe] Rate-limit check error:", error.message);
+    return false;
   }
-  try {
-    const res = await fetch(`https://ipapi.co/${ip}/json/`, {
-      signal: AbortSignal.timeout(3000),
-    });
-    if (!res.ok) return { country: null, region: null, city: null };
-    const data = await res.json();
-    return {
-      country: data.country_code ?? null,
-      region: data.region ?? null,
-      city: data.city ?? null,
-    };
-  } catch {
-    return { country: null, region: null, city: null };
+
+  return (count ?? 0) >= maxAttempts;
+}
+
+async function logSubscribeAttempt(ip: string, email: string) {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase.from("subscribe_attempts").insert([{ ip, email }]);
+
+  if (error) {
+    console.error("[subscribe] Rate-limit log error:", error.message);
   }
+}
+
+function getGeoData(req: NextRequest): { country: string | null; region: string | null; city: string | null } {
+  return {
+    country: req.headers.get("x-vercel-ip-country") ?? null,
+    region: req.headers.get("x-vercel-ip-country-region") ?? null,
+    city: req.headers.get("x-vercel-ip-city") ?? null,
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -43,14 +55,14 @@ export async function POST(req: NextRequest) {
     // 1. Parse body
     const body = await req.json().catch(() => null);
     if (!body || typeof body.email !== "string") {
-      return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+      return NextResponse.json({ error: "Invalid request body." }, { status: 400, headers: CORS_HEADERS });
     }
 
     const email = body.email.trim().toLowerCase();
 
     // 2. Validate email
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return NextResponse.json({ error: "Invalid email address." }, { status: 422 });
+      return NextResponse.json({ error: "Invalid email address." }, { status: 422, headers: CORS_HEADERS });
     }
 
     // 3. Get IP
@@ -60,40 +72,101 @@ export async function POST(req: NextRequest) {
       "unknown";
 
     // 4. Rate limit
-    if (isRateLimited(ip)) {
-      return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429 });
+    if (await isRateLimited(ip)) {
+      return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429, headers: CORS_HEADERS });
     }
+
+    await logSubscribeAttempt(ip, email);
 
     // 5. User-Agent (raw)
     const user_agent = req.headers.get("user-agent") ?? null;
 
-    // 6. Geo lookup
-    const geo = await getGeoData(ip);
+    // 6. Geo lookup (Vercel headers)
+    const geo = getGeoData(req);
 
-    // 7. Insert into Supabase
-    const { error: dbError } = await supabase.from("subscribers").insert([
-      {
-        email,
-        ip,
-        country: geo.country,
-        region: geo.region,
-        city: geo.city,
-        user_agent,
-      },
-    ]);
+    // 7. Insert into Supabase, returning tokens for the email
+    const supabase = getSupabaseClient();
+    const { data: subscriber, error: dbError } = await supabase
+      .from("subscribers")
+      .insert([
+        {
+          email,
+          ip,
+          country: geo.country,
+          region: geo.region,
+          city: geo.city,
+          user_agent,
+          created_at: new Date().toISOString(),
+        },
+      ])
+      .select("confirmation_token, unsubscribe_token")
+      .single();
 
     if (dbError) {
       // Duplicate email — treat as success so we don't leak existence
       if (dbError.code === "23505") {
-        return NextResponse.json({ ok: true }, { status: 200 });
+        return NextResponse.json({ ok: true }, { status: 200, headers: CORS_HEADERS });
       }
       console.error("[subscribe] Supabase error:", dbError.message);
-      return NextResponse.json({ error: "Could not save subscription. Please try again." }, { status: 500 });
+      return NextResponse.json({ error: "Could not save subscription. Please try again." }, { status: 500, headers: CORS_HEADERS });
     }
 
-    return NextResponse.json({ ok: true }, { status: 201 });
+    // 8. Send confirmation email via SendGrid
+    try {
+      const sgApiKey = process.env.SENDGRID_API_KEY;
+      const fromEmail = process.env.SENDGRID_FROM_EMAIL;
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? `https://${req.headers.get("host")}`;
+
+      if (sgApiKey && fromEmail && subscriber) {
+        sgMail.setApiKey(sgApiKey);
+        const confirmUrl = `${appUrl}/api/confirm?token=${subscriber.confirmation_token}`;
+        const unsubscribeUrl = `${appUrl}/unsubscribe?token=${subscriber.unsubscribe_token}`;
+
+        await sgMail.send({
+          to: email,
+          from: fromEmail,
+          subject: "Confirm your subscription",
+          html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="background:#0d0d0d;font-family:sans-serif;margin:0;padding:40px 24px;">
+  <table style="max-width:520px;margin:0 auto;width:100%;">
+    <tr><td>
+      <p style="color:#fbbf24;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin:0 0 16px;">
+        Newsletter Services
+      </p>
+      <h1 style="color:#fff;font-size:32px;font-weight:700;margin:0 0 16px;line-height:1.2;">
+        One click to confirm.
+      </h1>
+      <p style="color:#a1a1aa;font-size:15px;line-height:1.6;margin:0 0 32px;">
+        You signed up for <strong style="color:#fff;">Attention → Ownership</strong>. 
+        Hit the button below to confirm and you&rsquo;re in.
+      </p>
+      <a href="${confirmUrl}"
+         style="display:inline-block;background:#fbbf24;color:#000;font-size:14px;font-weight:700;padding:14px 28px;border-radius:8px;text-decoration:none;">
+        Confirm my subscription
+      </a>
+      <hr style="border:none;border-top:1px solid #27272a;margin:40px 0;">
+      <p style="color:#52525b;font-size:12px;line-height:1.5;margin:0;">
+        If you didn&rsquo;t sign up for this, you can safely ignore this email.<br>
+        <a href="${unsubscribeUrl}" style="color:#52525b;">Unsubscribe</a>
+      </p>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+          text: `Confirm your subscription to Attention → Ownership.\n\nVisit this link to confirm:\n${confirmUrl}\n\nIf you didn't sign up, ignore this email.\nUnsubscribe: ${unsubscribeUrl}`,
+        });
+      }
+    } catch (emailErr) {
+      // Log but don't fail the request — subscriber is already saved
+      console.error("[subscribe] SendGrid error:", emailErr);
+    }
+
+    return NextResponse.json({ ok: true }, { status: 201, headers: CORS_HEADERS });
   } catch (err) {
     console.error("[subscribe] Unexpected error:", err);
-    return NextResponse.json({ error: "Internal server error." }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error." }, { status: 500, headers: CORS_HEADERS });
   }
 }
