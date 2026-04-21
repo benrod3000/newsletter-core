@@ -1,4 +1,5 @@
 import { getSupabaseClient } from "@/lib/supabase";
+import AdminMailer from "./AdminMailer";
 import SubscriberTable from "./SubscriberTable";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +46,8 @@ export default async function AdminPage() {
             Error loading subscribers: {error.message}
           </p>
         )}
+
+        <AdminMailer totalCount={subscribers.length} confirmedCount={confirmedCount} />
 
         <SubscriberTable subscribers={subscribers} />
       </div>
