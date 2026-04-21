@@ -1,42 +1,7 @@
 import { getSupabaseClient } from "@/lib/supabase";
-
-interface Subscriber {
-  id: string;
-  email: string;
-  confirmed: boolean;
-  country: string | null;
-  region: string | null;
-  city: string | null;
-  timezone: string | null;
-  locale: string | null;
-  utm_source: string | null;
-  utm_medium: string | null;
-  utm_campaign: string | null;
-  referrer: string | null;
-  landing_path: string | null;
-  created_at: string | null;
-}
+import SubscriberTable from "./SubscriberTable";
 
 export const dynamic = "force-dynamic";
-
-const ADMIN_TIME_ZONE = "America/Los_Angeles";
-
-function formatSignupTime(value: string | null) {
-  if (!value) return "Unknown";
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Unknown";
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: ADMIN_TIME_ZONE,
-    timeZoneName: "short",
-  }).format(date);
-}
 
 export default async function AdminPage() {
   const supabase = getSupabaseClient();
@@ -45,7 +10,7 @@ export default async function AdminPage() {
     .select("id, email, confirmed, country, region, city, timezone, locale, utm_source, utm_medium, utm_campaign, referrer, landing_path, created_at")
     .order("created_at", { ascending: false });
 
-  const subscribers: Subscriber[] = data ?? [];
+  const subscribers = data ?? [];
   const confirmedCount = subscribers.filter((s) => s.confirmed).length;
   const pendingCount = subscribers.length - confirmedCount;
 
@@ -81,59 +46,7 @@ export default async function AdminPage() {
           </p>
         )}
 
-        <div className="overflow-x-auto rounded-lg border border-zinc-800">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-zinc-800 bg-zinc-900 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Location</th>
-                <th className="px-4 py-3">Timezone</th>
-                <th className="px-4 py-3">Source</th>
-                <th className="px-4 py-3">Signed up</th>
-              </tr>
-            </thead>
-            <tbody>
-              {subscribers.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-zinc-600">
-                    No subscribers yet.
-                  </td>
-                </tr>
-              ) : (
-                subscribers.map((s) => (
-                  <tr
-                    key={s.id}
-                    className="border-b border-zinc-800 last:border-0 hover:bg-zinc-900/60"
-                  >
-                    <td className="px-4 py-3 text-white">{s.email}</td>
-                    <td className="px-4 py-3">
-                      {s.confirmed ? (
-                        <span className="rounded-full bg-emerald-900/60 px-2 py-0.5 text-xs font-medium text-emerald-400">
-                          Confirmed
-                        </span>
-                      ) : (
-                        <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs font-medium text-zinc-500">
-                          Pending
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-zinc-400">
-                      {[s.city, s.region, s.country].filter(Boolean).join(", ") || "—"}
-                    </td>
-                    <td className="px-4 py-3 text-zinc-500">
-                      {s.timezone || s.locale || "—"}
-                    </td>
-                    <td className="px-4 py-3 text-zinc-500">
-                      {[s.utm_source, s.utm_medium, s.utm_campaign].filter(Boolean).join(" / ") || s.landing_path || s.referrer || "—"}
-                    </td>
-                    <td className="px-4 py-3 text-zinc-500">{formatSignupTime(s.created_at)}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        <SubscriberTable subscribers={subscribers} />
       </div>
     </main>
   );
