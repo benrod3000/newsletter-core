@@ -35,6 +35,7 @@ export default function ClientWorkspaceManager() {
   const [role, setRole] = useState<Role>("editor");
   const [clientId, setClientId] = useState("");
   const [userSearch, setUserSearch] = useState("");
+  const [setupMessage, setSetupMessage] = useState("");
 
   const workspaceNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -66,6 +67,7 @@ export default function ClientWorkspaceManager() {
 
       setWorkspaces(data.clients ?? []);
       setUsers(data.users ?? []);
+      setSetupMessage(typeof data?.setupMessage === "string" ? data.setupMessage : "");
       if (!clientId && data.clients?.[0]?.id) {
         setClientId(data.clients[0].id);
       }
@@ -231,6 +233,16 @@ export default function ClientWorkspaceManager() {
           <p className="mt-1 text-xl font-semibold text-emerald-300">{activeUsers}</p>
         </div>
       </div>
+
+      {setupMessage && (
+        <div className="mb-4 rounded-lg border border-amber-700/60 bg-amber-950/30 px-3 py-3 text-sm text-amber-200">
+          <p className="font-medium">Workspace setup required</p>
+          <p className="mt-1 text-amber-300/90">{setupMessage}</p>
+          <p className="mt-1 text-xs text-amber-300/80">
+            Run: supabase db push
+          </p>
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <form onSubmit={handleCreateWorkspace} className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4 space-y-3">

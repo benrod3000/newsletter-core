@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
 import { getAdminContextFromHeaders } from "@/lib/admin-context";
 
+function isMissingSchemaObject(error: { code?: string; message?: string } | null | undefined) {
+  if (!error) return false;
+  const message = (error.message ?? "").toLowerCase();
+  return (
+    error.code === "PGRST205" ||
+    message.includes("could not find the table") ||
+    message.includes("relation") && message.includes("does not exist")
+  );
+}
+
 function normalizeSlug(input: string) {
   return input
     .trim()
@@ -27,14 +37,32 @@ export async function GET(req: NextRequest) {
   ]);
 
   if (clientsError) {
+    if (isMissingSchemaObject(clientsError)) {
+      return NextResponse.json({
+        clients: [],
+        users: [],
+        setupRequired: true,
+        setupMessage:
+          "Admin workspace tables are missing. Run Supabase migrations 006-010 (or at least 006-008) to enable workspaces.",
+      });
+    }
     return NextResponse.json({ error: `Failed to load workspaces: ${clientsError.message}` }, { status: 500 });
   }
 
   if (usersError) {
+    if (isMissingSchemaObject(usersError)) {
+      return NextResponse.json({
+        clients: clients ?? [],
+        users: [],
+        setupRequired: true,
+        setupMessage:
+          "Admin user table is missing. Run Supabase migrations 006-010 (or at least 006-008) to enable workspace users.",
+      });
+    }
     return NextResponse.json({ error: `Failed to load users: ${usersError.message}` }, { status: 500 });
   }
 
-  return NextResponse.json({ clients: clients ?? [], users: users ?? [] });
+  return NextResponse.json({ clients: clients ?? [], users: users ?? [], setupRequired: false });
 }
 
 export async function POST(req: NextRequest) {
