@@ -54,6 +54,75 @@ function getGeoData(req: NextRequest): { country: string | null; region: string 
   };
 }
 
+async function sendConfirmationEmail({
+  email,
+  confirmationToken,
+  unsubscribeToken,
+  host,
+}: {
+  email: string;
+  confirmationToken: string;
+  unsubscribeToken: string;
+  host: string | null;
+}): Promise<{ sent: boolean; reason?: string }> {
+  const sgApiKey = process.env.SENDGRID_API_KEY;
+  const fromEmail = process.env.SENDGRID_FROM_EMAIL;
+  const appUrl = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? `https://${host}`;
+
+  if (!sgApiKey || !fromEmail) {
+    console.error("[subscribe] Missing SENDGRID_API_KEY or SENDGRID_FROM_EMAIL.");
+    return { sent: false, reason: "Email service is not configured." };
+  }
+
+  try {
+    sgMail.setApiKey(sgApiKey);
+    const confirmUrl = `${appUrl}/api/confirm?token=${confirmationToken}`;
+    const unsubscribeUrl = `${appUrl}/unsubscribe?token=${unsubscribeToken}`;
+
+    await sgMail.send({
+      to: email,
+      from: fromEmail,
+      subject: "Confirm your subscription",
+      html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="background:#0d0d0d;font-family:sans-serif;margin:0;padding:40px 24px;">
+  <table style="max-width:520px;margin:0 auto;width:100%;">
+    <tr><td>
+      <p style="color:#fbbf24;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin:0 0 16px;">
+        Newsletter Services
+      </p>
+      <h1 style="color:#fff;font-size:32px;font-weight:700;margin:0 0 16px;line-height:1.2;">
+        One click to confirm.
+      </h1>
+      <p style="color:#a1a1aa;font-size:15px;line-height:1.6;margin:0 0 32px;">
+        You signed up for <strong style="color:#fff;">Attention → Ownership</strong>.
+        Hit the button below to confirm and you&rsquo;re in.
+      </p>
+      <a href="${confirmUrl}"
+         style="display:inline-block;background:#fbbf24;color:#000;font-size:14px;font-weight:700;padding:14px 28px;border-radius:8px;text-decoration:none;">
+        Confirm my subscription
+      </a>
+      <hr style="border:none;border-top:1px solid #27272a;margin:40px 0;">
+      <p style="color:#52525b;font-size:12px;line-height:1.5;margin:0;">
+        If you didn&rsquo;t sign up for this, you can safely ignore this email.<br>
+        <a href="${unsubscribeUrl}" style="color:#52525b;">Unsubscribe</a>
+      </p>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+      text: `Confirm your subscription to Attention → Ownership.\n\nVisit this link to confirm:\n${confirmUrl}\n\nIf you didn't sign up, ignore this email.\nUnsubscribe: ${unsubscribeUrl}`,
+    });
+
+    return { sent: true };
+  } catch (emailErr) {
+    console.error("[subscribe] SendGrid error:", emailErr);
+    return { sent: false, reason: "Email provider rejected the send request." };
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     // 1. Parse body
@@ -112,71 +181,71 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (dbError) {
-      // Duplicate email — treat as success so we don't leak existence
       if (dbError.code === "23505") {
-        return NextResponse.json({ ok: true }, { status: 200, headers: CORS_HEADERS });
+        const { data: existing, error: existingError } = await supabase
+          .from("subscribers")
+          .select("confirmed, confirmation_token, unsubscribe_token")
+          .eq("email", email)
+          .maybeSingle();
+
+        if (existingError || !existing) {
+          console.error("[subscribe] Duplicate lookup error:", existingError?.message);
+          return NextResponse.json({ ok: true }, { status: 200, headers: CORS_HEADERS });
+        }
+
+        if (existing.confirmed) {
+          return NextResponse.json({ ok: true, alreadyConfirmed: true }, { status: 200, headers: CORS_HEADERS });
+        }
+
+        const resendResult = await sendConfirmationEmail({
+          email,
+          confirmationToken: existing.confirmation_token,
+          unsubscribeToken: existing.unsubscribe_token,
+          host: req.headers.get("host"),
+        });
+
+        if (!resendResult.sent) {
+          return NextResponse.json(
+            {
+              ok: true,
+              emailSent: false,
+              warning: "We saved your signup, but could not send the confirmation email right now.",
+              reason: resendResult.reason,
+            },
+            { status: 202, headers: CORS_HEADERS }
+          );
+        }
+
+        return NextResponse.json({ ok: true, emailSent: true, resent: true }, { status: 200, headers: CORS_HEADERS });
       }
       console.error("[subscribe] Supabase error:", dbError.message);
       return NextResponse.json({ error: "Could not save subscription. Please try again." }, { status: 500, headers: CORS_HEADERS });
     }
 
-    // 8. Send confirmation email via SendGrid
-    try {
-      const sgApiKey = process.env.SENDGRID_API_KEY;
-      const fromEmail = process.env.SENDGRID_FROM_EMAIL;
-      const appUrl =
-        process.env.APP_URL ??
-        process.env.NEXT_PUBLIC_APP_URL ??
-        `https://${req.headers.get("host")}`;
-
-      if (sgApiKey && fromEmail && subscriber) {
-        sgMail.setApiKey(sgApiKey);
-        const confirmUrl = `${appUrl}/api/confirm?token=${subscriber.confirmation_token}`;
-        const unsubscribeUrl = `${appUrl}/unsubscribe?token=${subscriber.unsubscribe_token}`;
-
-        await sgMail.send({
-          to: email,
-          from: fromEmail,
-          subject: "Confirm your subscription",
-          html: `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="background:#0d0d0d;font-family:sans-serif;margin:0;padding:40px 24px;">
-  <table style="max-width:520px;margin:0 auto;width:100%;">
-    <tr><td>
-      <p style="color:#fbbf24;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin:0 0 16px;">
-        Newsletter Services
-      </p>
-      <h1 style="color:#fff;font-size:32px;font-weight:700;margin:0 0 16px;line-height:1.2;">
-        One click to confirm.
-      </h1>
-      <p style="color:#a1a1aa;font-size:15px;line-height:1.6;margin:0 0 32px;">
-        You signed up for <strong style="color:#fff;">Attention → Ownership</strong>. 
-        Hit the button below to confirm and you&rsquo;re in.
-      </p>
-      <a href="${confirmUrl}"
-         style="display:inline-block;background:#fbbf24;color:#000;font-size:14px;font-weight:700;padding:14px 28px;border-radius:8px;text-decoration:none;">
-        Confirm my subscription
-      </a>
-      <hr style="border:none;border-top:1px solid #27272a;margin:40px 0;">
-      <p style="color:#52525b;font-size:12px;line-height:1.5;margin:0;">
-        If you didn&rsquo;t sign up for this, you can safely ignore this email.<br>
-        <a href="${unsubscribeUrl}" style="color:#52525b;">Unsubscribe</a>
-      </p>
-    </td></tr>
-  </table>
-</body>
-</html>`,
-          text: `Confirm your subscription to Attention → Ownership.\n\nVisit this link to confirm:\n${confirmUrl}\n\nIf you didn't sign up, ignore this email.\nUnsubscribe: ${unsubscribeUrl}`,
-        });
-      }
-    } catch (emailErr) {
-      // Log but don't fail the request — subscriber is already saved
-      console.error("[subscribe] SendGrid error:", emailErr);
+    if (!subscriber) {
+      return NextResponse.json({ error: "Could not save subscription. Please try again." }, { status: 500, headers: CORS_HEADERS });
     }
 
-    return NextResponse.json({ ok: true }, { status: 201, headers: CORS_HEADERS });
+    const emailResult = await sendConfirmationEmail({
+      email,
+      confirmationToken: subscriber.confirmation_token,
+      unsubscribeToken: subscriber.unsubscribe_token,
+      host: req.headers.get("host"),
+    });
+
+    if (!emailResult.sent) {
+      return NextResponse.json(
+        {
+          ok: true,
+          emailSent: false,
+          warning: "We saved your signup, but could not send the confirmation email right now.",
+          reason: emailResult.reason,
+        },
+        { status: 202, headers: CORS_HEADERS }
+      );
+    }
+
+    return NextResponse.json({ ok: true, emailSent: true }, { status: 201, headers: CORS_HEADERS });
   } catch (err) {
     console.error("[subscribe] Unexpected error:", err);
     return NextResponse.json({ error: "Internal server error." }, { status: 500, headers: CORS_HEADERS });

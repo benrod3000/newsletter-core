@@ -31,6 +31,15 @@ export default function Home() {
         setMessage(data.error ?? "Something went wrong. Try again.");
       } else {
         setStatus("success");
+        if (data?.emailSent === false) {
+          setMessage(data.warning ?? "Signup saved, but confirmation email failed to send.");
+        } else if (data?.resent) {
+          setMessage("Confirmation email re-sent. Check your inbox.");
+        } else if (data?.alreadyConfirmed) {
+          setMessage("This email is already confirmed.");
+        } else {
+          setMessage("");
+        }
       }
     } catch {
       setStatus("error");
@@ -95,9 +104,7 @@ export default function Home() {
             <p className="text-sm font-medium text-amber-400">
               You&apos;re in. Check your inbox to confirm.
             </p>
-            <p className="mt-1 text-xs text-zinc-500">
-              Welcome to the system.
-            </p>
+            <p className="mt-1 text-xs text-zinc-500">{message || "Welcome to the system."}</p>
           </div>
         )}
 

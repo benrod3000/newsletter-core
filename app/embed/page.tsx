@@ -37,6 +37,15 @@ export default function EmbedPage() {
         setMessage(data.error ?? "Something went wrong. Try again.");
       } else {
         setStatus("success");
+        if (data?.emailSent === false) {
+          setMessage(data.warning ?? "Signup saved, but confirmation email failed to send.");
+        } else if (data?.resent) {
+          setMessage("Confirmation email re-sent. Check your inbox.");
+        } else if (data?.alreadyConfirmed) {
+          setMessage("This email is already confirmed.");
+        } else {
+          setMessage("");
+        }
       }
     } catch {
       setStatus("error");
@@ -91,7 +100,7 @@ export default function EmbedPage() {
             <p className="text-sm font-medium text-white">
               You&apos;re in. Check your inbox to confirm.
             </p>
-            <p className="mt-1 text-xs text-white/60">Welcome to the system.</p>
+            <p className="mt-1 text-xs text-white/60">{message || "Welcome to the system."}</p>
           </div>
         )}
 
