@@ -7,6 +7,13 @@ interface Subscriber {
   country: string | null;
   region: string | null;
   city: string | null;
+  timezone: string | null;
+  locale: string | null;
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  referrer: string | null;
+  landing_path: string | null;
   created_at: string | null;
 }
 
@@ -35,7 +42,7 @@ export default async function AdminPage() {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("subscribers")
-    .select("id, email, confirmed, country, region, city, created_at")
+    .select("id, email, confirmed, country, region, city, timezone, locale, utm_source, utm_medium, utm_campaign, referrer, landing_path, created_at")
     .order("created_at", { ascending: false });
 
   const subscribers: Subscriber[] = data ?? [];
@@ -81,13 +88,15 @@ export default async function AdminPage() {
                 <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Location</th>
+                <th className="px-4 py-3">Timezone</th>
+                <th className="px-4 py-3">Source</th>
                 <th className="px-4 py-3">Signed up</th>
               </tr>
             </thead>
             <tbody>
               {subscribers.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-zinc-600">
+                  <td colSpan={6} className="px-4 py-8 text-center text-zinc-600">
                     No subscribers yet.
                   </td>
                 </tr>
@@ -111,6 +120,12 @@ export default async function AdminPage() {
                     </td>
                     <td className="px-4 py-3 text-zinc-400">
                       {[s.city, s.region, s.country].filter(Boolean).join(", ") || "—"}
+                    </td>
+                    <td className="px-4 py-3 text-zinc-500">
+                      {s.timezone || s.locale || "—"}
+                    </td>
+                    <td className="px-4 py-3 text-zinc-500">
+                      {[s.utm_source, s.utm_medium, s.utm_campaign].filter(Boolean).join(" / ") || s.landing_path || s.referrer || "—"}
                     </td>
                     <td className="px-4 py-3 text-zinc-500">{formatSignupTime(s.created_at)}</td>
                   </tr>

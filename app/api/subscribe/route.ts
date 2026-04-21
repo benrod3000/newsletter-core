@@ -54,6 +54,13 @@ function getGeoData(req: NextRequest): { country: string | null; region: string 
   };
 }
 
+function cleanText(value: unknown, maxLength = 200): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.slice(0, maxLength);
+}
+
 async function sendConfirmationEmail({
   email,
   confirmationToken,
@@ -137,6 +144,13 @@ export async function POST(req: NextRequest) {
     }
 
     const email = body.email.trim().toLowerCase();
+    const timezone = cleanText(body.timezone, 100);
+    const locale = cleanText(body.locale, 50);
+    const utm_source = cleanText(body.utm_source, 120);
+    const utm_medium = cleanText(body.utm_medium, 120);
+    const utm_campaign = cleanText(body.utm_campaign, 160);
+    const referrer = cleanText(body.referrer, 500);
+    const landing_path = cleanText(body.landing_path, 300);
 
     // 2. Validate email
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -174,6 +188,13 @@ export async function POST(req: NextRequest) {
           region: geo.region,
           city: geo.city,
           user_agent,
+          timezone,
+          locale,
+          utm_source,
+          utm_medium,
+          utm_campaign,
+          referrer,
+          landing_path,
           created_at: new Date().toISOString(),
         },
       ])

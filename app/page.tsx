@@ -4,6 +4,20 @@ import { useState } from "react";
 
 type Status = "idle" | "loading" | "success" | "error";
 
+function getClientContext() {
+  const searchParams = new URLSearchParams(window.location.search);
+
+  return {
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    locale: navigator.language,
+    utm_source: searchParams.get("utm_source"),
+    utm_medium: searchParams.get("utm_medium"),
+    utm_campaign: searchParams.get("utm_campaign"),
+    referrer: document.referrer || null,
+    landing_path: window.location.pathname + window.location.search,
+  };
+}
+
 export default function Home() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<Status>("idle");
@@ -22,7 +36,7 @@ export default function Home() {
       const res = await fetch("/api/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, ...getClientContext() }),
       });
 
       const data = await res.json();

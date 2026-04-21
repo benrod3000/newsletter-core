@@ -53,6 +53,7 @@ Run the SQL migrations in order in Supabase SQL editor:
 2. `supabase/migrations/002_add_tokens.sql`
 3. `supabase/migrations/003_fix_created_at_defaults.sql`
 4. `supabase/migrations/004_add_subscribe_attempts.sql`
+5. `supabase/migrations/005_add_subscriber_context_fields.sql`
 
 ## Deploy and Reliability Checklist
 
@@ -68,3 +69,4 @@ Run the SQL migrations in order in Supabase SQL editor:
 - `/embed` is intentionally frameable via CSP in `next.config.ts`.
 - Signup attempts are tracked in `subscribe_attempts` to support durable rate limiting.
 - Unsubscribe is idempotent and safe to click multiple times.
+- Subscriber records also capture timezone, locale, UTM source/medium/campaign, referrer, and landing path for better attribution and location context.
