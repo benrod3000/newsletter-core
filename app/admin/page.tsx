@@ -1,6 +1,7 @@
 import { getSupabaseClient } from "@/lib/supabase";
 import { headers } from "next/headers";
 import AdminMailer from "./AdminMailer";
+import ClientWorkspaceManager from "./ClientWorkspaceManager";
 import SubscriberTable from "./SubscriberTable";
 
 export const dynamic = "force-dynamic";
@@ -57,6 +58,8 @@ export default async function AdminPage() {
             Error loading subscribers: {error.message}
           </p>
         )}
+
+        {role === "owner" && <ClientWorkspaceManager />}
 
         <AdminMailer totalCount={subscribers.length} confirmedCount={confirmedCount} />
 
