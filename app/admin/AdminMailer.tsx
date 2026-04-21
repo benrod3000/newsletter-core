@@ -603,7 +603,8 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
         </p>
       </div>
 
-      <form onSubmit={handleSend} className="space-y-3">
+      <form onSubmit={handleSend} className="grid gap-4 lg:grid-cols-[320px,1fr]">
+        <div className="space-y-3">
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label htmlFor="title" className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-500">
@@ -870,6 +871,10 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
           />
         </div>
 
+        </div>
+
+        <div className="space-y-3">
+
         <div>
           <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-500">
             Newsletter builder
@@ -962,6 +967,7 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
               {feedback}
             </p>
           )}
+        </div>
         </div>
       </form>
 
