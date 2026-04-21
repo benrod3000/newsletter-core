@@ -10,21 +10,22 @@ export async function POST(req: NextRequest) {
 
     const token = body.token.trim();
     if (!/^[0-9a-f-]{36}$/.test(token)) {
-      return NextResponse.json({ error: "Invalid token." }, { status: 422 });
+      return NextResponse.json({ ok: true }, { status: 200 });
     }
 
     const supabase = getSupabaseClient();
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("subscribers")
       .delete()
-      .eq("unsubscribe_token", token);
+      .eq("unsubscribe_token", token)
+      .select("id");
 
     if (error) {
       console.error("[unsubscribe] Supabase error:", error.message);
       return NextResponse.json({ error: "Could not unsubscribe. Please try again." }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true }, { status: 200 });
+    return NextResponse.json({ ok: true, removed: (data?.length ?? 0) > 0 }, { status: 200 });
   } catch (err) {
     console.error("[unsubscribe] Unexpected error:", err);
     return NextResponse.json({ error: "Internal server error." }, { status: 500 });

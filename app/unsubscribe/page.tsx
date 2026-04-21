@@ -8,6 +8,7 @@ function UnsubscribeForm() {
   const token = searchParams.get("token") ?? "";
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [message, setMessage] = useState("");
+  const [alreadyRemoved, setAlreadyRemoved] = useState(false);
 
   async function handleUnsubscribe() {
     if (!token) {
@@ -23,6 +24,8 @@ function UnsubscribeForm() {
         body: JSON.stringify({ token }),
       });
       if (res.ok) {
+        const data = await res.json();
+        setAlreadyRemoved(data.removed === false);
         setStatus("done");
       } else {
         const data = await res.json();
@@ -38,8 +41,14 @@ function UnsubscribeForm() {
   if (status === "done") {
     return (
       <div className="rounded-lg border border-zinc-700 bg-zinc-900 px-6 py-5">
-        <p className="text-sm font-medium text-amber-400">You&apos;ve been unsubscribed.</p>
-        <p className="mt-1 text-xs text-zinc-500">Sorry to see you go. You won&apos;t hear from us again.</p>
+        <p className="text-sm font-medium text-amber-400">
+          {alreadyRemoved ? "Already unsubscribed." : "You&apos;ve been unsubscribed."}
+        </p>
+        <p className="mt-1 text-xs text-zinc-500">
+          {alreadyRemoved
+            ? "This address was already removed from the list."
+            : "Sorry to see you go. You won&apos;t hear from us again."}
+        </p>
       </div>
     );
   }

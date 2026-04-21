@@ -1,36 +1,70 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Newsletter Service
 
-## Getting Started
+Newsletter platform built with Next.js + Supabase + SendGrid.
 
-First, run the development server:
+## Features
+
+- Embedded signup form at `/embed`
+- Subscription API with geo capture and durable rate limiting at `/api/subscribe`
+- Double opt-in confirmation flow at `/api/confirm` and `/confirmed`
+- Unsubscribe flow at `/unsubscribe` and `/api/unsubscribe`
+- Admin subscriber dashboard at `/admin` (HTTP basic auth protected)
+- Vercel Analytics and Speed Insights integrated
+
+## Local Development
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Copy env template:
+
+```bash
+cp .env.local.example .env.local
+```
+
+3. Set required values in `.env.local`.
+
+4. Run dev server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Required Environment Variables
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SENDGRID_API_KEY`
+- `SENDGRID_FROM_EMAIL`
+- `APP_URL` (preferred canonical app URL)
+- `ADMIN_USERNAME` (for `/admin`)
+- `ADMIN_PASSWORD` (for `/admin`)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+`NEXT_PUBLIC_APP_URL` is kept as a legacy fallback, but `APP_URL` is preferred.
 
-## Learn More
+## Database Migrations
 
-To learn more about Next.js, take a look at the following resources:
+Run the SQL migrations in order in Supabase SQL editor:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. `supabase/migrations/001_create_subscribers.sql`
+2. `supabase/migrations/002_add_tokens.sql`
+3. `supabase/migrations/003_fix_created_at_defaults.sql`
+4. `supabase/migrations/004_add_subscribe_attempts.sql`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Deploy and Reliability Checklist
 
-## Deploy on Vercel
+1. Push to `main` (Vercel auto-deploy).
+2. Confirm all env vars exist in Vercel project settings.
+3. Verify signup form works from `/embed`.
+4. Verify confirmation email links use the correct production domain.
+5. Confirm `/admin` prompts for basic auth credentials.
+6. Confirm migrations are applied in Supabase.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Notes
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `/embed` is intentionally frameable via CSP in `next.config.ts`.
+- Signup attempts are tracked in `subscribe_attempts` to support durable rate limiting.
+- Unsubscribe is idempotent and safe to click multiple times.

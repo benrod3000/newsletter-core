@@ -9,11 +9,29 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = getSupabaseClient();
+  const { data: existing, error: lookupError } = await supabase
+    .from("subscribers")
+    .select("id, confirmed")
+    .eq("confirmation_token", token)
+    .maybeSingle();
+
+  if (lookupError) {
+    console.error("[confirm] Supabase lookup error:", lookupError.message);
+    return NextResponse.redirect(new URL("/confirmed?status=error", req.url));
+  }
+
+  if (!existing) {
+    return NextResponse.redirect(new URL("/confirmed?status=invalid", req.url));
+  }
+
+  if (existing.confirmed) {
+    return NextResponse.redirect(new URL("/confirmed?status=already", req.url));
+  }
+
   const { error } = await supabase
     .from("subscribers")
     .update({ confirmed: true })
-    .eq("confirmation_token", token)
-    .eq("confirmed", false);
+    .eq("id", existing.id);
 
   if (error) {
     console.error("[confirm] Supabase error:", error.message);

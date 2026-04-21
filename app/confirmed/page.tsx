@@ -9,6 +9,7 @@ export default async function ConfirmedPage({ searchParams }: Props) {
 
   const isOk = status === "ok";
   const isInvalid = status === "invalid";
+  const isAlready = status === "already";
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center px-6 bg-[#0d0d0d]">
@@ -24,6 +25,15 @@ export default async function ConfirmedPage({ searchParams }: Props) {
             </h1>
             <p className="mt-5 text-lg leading-relaxed text-zinc-400">
               Your subscription is active. First issue drops weekly — keep an eye on your inbox.
+            </p>
+          </>
+        ) : isAlready ? (
+          <>
+            <h1 className="text-5xl font-bold leading-tight tracking-tight text-white">
+              Already confirmed.
+            </h1>
+            <p className="mt-5 text-lg leading-relaxed text-zinc-400">
+              This email is already confirmed and active on the list.
             </p>
           </>
         ) : isInvalid ? (

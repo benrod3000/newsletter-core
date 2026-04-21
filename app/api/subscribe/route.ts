@@ -15,6 +15,8 @@ export async function OPTIONS() {
 
 // Durable rate limit: max 3 attempts per IP per hour (stored in DB)
 async function isRateLimited(ip: string): Promise<boolean> {
+  if (!ip || ip === "unknown") return false;
+
   const supabase = getSupabaseClient();
   const windowStart = new Date(Date.now() - 60 * 60 * 1000).toISOString();
   const maxAttempts = 3;
@@ -34,6 +36,8 @@ async function isRateLimited(ip: string): Promise<boolean> {
 }
 
 async function logSubscribeAttempt(ip: string, email: string) {
+  if (!ip || ip === "unknown") return;
+
   const supabase = getSupabaseClient();
   const { error } = await supabase.from("subscribe_attempts").insert([{ ip, email }]);
 
@@ -56,6 +60,11 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => null);
     if (!body || typeof body.email !== "string") {
       return NextResponse.json({ error: "Invalid request body." }, { status: 400, headers: CORS_HEADERS });
+    }
+
+    // Honeypot: if this hidden field is filled, silently accept and drop.
+    if (typeof body.company === "string" && body.company.trim().length > 0) {
+      return NextResponse.json({ ok: true }, { status: 200, headers: CORS_HEADERS });
     }
 
     const email = body.email.trim().toLowerCase();
@@ -115,7 +124,10 @@ export async function POST(req: NextRequest) {
     try {
       const sgApiKey = process.env.SENDGRID_API_KEY;
       const fromEmail = process.env.SENDGRID_FROM_EMAIL;
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? `https://${req.headers.get("host")}`;
+      const appUrl =
+        process.env.APP_URL ??
+        process.env.NEXT_PUBLIC_APP_URL ??
+        `https://${req.headers.get("host")}`;
 
       if (sgApiKey && fromEmail && subscriber) {
         sgMail.setApiKey(sgApiKey);

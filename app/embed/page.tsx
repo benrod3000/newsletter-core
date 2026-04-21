@@ -1,13 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type Status = "idle" | "loading" | "success" | "error";
 
 export default function EmbedPage() {
   const [email, setEmail] = useState("");
+  const [company, setCompany] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    document.body.classList.add("embed");
+    return () => document.body.classList.remove("embed");
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -19,10 +25,10 @@ export default function EmbedPage() {
 
     setStatus("loading");
     try {
-      const res = await fetch("https://newsletterservice.vercel.app/api/subscribe", {
+      const res = await fetch("/api/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, company }),
       });
 
       const data = await res.json();
@@ -39,7 +45,7 @@ export default function EmbedPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-transparent p-4">
+    <div className="flex items-center justify-center bg-transparent p-4">
       <div className="w-full max-w-md">
         {status !== "success" ? (
           <form onSubmit={handleSubmit} className="flex flex-col gap-2 sm:flex-row">
@@ -58,6 +64,19 @@ export default function EmbedPage() {
               }}
               placeholder="your@email.com"
               className="w-full flex-1 rounded-lg border border-white/40 bg-white/20 px-4 py-3 text-sm text-white placeholder-white/60 outline-none transition focus:border-white focus:ring-1 focus:ring-white"
+            />
+            <label htmlFor="embed-company" className="sr-only">
+              Company
+            </label>
+            <input
+              id="embed-company"
+              type="text"
+              tabIndex={-1}
+              autoComplete="off"
+              value={company}
+              onChange={(e) => setCompany(e.target.value)}
+              className="hidden"
+              aria-hidden="true"
             />
             <button
               type="submit"
