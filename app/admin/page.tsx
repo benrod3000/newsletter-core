@@ -55,7 +55,7 @@ export default async function AdminPage() {
             </p>
           )}
 
-          <div className="grid gap-8 lg:grid-cols-[1fr,1fr]">
+          <div className="grid gap-8 md:grid-cols-[1fr,1fr]">
             {/* Left Column */}
             <div className="space-y-8">
               {role === "owner" && (
