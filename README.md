@@ -64,6 +64,7 @@ Run the SQL migrations in order in Supabase SQL editor:
 7. `supabase/migrations/007_add_admin_management_functions.sql`
 8. `supabase/migrations/008_add_admin_user_management_functions.sql`
 9. `supabase/migrations/009_add_campaign_geo_filter.sql`
+10. `supabase/migrations/010_add_subscriber_lat_lng.sql`
 
 ## Admin Accounts and Client Workspaces
 

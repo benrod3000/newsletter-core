@@ -7,7 +7,14 @@ type Audience = "all" | "confirmed" | "pending";
 
 function parseGeoFilter(value: unknown) {
   if (!value || typeof value !== "object") {
-    return { country: null, region: null, city: null };
+    return {
+      country: null,
+      region: null,
+      city: null,
+      center_lat: null,
+      center_lng: null,
+      radius_km: null,
+    };
   }
 
   const input = value as Record<string, unknown>;
@@ -21,7 +28,30 @@ function parseGeoFilter(value: unknown) {
     country: clean(input.country),
     region: clean(input.region),
     city: clean(input.city),
+    center_lat: typeof input.center_lat === "number" ? input.center_lat : null,
+    center_lng: typeof input.center_lng === "number" ? input.center_lng : null,
+    radius_km:
+      typeof input.radius_km === "number" && Number.isFinite(input.radius_km) && input.radius_km > 0
+        ? input.radius_km
+        : null,
   };
+}
+
+function haversineDistanceKm(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+) {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const R = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }
 
 function buildHtmlFromEditor(editorHtml: string, editorCss = "") {
@@ -94,7 +124,10 @@ export async function POST(req: NextRequest) {
   for (const campaign of dueCampaigns) {
     const audience = (campaign.audience as Audience) ?? "confirmed";
     const geoFilter = parseGeoFilter(campaign.geo_filter);
-    let recipientQuery = supabase.from("subscribers").select("email").eq("client_id", campaign.client_id);
+    let recipientQuery = supabase
+      .from("subscribers")
+      .select("email, latitude, longitude")
+      .eq("client_id", campaign.client_id);
     if (audience === "confirmed") recipientQuery = recipientQuery.eq("confirmed", true);
     if (audience === "pending") recipientQuery = recipientQuery.eq("confirmed", false);
     if (geoFilter.country) recipientQuery = recipientQuery.eq("country", geoFilter.country);
@@ -110,9 +143,32 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    const recipients = (recipientsData ?? [])
-      .map((r) => r.email)
-      .filter((email): email is string => typeof email === "string" && email.length > 0);
+    const rows = (recipientsData ?? []).filter(
+      (r) => typeof r.email === "string" && r.email.length > 0
+    );
+
+    const hasRadiusFilter =
+      geoFilter.radius_km !== null && geoFilter.center_lat !== null && geoFilter.center_lng !== null;
+    const centerLat = geoFilter.center_lat;
+    const centerLng = geoFilter.center_lng;
+    const radiusKm = geoFilter.radius_km;
+
+    const recipients =
+      hasRadiusFilter && centerLat !== null && centerLng !== null && radiusKm !== null
+        ? rows
+            .filter((r) => {
+              if (typeof r.latitude !== "number" || typeof r.longitude !== "number") return false;
+              return (
+                haversineDistanceKm(
+                  centerLat,
+                  centerLng,
+                  r.latitude,
+                  r.longitude
+                ) <= radiusKm
+              );
+            })
+            .map((r) => r.email)
+        : rows.map((r) => r.email);
 
     if (recipients.length === 0) {
       await supabase

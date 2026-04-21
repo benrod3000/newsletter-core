@@ -7,7 +7,14 @@ type Audience = "all" | "confirmed" | "pending";
 
 function parseGeoFilter(value: unknown) {
   if (!value || typeof value !== "object") {
-    return { country: null, region: null, city: null };
+    return {
+      country: null,
+      region: null,
+      city: null,
+      center_lat: null,
+      center_lng: null,
+      radius_km: null,
+    };
   }
 
   const input = value as Record<string, unknown>;
@@ -22,6 +29,59 @@ function parseGeoFilter(value: unknown) {
     country: clean(input.country),
     region: clean(input.region),
     city: clean(input.city),
+    center_lat: typeof input.center_lat === "number" ? input.center_lat : null,
+    center_lng: typeof input.center_lng === "number" ? input.center_lng : null,
+    radius_km:
+      typeof input.radius_km === "number" && Number.isFinite(input.radius_km) && input.radius_km > 0
+        ? input.radius_km
+        : null,
+  };
+}
+
+async function resolveGeoCenter(
+  clientId: string,
+  geoFilter: {
+    country: string | null;
+    region: string | null;
+    city: string | null;
+    center_lat: number | null;
+    center_lng: number | null;
+    radius_km: number | null;
+  }
+) {
+  if (!geoFilter.radius_km) {
+    return geoFilter;
+  }
+
+  if (geoFilter.center_lat !== null && geoFilter.center_lng !== null) {
+    return geoFilter;
+  }
+
+  const supabase = getSupabaseClient();
+  let query = supabase
+    .from("subscribers")
+    .select("latitude, longitude")
+    .eq("client_id", clientId)
+    .not("latitude", "is", null)
+    .not("longitude", "is", null)
+    .limit(200);
+
+  if (geoFilter.country) query = query.eq("country", geoFilter.country);
+  if (geoFilter.region) query = query.eq("region", geoFilter.region);
+  if (geoFilter.city) query = query.eq("city", geoFilter.city);
+
+  const { data } = await query;
+  if (!data || data.length === 0) {
+    return { ...geoFilter, center_lat: null, center_lng: null };
+  }
+
+  const latSum = data.reduce((sum, row) => sum + Number(row.latitude), 0);
+  const lngSum = data.reduce((sum, row) => sum + Number(row.longitude), 0);
+
+  return {
+    ...geoFilter,
+    center_lat: latSum / data.length,
+    center_lng: lngSum / data.length,
   };
 }
 
@@ -110,7 +170,7 @@ export async function POST(req: NextRequest) {
   const editorCss = typeof body.editorCss === "string" ? body.editorCss : "";
   const plainText = typeof body.plainText === "string" ? body.plainText : "";
   const scheduledFor = typeof body.scheduledFor === "string" && body.scheduledFor.trim() ? body.scheduledFor : null;
-  const geoFilter = parseGeoFilter(body.geoFilter);
+  let geoFilter = parseGeoFilter(body.geoFilter);
 
   if (!subject || !editorHtml) {
     return NextResponse.json({ error: "Subject and content are required." }, { status: 422 });
@@ -123,6 +183,15 @@ export async function POST(req: NextRequest) {
   const clientId = await resolveClientId(body.clientId, admin.clientId);
   if (!clientId) {
     return NextResponse.json({ error: "No workspace selected for this campaign." }, { status: 422 });
+  }
+
+  geoFilter = await resolveGeoCenter(clientId, geoFilter);
+
+  if (geoFilter.radius_km && (geoFilter.center_lat === null || geoFilter.center_lng === null)) {
+    return NextResponse.json(
+      { error: "Could not determine geo center for radius targeting. Select a location with matching subscribers first." },
+      { status: 422 }
+    );
   }
 
   const payload = {

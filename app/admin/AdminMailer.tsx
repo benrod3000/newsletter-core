@@ -28,6 +28,9 @@ interface Campaign {
     country?: string | null;
     region?: string | null;
     city?: string | null;
+    center_lat?: number | null;
+    center_lng?: number | null;
+    radius_km?: number | null;
   } | null;
   updated_at: string;
 }
@@ -132,6 +135,7 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
   const [geoCountry, setGeoCountry] = useState("");
   const [geoRegion, setGeoRegion] = useState("");
   const [geoCity, setGeoCity] = useState("");
+  const [geoRadiusKm, setGeoRadiusKm] = useState("");
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [clients, setClients] = useState<ClientWorkspace[]>([]);
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>("");
@@ -190,8 +194,9 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
 
   const geoSummary = useMemo(() => {
     const parts = [geoCity, geoRegion, geoCountry].filter(Boolean);
-    return parts.length ? parts.join(", ") : "all locations";
-  }, [geoCity, geoRegion, geoCountry]);
+    const location = parts.length ? parts.join(", ") : "all locations";
+    return geoRadiusKm ? `${location} within ${geoRadiusKm} km` : location;
+  }, [geoCity, geoRegion, geoCountry, geoRadiusKm]);
 
   const canEdit = role === "owner" || role === "editor";
 
@@ -237,6 +242,9 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
     setGeoCountry(campaign.geo_filter?.country || "");
     setGeoRegion(campaign.geo_filter?.region || "");
     setGeoCity(campaign.geo_filter?.city || "");
+    setGeoRadiusKm(
+      typeof campaign.geo_filter?.radius_km === "number" ? String(campaign.geo_filter.radius_km) : ""
+    );
     setScheduledFor(toLocalInputValue(campaign.scheduled_for));
     setSelectedClientId(campaign.client_id || selectedClientId);
 
@@ -255,6 +263,7 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
     setGeoCountry("");
     setGeoRegion("");
     setGeoCity("");
+    setGeoRadiusKm("");
     setScheduledFor("");
     if (editor) {
       editor.setComponents(DEFAULT_COMPONENTS);
@@ -309,6 +318,7 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
             country: geoCountry || null,
             region: geoRegion || null,
             city: geoCity || null,
+            radius_km: geoRadiusKm ? Number.parseFloat(geoRadiusKm) : null,
           },
           status: nextStatus,
           scheduledFor: nextStatus === "scheduled" ? new Date(scheduledFor).toISOString() : null,
@@ -365,6 +375,7 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
             country: geoCountry || null,
             region: geoRegion || null,
             city: geoCity || null,
+            radius_km: geoRadiusKm ? Number.parseFloat(geoRadiusKm) : null,
           },
           subject: subject.trim(),
           message: content.text,
@@ -426,6 +437,7 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
             country: geoCountry || null,
             region: geoRegion || null,
             city: geoCity || null,
+            radius_km: geoRadiusKm ? Number.parseFloat(geoRadiusKm) : null,
           },
           subject: subject.trim(),
           message: content.text,
@@ -593,6 +605,25 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
               ))}
             </select>
           </div>
+        </div>
+
+        <div>
+          <label htmlFor="geoRadius" className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+            Radius (km, optional)
+          </label>
+          <input
+            id="geoRadius"
+            type="number"
+            min={1}
+            step={1}
+            value={geoRadiusKm}
+            onChange={(e) => setGeoRadiusKm(e.target.value)}
+            placeholder="e.g. 50"
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-400"
+          />
+          <p className="mt-1 text-xs text-zinc-600">
+            Radius uses subscriber lat/lng when available and centers on the selected city/region/country.
+          </p>
         </div>
 
         <div>

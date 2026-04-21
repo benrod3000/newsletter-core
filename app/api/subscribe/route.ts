@@ -46,11 +46,25 @@ async function logSubscribeAttempt(ip: string, email: string) {
   }
 }
 
-function getGeoData(req: NextRequest): { country: string | null; region: string | null; city: string | null } {
+function parseCoordinate(value: string | null): number | null {
+  if (!value) return null;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getGeoData(req: NextRequest): {
+  country: string | null;
+  region: string | null;
+  city: string | null;
+  latitude: number | null;
+  longitude: number | null;
+} {
   return {
     country: req.headers.get("x-vercel-ip-country") ?? null,
     region: req.headers.get("x-vercel-ip-country-region") ?? null,
     city: req.headers.get("x-vercel-ip-city") ?? null,
+    latitude: parseCoordinate(req.headers.get("x-vercel-ip-latitude")),
+    longitude: parseCoordinate(req.headers.get("x-vercel-ip-longitude")),
   };
 }
 
@@ -210,6 +224,8 @@ export async function POST(req: NextRequest) {
           country: geo.country,
           region: geo.region,
           city: geo.city,
+          latitude: geo.latitude,
+          longitude: geo.longitude,
           user_agent,
           timezone,
           locale,

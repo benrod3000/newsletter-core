@@ -7,7 +7,14 @@ type Audience = "all" | "confirmed" | "pending";
 
 function parseGeoFilter(value: unknown) {
   if (!value || typeof value !== "object") {
-    return { country: null, region: null, city: null };
+    return {
+      country: null,
+      region: null,
+      city: null,
+      center_lat: null,
+      center_lng: null,
+      radius_km: null,
+    };
   }
 
   const input = value as Record<string, unknown>;
@@ -21,7 +28,30 @@ function parseGeoFilter(value: unknown) {
     country: clean(input.country),
     region: clean(input.region),
     city: clean(input.city),
+    center_lat: typeof input.center_lat === "number" ? input.center_lat : null,
+    center_lng: typeof input.center_lng === "number" ? input.center_lng : null,
+    radius_km:
+      typeof input.radius_km === "number" && Number.isFinite(input.radius_km) && input.radius_km > 0
+        ? input.radius_km
+        : null,
   };
+}
+
+function haversineDistanceKm(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+) {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const R = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }
 
 function buildHtml(message: string) {
@@ -155,7 +185,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    let query = supabase.from("subscribers").select("email, confirmed, client_id");
+    let query = supabase
+      .from("subscribers")
+      .select("email, confirmed, client_id, latitude, longitude");
 
     if (audience === "confirmed") query = query.eq("confirmed", true);
     if (audience === "pending") query = query.eq("confirmed", false);
@@ -205,9 +237,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Failed to load subscribers: ${error.message}` }, { status: 500 });
     }
 
-    const recipients = (data ?? [])
-      .map((row) => row.email)
-      .filter((email): email is string => typeof email === "string" && email.length > 0);
+    const rows = (data ?? []).filter(
+      (row) => typeof row.email === "string" && row.email.length > 0
+    );
+
+    const hasRadiusFilter =
+      geoFilter.radius_km !== null && geoFilter.center_lat !== null && geoFilter.center_lng !== null;
+    const centerLat = geoFilter.center_lat;
+    const centerLng = geoFilter.center_lng;
+    const radiusKm = geoFilter.radius_km;
+
+    const geoRecipients =
+      hasRadiusFilter && centerLat !== null && centerLng !== null && radiusKm !== null
+        ? rows.filter((row) => {
+            if (typeof row.latitude !== "number" || typeof row.longitude !== "number") {
+              return false;
+            }
+            return (
+              haversineDistanceKm(
+                centerLat,
+                centerLng,
+                row.latitude,
+                row.longitude
+              ) <= radiusKm
+            );
+          })
+        : rows;
+
+    const recipients = geoRecipients.map((row) => row.email);
 
     if (recipients.length === 0) {
       return NextResponse.json({ error: "No matching subscribers to send to." }, { status: 422 });
