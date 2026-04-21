@@ -5,6 +5,25 @@ import { canSendCampaigns, getAdminContextFromHeaders } from "@/lib/admin-contex
 
 type Audience = "all" | "confirmed" | "pending";
 
+function parseGeoFilter(value: unknown) {
+  if (!value || typeof value !== "object") {
+    return { country: null, region: null, city: null };
+  }
+
+  const input = value as Record<string, unknown>;
+  const clean = (v: unknown) => {
+    if (typeof v !== "string") return null;
+    const trimmed = v.trim();
+    return trimmed ? trimmed : null;
+  };
+
+  return {
+    country: clean(input.country),
+    region: clean(input.region),
+    city: clean(input.city),
+  };
+}
+
 function buildHtml(message: string) {
   const escaped = message
     .replace(/&/g, "&amp;")
@@ -86,6 +105,7 @@ export async function POST(req: NextRequest) {
     const messageHtml = typeof body.html === "string" ? body.html.trim() : "";
     const messageCss = typeof body.css === "string" ? body.css.trim() : "";
     const audience = parseAudience(body.audience);
+    const geoFilter = parseGeoFilter(body.geoFilter);
     const testEmail = typeof body.testEmail === "string" ? body.testEmail.trim().toLowerCase() : "";
     const campaignId = typeof body.campaignId === "string" ? body.campaignId : null;
 
@@ -108,14 +128,14 @@ export async function POST(req: NextRequest) {
     if (campaignId) {
       let campaignQuery = supabase
         .from("campaigns")
-        .select("id, client_id")
+        .select("id, client_id, geo_filter")
         .eq("id", campaignId)
         .single();
 
       if (admin.role !== "owner" && admin.clientId) {
         campaignQuery = supabase
           .from("campaigns")
-          .select("id, client_id")
+          .select("id, client_id, geo_filter")
           .eq("id", campaignId)
           .eq("client_id", admin.clientId)
           .single();
@@ -127,6 +147,12 @@ export async function POST(req: NextRequest) {
       }
 
       workspaceClientId = campaignScope.client_id;
+      if (campaignScope.geo_filter && typeof campaignScope.geo_filter === "object") {
+        const campaignGeo = parseGeoFilter(campaignScope.geo_filter);
+        geoFilter.country = campaignGeo.country;
+        geoFilter.region = campaignGeo.region;
+        geoFilter.city = campaignGeo.city;
+      }
     }
 
     let query = supabase.from("subscribers").select("email, confirmed, client_id");
@@ -134,6 +160,9 @@ export async function POST(req: NextRequest) {
     if (audience === "confirmed") query = query.eq("confirmed", true);
     if (audience === "pending") query = query.eq("confirmed", false);
     if (workspaceClientId) query = query.eq("client_id", workspaceClientId);
+    if (geoFilter.country) query = query.eq("country", geoFilter.country);
+    if (geoFilter.region) query = query.eq("region", geoFilter.region);
+    if (geoFilter.city) query = query.eq("city", geoFilter.city);
 
     sgMail.setApiKey(sgApiKey);
     const html = messageHtml ? buildHtmlFromEditor(messageHtml, messageCss) : buildHtml(message);

@@ -24,6 +24,11 @@ interface Campaign {
   last_sent_at: string | null;
   last_test_sent_at: string | null;
   last_test_recipient: string | null;
+  geo_filter: {
+    country?: string | null;
+    region?: string | null;
+    city?: string | null;
+  } | null;
   updated_at: string;
 }
 
@@ -46,6 +51,15 @@ interface CampaignApiResponse {
 interface AdminMailerProps {
   totalCount: number;
   confirmedCount: number;
+  subscribers: Array<{
+    country: string | null;
+    region: string | null;
+    city: string | null;
+  }>;
+}
+
+function uniqueGeo(values: Array<string | null>) {
+  return Array.from(new Set(values.filter((v): v is string => Boolean(v)))).sort();
 }
 
 const DEFAULT_COMPONENTS = `
@@ -109,12 +123,15 @@ function audienceLabel(audience: Audience, totalCount: number, confirmedCount: n
   return `confirmed subscribers (${confirmedCount})`;
 }
 
-export default function AdminMailer({ totalCount, confirmedCount }: AdminMailerProps) {
+export default function AdminMailer({ totalCount, confirmedCount, subscribers }: AdminMailerProps) {
   const [audience, setAudience] = useState<Audience>("confirmed");
   const [title, setTitle] = useState("Untitled Draft");
   const [subject, setSubject] = useState("");
   const [scheduledFor, setScheduledFor] = useState("");
   const [testEmail, setTestEmail] = useState("");
+  const [geoCountry, setGeoCountry] = useState("");
+  const [geoRegion, setGeoRegion] = useState("");
+  const [geoCity, setGeoCity] = useState("");
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [clients, setClients] = useState<ClientWorkspace[]>([]);
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>("");
@@ -167,6 +184,15 @@ export default function AdminMailer({ totalCount, confirmedCount }: AdminMailerP
     [audience, totalCount, confirmedCount]
   );
 
+  const countryOptions = useMemo(() => uniqueGeo(subscribers.map((s) => s.country)), [subscribers]);
+  const regionOptions = useMemo(() => uniqueGeo(subscribers.map((s) => s.region)), [subscribers]);
+  const cityOptions = useMemo(() => uniqueGeo(subscribers.map((s) => s.city)), [subscribers]);
+
+  const geoSummary = useMemo(() => {
+    const parts = [geoCity, geoRegion, geoCountry].filter(Boolean);
+    return parts.length ? parts.join(", ") : "all locations";
+  }, [geoCity, geoRegion, geoCountry]);
+
   const canEdit = role === "owner" || role === "editor";
 
   async function refreshCampaigns() {
@@ -208,6 +234,9 @@ export default function AdminMailer({ totalCount, confirmedCount }: AdminMailerP
     setTitle(campaign.title || "Untitled Draft");
     setSubject(campaign.subject || "");
     setAudience(campaign.audience || "confirmed");
+    setGeoCountry(campaign.geo_filter?.country || "");
+    setGeoRegion(campaign.geo_filter?.region || "");
+    setGeoCity(campaign.geo_filter?.city || "");
     setScheduledFor(toLocalInputValue(campaign.scheduled_for));
     setSelectedClientId(campaign.client_id || selectedClientId);
 
@@ -223,6 +252,9 @@ export default function AdminMailer({ totalCount, confirmedCount }: AdminMailerP
     setTitle("Untitled Draft");
     setSubject("");
     setAudience("confirmed");
+    setGeoCountry("");
+    setGeoRegion("");
+    setGeoCity("");
     setScheduledFor("");
     if (editor) {
       editor.setComponents(DEFAULT_COMPONENTS);
@@ -273,6 +305,11 @@ export default function AdminMailer({ totalCount, confirmedCount }: AdminMailerP
           title: title.trim() || "Untitled Draft",
           subject: subject.trim(),
           audience,
+          geoFilter: {
+            country: geoCountry || null,
+            region: geoRegion || null,
+            city: geoCity || null,
+          },
           status: nextStatus,
           scheduledFor: nextStatus === "scheduled" ? new Date(scheduledFor).toISOString() : null,
           editorHtml: content.html,
@@ -324,6 +361,11 @@ export default function AdminMailer({ totalCount, confirmedCount }: AdminMailerP
         body: JSON.stringify({
           campaignId: selectedCampaignId || undefined,
           audience,
+          geoFilter: {
+            country: geoCountry || null,
+            region: geoRegion || null,
+            city: geoCity || null,
+          },
           subject: subject.trim(),
           message: content.text,
           html: content.html,
@@ -380,6 +422,11 @@ export default function AdminMailer({ totalCount, confirmedCount }: AdminMailerP
         body: JSON.stringify({
           campaignId: selectedCampaignId || undefined,
           audience,
+          geoFilter: {
+            country: geoCountry || null,
+            region: geoRegion || null,
+            city: geoCity || null,
+          },
           subject: subject.trim(),
           message: content.text,
           html: content.html,
@@ -432,7 +479,7 @@ export default function AdminMailer({ totalCount, confirmedCount }: AdminMailerP
         <p className="text-xs font-semibold uppercase tracking-widest text-amber-400">Campaign</p>
         <h2 className="mt-1 text-lg font-semibold text-white">Client campaign workspace</h2>
         <p className="mt-1 text-sm text-zinc-500">
-          Signed in as {username || "admin"} ({role}). Target {targetLabel}.
+          Signed in as {username || "admin"} ({role}). Target {targetLabel} in {geoSummary}.
         </p>
       </div>
 
@@ -487,6 +534,65 @@ export default function AdminMailer({ totalCount, confirmedCount }: AdminMailerP
             <option value="pending">Pending subscribers</option>
             <option value="all">All subscribers</option>
           </select>
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-3">
+          <div>
+            <label htmlFor="geoCountry" className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+              Country
+            </label>
+            <select
+              id="geoCountry"
+              value={geoCountry}
+              onChange={(e) => setGeoCountry(e.target.value)}
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-400"
+            >
+              <option value="">All countries</option>
+              {countryOptions.map((country) => (
+                <option key={country} value={country}>
+                  {country}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="geoRegion" className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+              Region
+            </label>
+            <select
+              id="geoRegion"
+              value={geoRegion}
+              onChange={(e) => setGeoRegion(e.target.value)}
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-400"
+            >
+              <option value="">All regions</option>
+              {regionOptions.map((region) => (
+                <option key={region} value={region}>
+                  {region}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="geoCity" className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+              City
+            </label>
+            <select
+              id="geoCity"
+              value={geoCity}
+              onChange={(e) => setGeoCity(e.target.value)}
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-400"
+            >
+              <option value="">All cities</option>
+              {cityOptions.map((city) => (
+                <option key={city} value={city}>
+                  {city}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div>

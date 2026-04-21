@@ -61,7 +61,11 @@ export default async function AdminPage() {
 
         {role === "owner" && <ClientWorkspaceManager />}
 
-        <AdminMailer totalCount={subscribers.length} confirmedCount={confirmedCount} />
+        <AdminMailer
+          totalCount={subscribers.length}
+          confirmedCount={confirmedCount}
+          subscribers={subscribers}
+        />
 
         <SubscriberTable subscribers={subscribers} />
       </div>

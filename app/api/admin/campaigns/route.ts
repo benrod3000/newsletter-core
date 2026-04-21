@@ -5,6 +5,26 @@ import { canEditCampaigns, getAdminContextFromHeaders } from "@/lib/admin-contex
 type CampaignStatus = "draft" | "scheduled" | "sent";
 type Audience = "all" | "confirmed" | "pending";
 
+function parseGeoFilter(value: unknown) {
+  if (!value || typeof value !== "object") {
+    return { country: null, region: null, city: null };
+  }
+
+  const input = value as Record<string, unknown>;
+
+  const clean = (v: unknown) => {
+    if (typeof v !== "string") return null;
+    const trimmed = v.trim();
+    return trimmed ? trimmed : null;
+  };
+
+  return {
+    country: clean(input.country),
+    region: clean(input.region),
+    city: clean(input.city),
+  };
+}
+
 function parseAudience(value: unknown): Audience {
   if (value === "all" || value === "pending") return value;
   return "confirmed";
@@ -39,7 +59,7 @@ export async function GET(req: NextRequest) {
   const supabase = getSupabaseClient();
   let campaignsQuery = supabase
     .from("campaigns")
-    .select("id, client_id, title, subject, audience, status, editor_html, editor_css, plain_text, scheduled_for, sent_count, last_sent_at, last_test_sent_at, last_test_recipient, updated_at")
+    .select("id, client_id, title, subject, audience, status, editor_html, editor_css, plain_text, scheduled_for, sent_count, last_sent_at, last_test_sent_at, last_test_recipient, geo_filter, updated_at")
     .order("updated_at", { ascending: false });
 
   if (admin.role !== "owner" && admin.clientId) {
@@ -90,6 +110,7 @@ export async function POST(req: NextRequest) {
   const editorCss = typeof body.editorCss === "string" ? body.editorCss : "";
   const plainText = typeof body.plainText === "string" ? body.plainText : "";
   const scheduledFor = typeof body.scheduledFor === "string" && body.scheduledFor.trim() ? body.scheduledFor : null;
+  const geoFilter = parseGeoFilter(body.geoFilter);
 
   if (!subject || !editorHtml) {
     return NextResponse.json({ error: "Subject and content are required." }, { status: 422 });
@@ -113,6 +134,7 @@ export async function POST(req: NextRequest) {
     editor_html: editorHtml,
     editor_css: editorCss,
     plain_text: plainText,
+    geo_filter: geoFilter,
     scheduled_for: status === "scheduled" ? scheduledFor : null,
     updated_by: admin.username,
     created_by: admin.username,

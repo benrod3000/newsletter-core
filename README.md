@@ -14,6 +14,7 @@ Newsletter platform built with Next.js + Supabase + SendGrid.
 - Test-send to a single recipient before bulk delivery
 - Scheduled campaigns with manual/cron processing endpoint
 - Role-based client workspaces (`owner`, `editor`, `viewer`)
+- Geo-targeted campaign filters (country/region/city)
 - Vercel Analytics and Speed Insights integrated
 
 ## Local Development
@@ -62,6 +63,7 @@ Run the SQL migrations in order in Supabase SQL editor:
 6. `supabase/migrations/006_add_admin_workspaces_and_campaigns.sql`
 7. `supabase/migrations/007_add_admin_management_functions.sql`
 8. `supabase/migrations/008_add_admin_user_management_functions.sql`
+9. `supabase/migrations/009_add_campaign_geo_filter.sql`
 
 ## Admin Accounts and Client Workspaces
 

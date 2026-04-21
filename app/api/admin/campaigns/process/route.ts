@@ -5,6 +5,25 @@ import { canSendCampaigns, getAdminContextFromHeaders } from "@/lib/admin-contex
 
 type Audience = "all" | "confirmed" | "pending";
 
+function parseGeoFilter(value: unknown) {
+  if (!value || typeof value !== "object") {
+    return { country: null, region: null, city: null };
+  }
+
+  const input = value as Record<string, unknown>;
+  const clean = (v: unknown) => {
+    if (typeof v !== "string") return null;
+    const trimmed = v.trim();
+    return trimmed ? trimmed : null;
+  };
+
+  return {
+    country: clean(input.country),
+    region: clean(input.region),
+    city: clean(input.city),
+  };
+}
+
 function buildHtmlFromEditor(editorHtml: string, editorCss = "") {
   return `
 <!DOCTYPE html>
@@ -51,7 +70,7 @@ export async function POST(req: NextRequest) {
 
   let dueQuery = supabase
     .from("campaigns")
-    .select("id, client_id, subject, audience, editor_html, editor_css, plain_text")
+    .select("id, client_id, subject, audience, geo_filter, editor_html, editor_css, plain_text")
     .eq("status", "scheduled")
     .lte("scheduled_for", nowIso);
 
@@ -74,9 +93,13 @@ export async function POST(req: NextRequest) {
 
   for (const campaign of dueCampaigns) {
     const audience = (campaign.audience as Audience) ?? "confirmed";
+    const geoFilter = parseGeoFilter(campaign.geo_filter);
     let recipientQuery = supabase.from("subscribers").select("email").eq("client_id", campaign.client_id);
     if (audience === "confirmed") recipientQuery = recipientQuery.eq("confirmed", true);
     if (audience === "pending") recipientQuery = recipientQuery.eq("confirmed", false);
+    if (geoFilter.country) recipientQuery = recipientQuery.eq("country", geoFilter.country);
+    if (geoFilter.region) recipientQuery = recipientQuery.eq("region", geoFilter.region);
+    if (geoFilter.city) recipientQuery = recipientQuery.eq("city", geoFilter.city);
 
     const { data: recipientsData, error: recipientsError } = await recipientQuery;
     if (recipientsError) {
