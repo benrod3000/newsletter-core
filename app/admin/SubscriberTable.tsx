@@ -36,6 +36,19 @@ function formatSignupTime(value: string | null) {
   }).format(date);
 }
 
+function formatLocation(subscriber: Subscriber) {
+  return [subscriber.city, subscriber.region, subscriber.country].filter(Boolean).join(", ") || "-";
+}
+
+function formatSource(subscriber: Subscriber) {
+  return (
+    [subscriber.utm_source, subscriber.utm_medium, subscriber.utm_campaign].filter(Boolean).join(" / ") ||
+    subscriber.landing_path ||
+    subscriber.referrer ||
+    "-"
+  );
+}
+
 function unique(values: (string | null)[]): string[] {
   return Array.from(new Set(values.filter((v): v is string => Boolean(v)))).sort();
 }
@@ -199,7 +212,51 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
         </button>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-zinc-800">
+      <div className="space-y-3 lg:hidden">
+        {filtered.length === 0 ? (
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-4 py-8 text-center text-zinc-600">
+            No subscribers match the current filters.
+          </div>
+        ) : (
+          filtered.map((s) => (
+            <article key={s.id} className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm font-medium text-white break-all">{s.email}</p>
+                {s.confirmed ? (
+                  <span className="rounded-full bg-emerald-900/60 px-2 py-0.5 text-[11px] font-medium text-emerald-300">
+                    Confirmed
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[11px] font-medium text-zinc-400">
+                    Pending
+                  </span>
+                )}
+              </div>
+
+              <dl className="mt-3 grid grid-cols-1 gap-2 text-xs">
+                <div className="rounded border border-zinc-800 bg-zinc-900/60 px-2 py-1.5">
+                  <dt className="text-zinc-500">Location</dt>
+                  <dd className="mt-0.5 text-zinc-300">{formatLocation(s)}</dd>
+                </div>
+                <div className="rounded border border-zinc-800 bg-zinc-900/60 px-2 py-1.5">
+                  <dt className="text-zinc-500">Timezone / Locale</dt>
+                  <dd className="mt-0.5 text-zinc-300">{s.timezone || s.locale || "-"}</dd>
+                </div>
+                <div className="rounded border border-zinc-800 bg-zinc-900/60 px-2 py-1.5">
+                  <dt className="text-zinc-500">Source</dt>
+                  <dd className="mt-0.5 text-zinc-300 break-words">{formatSource(s)}</dd>
+                </div>
+                <div className="rounded border border-zinc-800 bg-zinc-900/60 px-2 py-1.5">
+                  <dt className="text-zinc-500">Signed up</dt>
+                  <dd className="mt-0.5 text-zinc-300">{formatSignupTime(s.created_at)}</dd>
+                </div>
+              </dl>
+            </article>
+          ))
+        )}
+      </div>
+
+      <div className="hidden overflow-x-auto rounded-lg border border-zinc-800 lg:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-zinc-800 bg-zinc-900 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500">
@@ -237,16 +294,13 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
                     )}
                   </td>
                   <td className="px-4 py-3 text-zinc-400">
-                    {[s.city, s.region, s.country].filter(Boolean).join(", ") || "—"}
+                    {formatLocation(s)}
                   </td>
                   <td className="px-4 py-3 text-zinc-500">
-                    {s.timezone || s.locale || "—"}
+                    {s.timezone || s.locale || "-"}
                   </td>
                   <td className="px-4 py-3 text-zinc-500">
-                    {[s.utm_source, s.utm_medium, s.utm_campaign].filter(Boolean).join(" / ") ||
-                      s.landing_path ||
-                      s.referrer ||
-                      "—"}
+                    {formatSource(s)}
                   </td>
                   <td className="px-4 py-3 text-zinc-500">{formatSignupTime(s.created_at)}</td>
                 </tr>
