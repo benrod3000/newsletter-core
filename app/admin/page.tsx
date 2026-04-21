@@ -40,7 +40,7 @@ export default async function AdminPage() {
       />
 
       <main className="min-h-screen bg-[#0d0d0d] px-4 py-8 pt-32 sm:px-6 sm:py-10 sm:pt-36">
-        <div className="mx-auto max-w-4xl">
+        <div className="mx-auto max-w-7xl">
           <div className="mb-8 rounded-xl border border-zinc-800 bg-zinc-950/85 px-4 py-4 sm:px-5">
             <p className="text-xs font-semibold uppercase tracking-widest text-amber-400">Admin</p>
             <h1 className="mt-1 text-2xl font-bold text-white sm:text-3xl">Dashboard</h1>
@@ -55,23 +55,27 @@ export default async function AdminPage() {
             </p>
           )}
 
-          <div className="space-y-8">
-            {role === "owner" && (
-              <div id="workspaces" className="scroll-mt-40">
-                <ClientWorkspaceManager />
-              </div>
-            )}
+          <div className="grid gap-8 lg:grid-cols-[1fr,1fr]">
+            {/* Left Column */}
+            <div className="space-y-8">
+              {role === "owner" && (
+                <div id="workspaces" className="scroll-mt-40">
+                  <ClientWorkspaceManager />
+                </div>
+              )}
 
+              <div id="subscribers" className="scroll-mt-40">
+                <SubscriberTable subscribers={subscribers} />
+              </div>
+            </div>
+
+            {/* Right Column */}
             <div id="campaigns" className="scroll-mt-40">
               <AdminMailer
                 totalCount={subscribers.length}
                 confirmedCount={confirmedCount}
                 subscribers={subscribers}
               />
-            </div>
-
-            <div id="subscribers" className="scroll-mt-40">
-              <SubscriberTable subscribers={subscribers} />
             </div>
           </div>
         </div>
