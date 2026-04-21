@@ -9,7 +9,7 @@ Newsletter platform built with Next.js + Supabase + SendGrid.
 - Double opt-in confirmation flow at `/api/confirm` and `/confirmed`
 - Unsubscribe flow at `/unsubscribe` and `/api/unsubscribe`
 - Admin subscriber dashboard at `/admin` (HTTP basic auth protected)
-- Admin compose-and-send panel at `/admin` to email subscribers directly
+- Admin compose-and-send panel at `/admin` with a TipTap WYSIWYG editor
 - Vercel Analytics and Speed Insights integrated
 
 ## Local Development

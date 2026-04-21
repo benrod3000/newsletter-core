@@ -29,3 +29,34 @@ body.embed {
   background: transparent;
   min-height: unset;
 }
+
+.tiptap-editor p {
+  margin: 0.5rem 0;
+}
+
+.tiptap-editor h2 {
+  margin: 0.75rem 0 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.tiptap-editor ul,
+.tiptap-editor ol {
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
+}
+
+.tiptap-editor ul {
+  list-style: disc;
+}
+
+.tiptap-editor ol {
+  list-style: decimal;
+}
+
+.tiptap-editor blockquote {
+  margin: 0.75rem 0;
+  border-left: 2px solid #3f3f46;
+  padding-left: 0.75rem;
+  color: #a1a1aa;
+}

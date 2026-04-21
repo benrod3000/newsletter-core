@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { EditorContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
 
 type Audience = "confirmed" | "all" | "pending";
 
@@ -9,6 +11,30 @@ type SendStatus = "idle" | "sending" | "success" | "error";
 interface AdminMailerProps {
   totalCount: number;
   confirmedCount: number;
+}
+
+function ToolbarButton({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded border px-2 py-1 text-xs transition ${
+        active
+          ? "border-amber-400 bg-amber-400/20 text-amber-300"
+          : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+      }`}
+    >
+      {label}
+    </button>
+  );
 }
 
 function audienceLabel(audience: Audience, totalCount: number, confirmedCount: number) {
@@ -20,9 +46,19 @@ function audienceLabel(audience: Audience, totalCount: number, confirmedCount: n
 export default function AdminMailer({ totalCount, confirmedCount }: AdminMailerProps) {
   const [audience, setAudience] = useState<Audience>("confirmed");
   const [subject, setSubject] = useState("");
-  const [message, setMessage] = useState("");
   const [status, setStatus] = useState<SendStatus>("idle");
   const [feedback, setFeedback] = useState("");
+
+  const editor = useEditor({
+    extensions: [StarterKit],
+    content: "<p></p>",
+    editorProps: {
+      attributes: {
+        class:
+          "tiptap-editor min-h-[220px] rounded-b-lg border border-t-0 border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none",
+      },
+    },
+  });
 
   const targetLabel = useMemo(
     () => audienceLabel(audience, totalCount, confirmedCount),
@@ -32,7 +68,10 @@ export default function AdminMailer({ totalCount, confirmedCount }: AdminMailerP
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!subject.trim() || !message.trim()) {
+    const messageText = editor?.getText().trim() ?? "";
+    const messageHtml = editor?.getHTML() ?? "";
+
+    if (!subject.trim() || !messageText) {
       setStatus("error");
       setFeedback("Subject and message are required.");
       return;
@@ -48,7 +87,8 @@ export default function AdminMailer({ totalCount, confirmedCount }: AdminMailerP
         body: JSON.stringify({
           audience,
           subject: subject.trim(),
-          message: message.trim(),
+          message: messageText,
+          html: messageHtml,
         }),
       });
 
@@ -62,7 +102,7 @@ export default function AdminMailer({ totalCount, confirmedCount }: AdminMailerP
       setStatus("success");
       setFeedback(`Email sent to ${data?.sentCount ?? 0} subscribers.`);
       setSubject("");
-      setMessage("");
+      editor?.commands.clearContent(true);
     } catch {
       setStatus("error");
       setFeedback("Network error while sending email.");
@@ -110,18 +150,44 @@ export default function AdminMailer({ totalCount, confirmedCount }: AdminMailerP
         </div>
 
         <div>
-          <label htmlFor="message" className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+          <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-500">
             Message
           </label>
-          <textarea
-            id="message"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            rows={8}
-            placeholder="Write your email body here..."
-            className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white placeholder-zinc-500 outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
-            required
-          />
+
+          <div className="flex flex-wrap gap-1 rounded-t-lg border border-zinc-700 border-b-0 bg-zinc-950 px-2 py-2">
+            <ToolbarButton
+              label="Bold"
+              active={editor?.isActive("bold")}
+              onClick={() => editor?.chain().focus().toggleBold().run()}
+            />
+            <ToolbarButton
+              label="Italic"
+              active={editor?.isActive("italic")}
+              onClick={() => editor?.chain().focus().toggleItalic().run()}
+            />
+            <ToolbarButton
+              label="H2"
+              active={editor?.isActive("heading", { level: 2 })}
+              onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
+            />
+            <ToolbarButton
+              label="Bullet"
+              active={editor?.isActive("bulletList")}
+              onClick={() => editor?.chain().focus().toggleBulletList().run()}
+            />
+            <ToolbarButton
+              label="Numbered"
+              active={editor?.isActive("orderedList")}
+              onClick={() => editor?.chain().focus().toggleOrderedList().run()}
+            />
+            <ToolbarButton
+              label="Quote"
+              active={editor?.isActive("blockquote")}
+              onClick={() => editor?.chain().focus().toggleBlockquote().run()}
+            />
+          </div>
+
+          <EditorContent editor={editor} />
         </div>
 
         <div className="flex items-center gap-3">
