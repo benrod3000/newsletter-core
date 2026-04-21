@@ -1,15 +1,26 @@
 import { getSupabaseClient } from "@/lib/supabase";
+import { headers } from "next/headers";
 import AdminMailer from "./AdminMailer";
 import SubscriberTable from "./SubscriberTable";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
+  const requestHeaders = await headers();
+  const role = requestHeaders.get("x-admin-role");
+  const clientId = requestHeaders.get("x-admin-client-id");
+
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from("subscribers")
     .select("id, email, confirmed, country, region, city, timezone, locale, utm_source, utm_medium, utm_campaign, referrer, landing_path, created_at")
     .order("created_at", { ascending: false });
+
+  if (role !== "owner" && clientId) {
+    query = query.eq("client_id", clientId);
+  }
+
+  const { data, error } = await query;
 
   const subscribers = data ?? [];
   const confirmedCount = subscribers.filter((s) => s.confirmed).length;

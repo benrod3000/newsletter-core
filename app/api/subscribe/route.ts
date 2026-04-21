@@ -61,6 +61,26 @@ function cleanText(value: unknown, maxLength = 200): string | null {
   return trimmed.slice(0, maxLength);
 }
 
+async function resolveClientIdForSignup(supabase: ReturnType<typeof getSupabaseClient>, clientSlug: string | null) {
+  const slug = clientSlug || process.env.DEFAULT_CLIENT_SLUG || "default";
+
+  const { data } = await supabase
+    .from("clients")
+    .select("id")
+    .eq("slug", slug)
+    .maybeSingle();
+
+  if (data?.id) return data.id;
+
+  const { data: fallback } = await supabase
+    .from("clients")
+    .select("id")
+    .eq("slug", "default")
+    .maybeSingle();
+
+  return fallback?.id ?? null;
+}
+
 async function sendConfirmationEmail({
   email,
   confirmationToken,
@@ -151,6 +171,7 @@ export async function POST(req: NextRequest) {
     const utm_campaign = cleanText(body.utm_campaign, 160);
     const referrer = cleanText(body.referrer, 500);
     const landing_path = cleanText(body.landing_path, 300);
+    const client_slug = cleanText(body.client_slug, 80);
 
     // 2. Validate email
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -178,10 +199,12 @@ export async function POST(req: NextRequest) {
 
     // 7. Insert into Supabase, returning tokens for the email
     const supabase = getSupabaseClient();
+    const client_id = await resolveClientIdForSignup(supabase, client_slug);
     const { data: subscriber, error: dbError } = await supabase
       .from("subscribers")
       .insert([
         {
+          client_id,
           email,
           ip,
           country: geo.country,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import sgMail from "@sendgrid/mail";
 import { getSupabaseClient } from "@/lib/supabase";
+import { canSendCampaigns, getAdminContextFromHeaders } from "@/lib/admin-context";
 
 type Audience = "all" | "confirmed" | "pending";
 
@@ -67,6 +68,13 @@ function parseAudience(value: unknown): Audience {
 }
 
 export async function POST(req: NextRequest) {
+  const admin = getAdminContextFromHeaders(req.headers);
+  if (!admin) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  if (!canSendCampaigns(admin)) return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+  if (admin.role !== "owner" && !admin.clientId) {
+    return NextResponse.json({ error: "No workspace assigned for this account." }, { status: 403 });
+  }
+
   try {
     const body = await req.json().catch(() => null);
     if (!body || typeof body.subject !== "string" || typeof body.message !== "string") {
@@ -78,6 +86,8 @@ export async function POST(req: NextRequest) {
     const messageHtml = typeof body.html === "string" ? body.html.trim() : "";
     const messageCss = typeof body.css === "string" ? body.css.trim() : "";
     const audience = parseAudience(body.audience);
+    const testEmail = typeof body.testEmail === "string" ? body.testEmail.trim().toLowerCase() : "";
+    const campaignId = typeof body.campaignId === "string" ? body.campaignId : null;
 
     if (!subject || !message) {
       return NextResponse.json({ error: "Subject and message are required." }, { status: 422 });
@@ -93,10 +103,73 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = getSupabaseClient();
-    let query = supabase.from("subscribers").select("email, confirmed");
+    let workspaceClientId = admin.clientId;
+
+    if (campaignId) {
+      let campaignQuery = supabase
+        .from("campaigns")
+        .select("id, client_id")
+        .eq("id", campaignId)
+        .single();
+
+      if (admin.role !== "owner" && admin.clientId) {
+        campaignQuery = supabase
+          .from("campaigns")
+          .select("id, client_id")
+          .eq("id", campaignId)
+          .eq("client_id", admin.clientId)
+          .single();
+      }
+
+      const { data: campaignScope, error: campaignScopeError } = await campaignQuery;
+      if (campaignScopeError || !campaignScope) {
+        return NextResponse.json({ error: "Campaign not found or not accessible." }, { status: 404 });
+      }
+
+      workspaceClientId = campaignScope.client_id;
+    }
+
+    let query = supabase.from("subscribers").select("email, confirmed, client_id");
 
     if (audience === "confirmed") query = query.eq("confirmed", true);
     if (audience === "pending") query = query.eq("confirmed", false);
+    if (workspaceClientId) query = query.eq("client_id", workspaceClientId);
+
+    sgMail.setApiKey(sgApiKey);
+    const html = messageHtml ? buildHtmlFromEditor(messageHtml, messageCss) : buildHtml(message);
+
+    if (testEmail) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testEmail)) {
+        return NextResponse.json({ error: "Invalid test email address." }, { status: 422 });
+      }
+
+      await sgMail.send({
+        to: testEmail,
+        from: fromEmail,
+        subject: `[TEST] ${subject}`,
+        text: message,
+        html,
+      });
+
+      if (campaignId) {
+        let campaignUpdate = supabase
+          .from("campaigns")
+          .update({
+            last_test_sent_at: new Date().toISOString(),
+            last_test_recipient: testEmail,
+            updated_by: admin.username,
+          })
+          .eq("id", campaignId);
+
+        if (admin.role !== "owner" && admin.clientId) {
+          campaignUpdate = campaignUpdate.eq("client_id", admin.clientId);
+        }
+
+        await campaignUpdate;
+      }
+
+      return NextResponse.json({ ok: true, testSent: true, sentCount: 1 });
+    }
 
     const { data, error } = await query;
     if (error) {
@@ -118,9 +191,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    sgMail.setApiKey(sgApiKey);
-    const html = messageHtml ? buildHtmlFromEditor(messageHtml, messageCss) : buildHtml(message);
-
     // Send one message per recipient to avoid exposing subscriber emails.
     for (const to of recipients) {
       await sgMail.send({
@@ -130,6 +200,27 @@ export async function POST(req: NextRequest) {
         text: message,
         html,
       });
+    }
+
+    if (campaignId) {
+      const nowIso = new Date().toISOString();
+
+      let campaignUpdate = supabase
+        .from("campaigns")
+        .update({
+          status: "sent",
+          sent_count: recipients.length,
+          last_sent_at: nowIso,
+          last_error: null,
+          updated_by: admin.username,
+        })
+        .eq("id", campaignId);
+
+      if (admin.role !== "owner" && admin.clientId) {
+        campaignUpdate = campaignUpdate.eq("client_id", admin.clientId);
+      }
+
+      await campaignUpdate;
     }
 
     return NextResponse.json({ ok: true, sentCount: recipients.length });

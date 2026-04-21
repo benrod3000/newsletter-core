@@ -1,0 +1,146 @@
+import { NextRequest, NextResponse } from "next/server";
+import sgMail from "@sendgrid/mail";
+import { getSupabaseClient } from "@/lib/supabase";
+import { canSendCampaigns, getAdminContextFromHeaders } from "@/lib/admin-context";
+
+type Audience = "all" | "confirmed" | "pending";
+
+function buildHtmlFromEditor(editorHtml: string, editorCss = "") {
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  ${editorCss ? `<style>${editorCss}</style>` : ""}
+</head>
+<body style="background:#0d0d0d;font-family:sans-serif;margin:0;padding:40px 24px;">
+  <table style="max-width:640px;margin:0 auto;width:100%;">
+    <tr><td>
+      <p style="color:#fbbf24;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin:0 0 16px;">
+        Newsletter Services
+      </p>
+      <div style="color:#e4e4e7;font-size:15px;line-height:1.7;white-space:normal;">
+        ${editorHtml}
+      </div>
+      <hr style="border:none;border-top:1px solid #27272a;margin:32px 0;">
+      <p style="color:#71717a;font-size:12px;line-height:1.5;margin:0;">
+        You are receiving this email because you subscribed to the newsletter.
+      </p>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+export async function POST(req: NextRequest) {
+  const admin = getAdminContextFromHeaders(req.headers);
+  if (!admin) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  if (!canSendCampaigns(admin)) return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+  if (admin.role !== "owner" && !admin.clientId) {
+    return NextResponse.json({ error: "No workspace assigned for this account." }, { status: 403 });
+  }
+
+  const sgApiKey = process.env.SENDGRID_API_KEY;
+  const fromEmail = process.env.SENDGRID_FROM_EMAIL;
+  if (!sgApiKey || !fromEmail) {
+    return NextResponse.json({ error: "Missing SENDGRID_API_KEY or SENDGRID_FROM_EMAIL." }, { status: 500 });
+  }
+
+  const supabase = getSupabaseClient();
+  const nowIso = new Date().toISOString();
+
+  let dueQuery = supabase
+    .from("campaigns")
+    .select("id, client_id, subject, audience, editor_html, editor_css, plain_text")
+    .eq("status", "scheduled")
+    .lte("scheduled_for", nowIso);
+
+  if (admin.role !== "owner" && admin.clientId) {
+    dueQuery = dueQuery.eq("client_id", admin.clientId);
+  }
+
+  const { data: dueCampaigns, error: dueError } = await dueQuery;
+  if (dueError) {
+    return NextResponse.json({ error: `Failed to load scheduled campaigns: ${dueError.message}` }, { status: 500 });
+  }
+
+  if (!dueCampaigns || dueCampaigns.length === 0) {
+    return NextResponse.json({ ok: true, processed: 0, sent: 0 });
+  }
+
+  sgMail.setApiKey(sgApiKey);
+
+  let sent = 0;
+
+  for (const campaign of dueCampaigns) {
+    const audience = (campaign.audience as Audience) ?? "confirmed";
+    let recipientQuery = supabase.from("subscribers").select("email").eq("client_id", campaign.client_id);
+    if (audience === "confirmed") recipientQuery = recipientQuery.eq("confirmed", true);
+    if (audience === "pending") recipientQuery = recipientQuery.eq("confirmed", false);
+
+    const { data: recipientsData, error: recipientsError } = await recipientQuery;
+    if (recipientsError) {
+      await supabase
+        .from("campaigns")
+        .update({ last_error: recipientsError.message, updated_by: admin.username })
+        .eq("id", campaign.id);
+      continue;
+    }
+
+    const recipients = (recipientsData ?? [])
+      .map((r) => r.email)
+      .filter((email): email is string => typeof email === "string" && email.length > 0);
+
+    if (recipients.length === 0) {
+      await supabase
+        .from("campaigns")
+        .update({
+          status: "sent",
+          sent_count: 0,
+          last_sent_at: nowIso,
+          last_error: null,
+          updated_by: admin.username,
+        })
+        .eq("id", campaign.id);
+      continue;
+    }
+
+    const html = buildHtmlFromEditor(campaign.editor_html ?? "", campaign.editor_css ?? "");
+    const text = campaign.plain_text || "Newsletter update.";
+
+    try {
+      for (const to of recipients) {
+        await sgMail.send({
+          to,
+          from: fromEmail,
+          subject: campaign.subject,
+          text,
+          html,
+        });
+      }
+
+      sent += recipients.length;
+
+      await supabase
+        .from("campaigns")
+        .update({
+          status: "sent",
+          sent_count: recipients.length,
+          last_sent_at: nowIso,
+          last_error: null,
+          updated_by: admin.username,
+        })
+        .eq("id", campaign.id);
+    } catch (err) {
+      await supabase
+        .from("campaigns")
+        .update({
+          last_error: err instanceof Error ? err.message : "Send failed",
+          updated_by: admin.username,
+        })
+        .eq("id", campaign.id);
+    }
+  }
+
+  return NextResponse.json({ ok: true, processed: dueCampaigns.length, sent });
+}

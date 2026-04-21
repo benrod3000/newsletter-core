@@ -8,6 +8,7 @@ function getClientContext() {
   const searchParams = new URLSearchParams(window.location.search);
 
   return {
+    client_slug: searchParams.get("client"),
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     locale: navigator.language,
     utm_source: searchParams.get("utm_source"),

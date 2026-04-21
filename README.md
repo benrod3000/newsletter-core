@@ -10,6 +10,10 @@ Newsletter platform built with Next.js + Supabase + SendGrid.
 - Unsubscribe flow at `/unsubscribe` and `/api/unsubscribe`
 - Admin subscriber dashboard at `/admin` (HTTP basic auth protected)
 - Admin compose-and-send panel at `/admin` with a GrapesJS drag-and-drop editor
+- Campaign drafts/history per workspace with save + load
+- Test-send to a single recipient before bulk delivery
+- Scheduled campaigns with manual/cron processing endpoint
+- Role-based client workspaces (`owner`, `editor`, `viewer`)
 - Vercel Analytics and Speed Insights integrated
 
 ## Local Development
@@ -55,6 +59,38 @@ Run the SQL migrations in order in Supabase SQL editor:
 3. `supabase/migrations/003_fix_created_at_defaults.sql`
 4. `supabase/migrations/004_add_subscribe_attempts.sql`
 5. `supabase/migrations/005_add_subscriber_context_fields.sql`
+6. `supabase/migrations/006_add_admin_workspaces_and_campaigns.sql`
+
+## Admin Accounts and Client Workspaces
+
+After running migration `006`, create client workspaces and admin users in Supabase SQL editor:
+
+```sql
+-- Create a client workspace
+insert into public.clients (name, slug)
+values ('Acme Client', 'acme')
+on conflict (slug) do nothing;
+
+-- Create an editor user for that workspace
+insert into public.admin_users (username, password_hash, role, client_id)
+select
+	'acme-editor',
+	crypt('change-this-password', gen_salt('bf')),
+	'editor',
+	c.id
+from public.clients c
+where c.slug = 'acme';
+```
+
+Use those credentials directly in the `/admin` browser auth prompt.
+
+The existing `ADMIN_USERNAME` and `ADMIN_PASSWORD` env vars continue to work as owner-level fallback credentials.
+
+## Scheduling
+
+- Save a campaign as `scheduled` in `/admin` with a date/time.
+- Process due campaigns via `POST /api/admin/campaigns/process`.
+- For automatic sending, configure a Vercel Cron job to hit that endpoint.
 
 ## Deploy and Reliability Checklist
 
@@ -71,3 +107,4 @@ Run the SQL migrations in order in Supabase SQL editor:
 - Signup attempts are tracked in `subscribe_attempts` to support durable rate limiting.
 - Unsubscribe is idempotent and safe to click multiple times.
 - Subscriber records also capture timezone, locale, UTM source/medium/campaign, referrer, and landing path for better attribution and location context.
+- Subscriber records can be assigned to client workspaces via `?client=<slug>` on signup/embed URLs.
