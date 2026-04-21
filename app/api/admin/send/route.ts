@@ -34,11 +34,14 @@ function buildHtml(message: string) {
 </html>`;
 }
 
-function buildHtmlFromEditor(editorHtml: string) {
+function buildHtmlFromEditor(editorHtml: string, editorCss = "") {
   return `
 <!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"></head>
+<head>
+  <meta charset="utf-8">
+  ${editorCss ? `<style>${editorCss}</style>` : ""}
+</head>
 <body style="background:#0d0d0d;font-family:sans-serif;margin:0;padding:40px 24px;">
   <table style="max-width:640px;margin:0 auto;width:100%;">
     <tr><td>
@@ -73,6 +76,7 @@ export async function POST(req: NextRequest) {
     const subject = body.subject.trim();
     const message = body.message.trim();
     const messageHtml = typeof body.html === "string" ? body.html.trim() : "";
+    const messageCss = typeof body.css === "string" ? body.css.trim() : "";
     const audience = parseAudience(body.audience);
 
     if (!subject || !message) {
@@ -115,7 +119,7 @@ export async function POST(req: NextRequest) {
     }
 
     sgMail.setApiKey(sgApiKey);
-    const html = messageHtml ? buildHtmlFromEditor(messageHtml) : buildHtml(message);
+    const html = messageHtml ? buildHtmlFromEditor(messageHtml, messageCss) : buildHtml(message);
 
     // Send one message per recipient to avoid exposing subscriber emails.
     for (const to of recipients) {
