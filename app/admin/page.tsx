@@ -12,6 +12,25 @@ interface Subscriber {
 
 export const dynamic = "force-dynamic";
 
+const ADMIN_TIME_ZONE = "America/Los_Angeles";
+
+function formatSignupTime(value: string | null) {
+  if (!value) return "Unknown";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unknown";
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: ADMIN_TIME_ZONE,
+    timeZoneName: "short",
+  }).format(date);
+}
+
 export default async function AdminPage() {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
@@ -93,17 +112,7 @@ export default async function AdminPage() {
                     <td className="px-4 py-3 text-zinc-400">
                       {[s.city, s.region, s.country].filter(Boolean).join(", ") || "—"}
                     </td>
-                    <td className="px-4 py-3 text-zinc-500">
-                      {s.created_at
-                        ? new Date(s.created_at).toLocaleString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                            hour: "numeric",
-                            minute: "2-digit",
-                          })
-                        : "Unknown"}
-                    </td>
+                    <td className="px-4 py-3 text-zinc-500">{formatSignupTime(s.created_at)}</td>
                   </tr>
                 ))
               )}
