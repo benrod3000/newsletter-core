@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type Status = "idle" | "loading" | "success" | "error";
 
@@ -8,6 +8,11 @@ export default function EmbedPage() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    document.body.classList.add("embed");
+    return () => document.body.classList.remove("embed");
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
