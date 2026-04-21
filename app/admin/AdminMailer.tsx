@@ -26,11 +26,15 @@ interface Campaign {
   last_test_recipient: string | null;
   geo_filter: {
     country?: string | null;
+    regions?: string[];
+    cities?: string[];
     region?: string | null;
     city?: string | null;
     center_lat?: number | null;
     center_lng?: number | null;
     radius_km?: number | null;
+    radius_value?: number | null;
+    radius_unit?: "km" | "mi";
   } | null;
   updated_at: string;
 }
@@ -133,9 +137,12 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
   const [scheduledFor, setScheduledFor] = useState("");
   const [testEmail, setTestEmail] = useState("");
   const [geoCountry, setGeoCountry] = useState("");
-  const [geoRegion, setGeoRegion] = useState("");
-  const [geoCity, setGeoCity] = useState("");
-  const [geoRadiusKm, setGeoRadiusKm] = useState("");
+  const [geoRegions, setGeoRegions] = useState<string[]>([]);
+  const [geoCities, setGeoCities] = useState<string[]>([]);
+  const [geoRadiusValue, setGeoRadiusValue] = useState("");
+  const [geoRadiusUnit, setGeoRadiusUnit] = useState<"km" | "mi">("km");
+  const [previewCount, setPreviewCount] = useState<number | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [clients, setClients] = useState<ClientWorkspace[]>([]);
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>("");
@@ -189,14 +196,53 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
   );
 
   const countryOptions = useMemo(() => uniqueGeo(subscribers.map((s) => s.country)), [subscribers]);
-  const regionOptions = useMemo(() => uniqueGeo(subscribers.map((s) => s.region)), [subscribers]);
-  const cityOptions = useMemo(() => uniqueGeo(subscribers.map((s) => s.city)), [subscribers]);
+  const regionOptions = useMemo(
+    () =>
+      uniqueGeo(
+        subscribers
+          .filter((s) => (geoCountry ? s.country === geoCountry : true))
+          .map((s) => s.region)
+      ),
+    [subscribers, geoCountry]
+  );
+  const cityOptions = useMemo(
+    () =>
+      uniqueGeo(
+        subscribers
+          .filter((s) => (geoCountry ? s.country === geoCountry : true))
+          .filter((s) => (geoRegions.length > 0 ? (s.region ? geoRegions.includes(s.region) : false) : true))
+          .map((s) => s.city)
+      ),
+    [subscribers, geoCountry, geoRegions]
+  );
+
+  useEffect(() => {
+    setGeoRegions((current) => current.filter((value) => regionOptions.includes(value)));
+  }, [regionOptions]);
+
+  useEffect(() => {
+    setGeoCities((current) => current.filter((value) => cityOptions.includes(value)));
+  }, [cityOptions]);
 
   const geoSummary = useMemo(() => {
-    const parts = [geoCity, geoRegion, geoCountry].filter(Boolean);
+    const parts = [
+      geoCities.length > 0 ? `${geoCities.length} cities` : "",
+      geoRegions.length > 0 ? `${geoRegions.length} regions` : "",
+      geoCountry,
+    ].filter(Boolean);
     const location = parts.length ? parts.join(", ") : "all locations";
-    return geoRadiusKm ? `${location} within ${geoRadiusKm} km` : location;
-  }, [geoCity, geoRegion, geoCountry, geoRadiusKm]);
+    return geoRadiusValue ? `${location} within ${geoRadiusValue} ${geoRadiusUnit}` : location;
+  }, [geoCities, geoRegions, geoCountry, geoRadiusValue, geoRadiusUnit]);
+
+  function buildGeoFilterPayload() {
+    return {
+      country: geoCountry || null,
+      regions: geoRegions,
+      cities: geoCities,
+      radius_value: geoRadiusValue ? Number.parseFloat(geoRadiusValue) : null,
+      radius_unit: geoRadiusUnit,
+    };
+  }
 
   const canEdit = role === "owner" || role === "editor";
 
@@ -240,11 +286,29 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
     setSubject(campaign.subject || "");
     setAudience(campaign.audience || "confirmed");
     setGeoCountry(campaign.geo_filter?.country || "");
-    setGeoRegion(campaign.geo_filter?.region || "");
-    setGeoCity(campaign.geo_filter?.city || "");
-    setGeoRadiusKm(
-      typeof campaign.geo_filter?.radius_km === "number" ? String(campaign.geo_filter.radius_km) : ""
+    setGeoRegions(
+      campaign.geo_filter?.regions?.length
+        ? campaign.geo_filter.regions
+        : campaign.geo_filter?.region
+          ? [campaign.geo_filter.region]
+          : []
     );
+    setGeoCities(
+      campaign.geo_filter?.cities?.length
+        ? campaign.geo_filter.cities
+        : campaign.geo_filter?.city
+          ? [campaign.geo_filter.city]
+          : []
+    );
+    setGeoRadiusUnit(campaign.geo_filter?.radius_unit === "mi" ? "mi" : "km");
+    setGeoRadiusValue(
+      typeof campaign.geo_filter?.radius_value === "number"
+        ? String(campaign.geo_filter.radius_value)
+        : typeof campaign.geo_filter?.radius_km === "number"
+          ? String(campaign.geo_filter.radius_km)
+          : ""
+    );
+    setPreviewCount(null);
     setScheduledFor(toLocalInputValue(campaign.scheduled_for));
     setSelectedClientId(campaign.client_id || selectedClientId);
 
@@ -261,9 +325,11 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
     setSubject("");
     setAudience("confirmed");
     setGeoCountry("");
-    setGeoRegion("");
-    setGeoCity("");
-    setGeoRadiusKm("");
+    setGeoRegions([]);
+    setGeoCities([]);
+    setGeoRadiusValue("");
+    setGeoRadiusUnit("km");
+    setPreviewCount(null);
     setScheduledFor("");
     if (editor) {
       editor.setComponents(DEFAULT_COMPONENTS);
@@ -314,12 +380,7 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
           title: title.trim() || "Untitled Draft",
           subject: subject.trim(),
           audience,
-          geoFilter: {
-            country: geoCountry || null,
-            region: geoRegion || null,
-            city: geoCity || null,
-            radius_km: geoRadiusKm ? Number.parseFloat(geoRadiusKm) : null,
-          },
+          geoFilter: buildGeoFilterPayload(),
           status: nextStatus,
           scheduledFor: nextStatus === "scheduled" ? new Date(scheduledFor).toISOString() : null,
           editorHtml: content.html,
@@ -371,12 +432,7 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
         body: JSON.stringify({
           campaignId: selectedCampaignId || undefined,
           audience,
-          geoFilter: {
-            country: geoCountry || null,
-            region: geoRegion || null,
-            city: geoCity || null,
-            radius_km: geoRadiusKm ? Number.parseFloat(geoRadiusKm) : null,
-          },
+          geoFilter: buildGeoFilterPayload(),
           subject: subject.trim(),
           message: content.text,
           html: content.html,
@@ -433,12 +489,7 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
         body: JSON.stringify({
           campaignId: selectedCampaignId || undefined,
           audience,
-          geoFilter: {
-            country: geoCountry || null,
-            region: geoRegion || null,
-            city: geoCity || null,
-            radius_km: geoRadiusKm ? Number.parseFloat(geoRadiusKm) : null,
-          },
+          geoFilter: buildGeoFilterPayload(),
           subject: subject.trim(),
           message: content.text,
           html: content.html,
@@ -482,6 +533,37 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
     } catch {
       setStatus("error");
       setFeedback("Network error while processing scheduled campaigns.");
+    }
+  }
+
+  async function previewAudience() {
+    setPreviewLoading(true);
+    setFeedback("");
+    try {
+      const res = await fetch("/api/admin/audience/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaignId: selectedCampaignId || undefined,
+          clientId: selectedClientId || undefined,
+          audience,
+          geoFilter: buildGeoFilterPayload(),
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setStatus("error");
+        setFeedback(data?.error ?? "Failed to preview audience.");
+        return;
+      }
+
+      setPreviewCount(typeof data?.count === "number" ? data.count : 0);
+    } catch {
+      setStatus("error");
+      setFeedback("Network error while previewing audience.");
+    } finally {
+      setPreviewLoading(false);
     }
   }
 
@@ -570,60 +652,100 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
 
           <div>
             <label htmlFor="geoRegion" className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-500">
-              Region
+              Regions (multi-select)
             </label>
             <select
               id="geoRegion"
-              value={geoRegion}
-              onChange={(e) => setGeoRegion(e.target.value)}
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-400"
+              multiple
+              value={geoRegions}
+              onChange={(e) => {
+                const values = Array.from(e.target.selectedOptions).map((opt) => opt.value);
+                setGeoRegions(values);
+              }}
+              className="h-32 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-400"
             >
-              <option value="">All regions</option>
               {regionOptions.map((region) => (
                 <option key={region} value={region}>
                   {region}
                 </option>
               ))}
             </select>
+            <p className="mt-1 text-xs text-zinc-600">Hold Cmd/Ctrl to select multiple regions.</p>
           </div>
 
           <div>
             <label htmlFor="geoCity" className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-500">
-              City
+              Cities (multi-select)
             </label>
             <select
               id="geoCity"
-              value={geoCity}
-              onChange={(e) => setGeoCity(e.target.value)}
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-400"
+              multiple
+              value={geoCities}
+              onChange={(e) => {
+                const values = Array.from(e.target.selectedOptions).map((opt) => opt.value);
+                setGeoCities(values);
+              }}
+              className="h-32 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-400"
             >
-              <option value="">All cities</option>
               {cityOptions.map((city) => (
                 <option key={city} value={city}>
                   {city}
                 </option>
               ))}
             </select>
+            <p className="mt-1 text-xs text-zinc-600">Hold Cmd/Ctrl to select multiple cities.</p>
           </div>
         </div>
 
-        <div>
+        <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+          <div>
           <label htmlFor="geoRadius" className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-500">
-            Radius (km, optional)
+            Radius (optional)
           </label>
           <input
             id="geoRadius"
             type="number"
             min={1}
             step={1}
-            value={geoRadiusKm}
-            onChange={(e) => setGeoRadiusKm(e.target.value)}
+            value={geoRadiusValue}
+            onChange={(e) => setGeoRadiusValue(e.target.value)}
             placeholder="e.g. 50"
             className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-400"
           />
           <p className="mt-1 text-xs text-zinc-600">
             Radius uses subscriber lat/lng when available and centers on the selected city/region/country.
           </p>
+          </div>
+          <div>
+            <label htmlFor="geoRadiusUnit" className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+              Unit
+            </label>
+            <select
+              id="geoRadiusUnit"
+              value={geoRadiusUnit}
+              onChange={(e) => setGeoRadiusUnit(e.target.value === "mi" ? "mi" : "km")}
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-400"
+            >
+              <option value="km">Kilometers</option>
+              <option value="mi">Miles</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-zinc-400">
+              Estimated recipients: <span className="font-semibold text-zinc-100">{previewCount ?? "-"}</span>
+            </p>
+            <button
+              type="button"
+              disabled={previewLoading}
+              onClick={previewAudience}
+              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-300 hover:border-zinc-500 hover:text-white disabled:opacity-60"
+            >
+              {previewLoading ? "Checking..." : "Preview audience"}
+            </button>
+          </div>
         </div>
 
         <div>

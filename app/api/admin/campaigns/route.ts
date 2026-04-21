@@ -9,11 +9,13 @@ function parseGeoFilter(value: unknown) {
   if (!value || typeof value !== "object") {
     return {
       country: null,
-      region: null,
-      city: null,
+      regions: [] as string[],
+      cities: [] as string[],
       center_lat: null,
       center_lng: null,
       radius_km: null,
+      radius_value: null,
+      radius_unit: "km" as "km" | "mi",
     };
   }
 
@@ -25,16 +27,44 @@ function parseGeoFilter(value: unknown) {
     return trimmed ? trimmed : null;
   };
 
+  const cleanList = (v: unknown) => {
+    if (!Array.isArray(v)) return [] as string[];
+    const cleaned = v
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    return Array.from(new Set(cleaned));
+  };
+
+  const legacyRegion = clean(input.region);
+  const legacyCity = clean(input.city);
+  const regions = cleanList(input.regions);
+  const cities = cleanList(input.cities);
+  const radiusUnit: "km" | "mi" = input.radius_unit === "mi" ? "mi" : "km";
+  const radiusValue =
+    typeof input.radius_value === "number" && Number.isFinite(input.radius_value) && input.radius_value > 0
+      ? input.radius_value
+      : typeof input.radius_km === "number" && Number.isFinite(input.radius_km) && input.radius_km > 0
+        ? radiusUnit === "mi"
+          ? input.radius_km / 1.60934
+          : input.radius_km
+        : null;
+  const radiusKm =
+    radiusValue !== null
+      ? radiusUnit === "mi"
+        ? radiusValue * 1.60934
+        : radiusValue
+      : null;
+
   return {
     country: clean(input.country),
-    region: clean(input.region),
-    city: clean(input.city),
+    regions: regions.length ? regions : legacyRegion ? [legacyRegion] : [],
+    cities: cities.length ? cities : legacyCity ? [legacyCity] : [],
     center_lat: typeof input.center_lat === "number" ? input.center_lat : null,
     center_lng: typeof input.center_lng === "number" ? input.center_lng : null,
-    radius_km:
-      typeof input.radius_km === "number" && Number.isFinite(input.radius_km) && input.radius_km > 0
-        ? input.radius_km
-        : null,
+    radius_km: radiusKm,
+    radius_value: radiusValue,
+    radius_unit: radiusUnit,
   };
 }
 
@@ -42,11 +72,13 @@ async function resolveGeoCenter(
   clientId: string,
   geoFilter: {
     country: string | null;
-    region: string | null;
-    city: string | null;
+    regions: string[];
+    cities: string[];
     center_lat: number | null;
     center_lng: number | null;
     radius_km: number | null;
+    radius_value: number | null;
+    radius_unit: "km" | "mi";
   }
 ) {
   if (!geoFilter.radius_km) {
@@ -67,8 +99,8 @@ async function resolveGeoCenter(
     .limit(200);
 
   if (geoFilter.country) query = query.eq("country", geoFilter.country);
-  if (geoFilter.region) query = query.eq("region", geoFilter.region);
-  if (geoFilter.city) query = query.eq("city", geoFilter.city);
+  if (geoFilter.regions.length > 0) query = query.in("region", geoFilter.regions);
+  if (geoFilter.cities.length > 0) query = query.in("city", geoFilter.cities);
 
   const { data } = await query;
   if (!data || data.length === 0) {

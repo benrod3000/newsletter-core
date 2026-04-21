@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "geo:backfill": "node scripts/backfill-subscriber-geo.mjs"
   },
   "dependencies": {
     "@sendgrid/mail": "^8.1.6",

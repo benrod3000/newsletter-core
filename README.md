@@ -14,7 +14,10 @@ Newsletter platform built with Next.js + Supabase + SendGrid.
 - Test-send to a single recipient before bulk delivery
 - Scheduled campaigns with manual/cron processing endpoint
 - Role-based client workspaces (`owner`, `editor`, `viewer`)
-- Geo-targeted campaign filters (country/region/city)
+- Geo-targeted campaign filters (country + multi-select region/city)
+- Radius targeting with kilometer/mile toggle
+- Audience preview counts before sending
+- Fallback geocoding backfill job for older subscribers missing coordinates
 - Vercel Analytics and Speed Insights integrated
 
 ## Local Development
@@ -66,6 +69,55 @@ Run the SQL migrations in order in Supabase SQL editor:
 9. `supabase/migrations/009_add_campaign_geo_filter.sql`
 10. `supabase/migrations/010_add_subscriber_lat_lng.sql`
 
+### Run Migration 010 (Detailed)
+
+Use one of the methods below.
+
+Option A: Supabase Dashboard SQL Editor
+
+1. Open your Supabase project.
+2. Go to `SQL Editor`.
+3. Open the file `supabase/migrations/010_add_subscriber_lat_lng.sql` in this repo and copy its SQL.
+4. Paste it into the SQL editor and run it.
+5. Verify columns exist:
+
+```sql
+select column_name, data_type
+from information_schema.columns
+where table_schema = 'public'
+	and table_name = 'subscribers'
+	and column_name in ('latitude', 'longitude');
+```
+
+6. Verify index exists:
+
+```sql
+select indexname
+from pg_indexes
+where schemaname = 'public'
+	and tablename = 'subscribers'
+	and indexname = 'subscribers_lat_lng_idx';
+```
+
+Option B: Supabase CLI (if your project is linked)
+
+1. Authenticate and link project (if needed):
+
+```bash
+supabase login
+supabase link --project-ref <your-project-ref>
+```
+
+2. Push migrations:
+
+```bash
+supabase db push
+```
+
+3. Re-run the verification SQL above in the dashboard.
+
+If your app is deployed, redeploy after migration so new behavior is active everywhere.
+
 ## Admin Accounts and Client Workspaces
 
 After running migrations `006` and `007`, you can create client workspaces and admin users directly in `/admin` using the owner account.
@@ -100,6 +152,21 @@ The existing `ADMIN_USERNAME` and `ADMIN_PASSWORD` env vars continue to work as 
 - Save a campaign as `scheduled` in `/admin` with a date/time.
 - Process due campaigns via `POST /api/admin/campaigns/process`.
 - For automatic sending, configure a Vercel Cron job to hit that endpoint.
+
+## Geocoding Backfill Job
+
+Use this to populate `latitude`/`longitude` for older subscribers that were collected before migration `010`.
+
+```bash
+npm run geo:backfill
+```
+
+Optional environment variables:
+
+- `GEO_BACKFILL_LIMIT` (default `100`)
+- `GEO_BACKFILL_CLIENT_ID` (limit to one workspace)
+- `GEO_BACKFILL_DRY_RUN=1` (preview without updates)
+- `GEO_BACKFILL_DELAY_MS` (default `1200` to stay polite with geocoder rate limits)
 
 ## Deploy and Reliability Checklist
 
