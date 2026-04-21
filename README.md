@@ -61,10 +61,13 @@ Run the SQL migrations in order in Supabase SQL editor:
 5. `supabase/migrations/005_add_subscriber_context_fields.sql`
 6. `supabase/migrations/006_add_admin_workspaces_and_campaigns.sql`
 7. `supabase/migrations/007_add_admin_management_functions.sql`
+8. `supabase/migrations/008_add_admin_user_management_functions.sql`
 
 ## Admin Accounts and Client Workspaces
 
 After running migrations `006` and `007`, you can create client workspaces and admin users directly in `/admin` using the owner account.
+
+After migration `008`, owners can also deactivate/reactivate users and reset user passwords directly in `/admin`.
 
 If you prefer SQL bootstrapping, use:
 

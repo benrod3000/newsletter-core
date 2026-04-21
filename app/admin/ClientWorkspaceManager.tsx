@@ -138,6 +138,63 @@ export default function ClientWorkspaceManager() {
     }
   }
 
+  async function setUserActive(userId: string, active: boolean) {
+    setStatus("saving");
+    setFeedback("");
+
+    try {
+      const res = await fetch(`/api/admin/users/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set-active", active }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setStatus("error");
+        setFeedback(data?.error ?? "Failed to update user status.");
+        return;
+      }
+
+      setStatus("success");
+      setFeedback(active ? "User activated." : "User deactivated.");
+      await loadData();
+    } catch {
+      setStatus("error");
+      setFeedback("Network error while updating user status.");
+    }
+  }
+
+  async function resetUserPassword(userId: string, usernameForPrompt: string) {
+    const password = window.prompt(`Set a new password for ${usernameForPrompt} (min 8 chars):`, "");
+    if (!password) return;
+
+    setStatus("saving");
+    setFeedback("");
+
+    try {
+      const res = await fetch(`/api/admin/users/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reset-password", password }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setStatus("error");
+        setFeedback(data?.error ?? "Failed to reset password.");
+        return;
+      }
+
+      setStatus("success");
+      setFeedback(`Password updated for ${usernameForPrompt}.`);
+      await loadData();
+    } catch {
+      setStatus("error");
+      setFeedback("Network error while resetting password.");
+    }
+  }
+
   return (
     <section className="mb-6 rounded-lg border border-zinc-800 bg-zinc-900/70 p-4 sm:p-5">
       <div className="mb-4">
@@ -256,13 +313,38 @@ export default function ClientWorkspaceManager() {
           ) : users.length === 0 ? (
             <p className="text-xs text-zinc-600">No admin users yet.</p>
           ) : (
-            <ul className="space-y-1 text-sm text-zinc-300">
+            <ul className="space-y-2 text-sm text-zinc-300">
               {users.map((u) => (
-                <li key={u.id}>
-                  {u.username} <span className="text-zinc-500">[{u.role}]</span>{" "}
-                  <span className="text-zinc-500">
-                    {u.client_id ? workspaceNameById.get(u.client_id) ?? "workspace" : "global"}
-                  </span>
+                <li key={u.id} className="rounded border border-zinc-800 px-2 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <span className="font-medium text-zinc-200">{u.username}</span>{" "}
+                      <span className="text-zinc-500">[{u.role}]</span>{" "}
+                      <span className="text-zinc-500">
+                        {u.client_id ? workspaceNameById.get(u.client_id) ?? "workspace" : "global"}
+                      </span>{" "}
+                      <span className={u.active ? "text-emerald-400" : "text-red-400"}>
+                        {u.active ? "active" : "inactive"}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setUserActive(u.id, !u.active)}
+                        className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-500"
+                      >
+                        {u.active ? "Deactivate" : "Activate"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => resetUserPassword(u.id, u.username)}
+                        className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-500"
+                      >
+                        Reset password
+                      </button>
+                    </div>
+                  </div>
                 </li>
               ))}
             </ul>
