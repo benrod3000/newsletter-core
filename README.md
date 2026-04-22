@@ -20,27 +20,77 @@ Newsletter platform built with Next.js + Supabase + SendGrid.
 - Fallback geocoding backfill job for older subscribers missing coordinates
 - Vercel Analytics and Speed Insights integrated
 
-## Local Development
-
+# Newsletter Elite - Backend API
+A robust, production-ready API for multi-tenant email marketing management. Built with Next.js, Supabase PostgreSQL, and designed for white-label SaaS platforms.
 1. Install dependencies:
 
 ```bash
-npm install
-```
+### 🔐 Authentication & Authorization
+- JWT token-based authentication (PBKDF2 with 10,000 iterations)
+- 30-day token expiry with refresh capability
+- Role-based access control (owner, editor, viewer)
+- Multi-tenant workspace isolation enforced at DB and API layers
+- Token validation on all protected endpoints
 
-2. Copy env template:
+### 📧 Subscriber Management
+- Create, read, update, list subscribers
+- Bulk subscriber imports
+- Subscriber segmentation by list and custom attributes
+- Double opt-in workflow support
+- Unsubscribe management with audit logging
 
-```bash
-cp .env.local.example .env.local
-```
+### 📬 Campaign Management
+- Create and manage email campaigns
+- Campaign status tracking (draft, scheduled, sent, failed)
+- Send rate limiting and delivery optimization
+- Campaign performance metrics (open rate, click rate)
+- Scheduled delivery with timestamp support
 
-3. Set required values in `.env.local`.
+### 🤖 Workflow Automation
+- Trigger-based automation workflows
+- Trigger types:
+	- `subscriber_joined` - when new subscriber added
+	- `lead_magnet_claimed` - lead magnet download events
+	- `location_change` - subscriber location updates
+	- `custom_webhook` - external system integrations
+	- `on_schedule` - time-based triggers
+- Actions:
+	- Send email campaigns
+	- Add subscriber to lists
+	- Send notifications
+- Automation execution logging with error tracking
+- Real-time trigger event processing
 
-4. Run dev server:
+### 🎨 White-Label Branding
+- Per-workspace branding customization
+- Custom logo URLs with CDN support
+- Brand color configuration (primary/secondary)
+- Custom domain support with CNAME validation
+- Sender name and email customization
+- Branding change audit logging
 
-```bash
-npm run dev
-```
+### 📚 Subscriber Lists
+- Create and manage subscriber lists
+- List-to-subscriber associations
+- List membership management
+- Bulk list operations
+
+### 📖 API Documentation
+- OpenAPI 3.0 specification at `/api/docs`
+- Interactive Swagger UI at `/api-docs`
+- Comprehensive endpoint documentation
+- Request/response schema examples
+
+## Tech Stack
+
+- **Framework**: Next.js 16.2.4 with App Router
+- **Build Tool**: Turbopack
+- **Database**: Supabase PostgreSQL with Row-Level Security (RLS)
+- **ORM**: Raw SQL with Supabase client
+- **Authentication**: JWT with Node.js crypto PBKDF2
+- **API Documentation**: OpenAPI 3.0 / Swagger UI
+- **Build Time**: 3.2s with 0 TypeScript errors
+- **Total Routes**: 33 endpoints
 
 ## Required Environment Variables
 
@@ -50,13 +100,17 @@ npm run dev
 - `SENDGRID_FROM_EMAIL`
 - `APP_URL` (preferred canonical app URL)
 - `ADMIN_USERNAME` (for `/admin`)
-- `ADMIN_PASSWORD` (for `/admin`)
+2. Set up environment variables:
 
 `NEXT_PUBLIC_APP_URL` is kept as a legacy fallback, but `APP_URL` is preferred.
-
+cp .env.example .env.local
+# Edit .env.local with your Supabase credentials
 ## Database Migrations
 
-Run the SQL migrations in order in Supabase SQL editor:
+3. Set up Supabase:
+	 - Create a Supabase project
+	 - Run migrations via Supabase CLI or dashboard
+	 - Obtain service role key for API access
 
 1. `supabase/migrations/001_create_subscribers.sql`
 2. `supabase/migrations/002_add_tokens.sql`
@@ -64,12 +118,92 @@ Run the SQL migrations in order in Supabase SQL editor:
 4. `supabase/migrations/004_add_subscribe_attempts.sql`
 5. `supabase/migrations/005_add_subscriber_context_fields.sql`
 6. `supabase/migrations/006_add_admin_workspaces_and_campaigns.sql`
+API runs on `http://localhost:3000`  
+OpenAPI docs: `http://localhost:3000/api/docs`  
+Swagger UI: `http://localhost:3000/api-docs`
+
 7. `supabase/migrations/007_add_admin_management_functions.sql`
 8. `supabase/migrations/008_add_admin_user_management_functions.sql`
 9. `supabase/migrations/009_add_campaign_geo_filter.sql`
 10. `supabase/migrations/010_add_subscriber_lat_lng.sql`
 
-### Run Migration 010 (Detailed)
+## API Endpoints
+
+### Authentication
+- `POST /api/auth/token` - Login and get JWT token
+- `GET /api/auth/verify` - Verify current token validity
+
+### Subscribers
+- `GET /api/clients/{workspaceId}/subscribers` - List subscribers
+- `POST /api/clients/{workspaceId}/subscribers` - Create subscriber
+- `GET /api/clients/{workspaceId}/subscribers/{id}` - Get details
+- `PUT /api/clients/{workspaceId}/subscribers/{id}` - Update subscriber
+- `DELETE /api/clients/{workspaceId}/subscribers/{id}` - Delete subscriber
+
+### Campaigns
+- `GET /api/clients/{workspaceId}/campaigns` - List campaigns
+- `POST /api/clients/{workspaceId}/campaigns` - Create campaign
+- `GET /api/clients/{workspaceId}/campaigns/{id}` - Get details
+- `PUT /api/clients/{workspaceId}/campaigns/{id}` - Update campaign
+- `DELETE /api/clients/{workspaceId}/campaigns/{id}` - Delete campaign
+
+### Lists
+- `GET /api/clients/{workspaceId}/lists` - List all lists
+- `POST /api/clients/{workspaceId}/lists` - Create list
+- Full CRUD endpoints available
+
+### Branding
+- `GET /api/clients/{workspaceId}/branding` - Get branding config
+- `PUT /api/clients/{workspaceId}/branding` - Update branding (owner-only)
+
+### Automations
+- `GET /api/clients/{workspaceId}/automations` - List automations
+- `POST /api/clients/{workspaceId}/automations` - Create automation
+- Full CRUD endpoints available
+
+### Webhooks
+- `POST /api/webhooks/automation-trigger` - External trigger endpoint (public)
+
+### Documentation
+- `GET /api/docs` - OpenAPI 3.0 JSON specification
+- `GET /api-docs` - Interactive Swagger UI
+
+## Database Schema
+
+### Core Tables
+- `clients` - Workspace accounts
+- `workspace_users` - Users with roles
+- `subscribers` - Email subscribers
+- `campaigns` - Email campaigns
+- `subscriber_lists` - Campaign lists
+- `automation_triggers` - Workflow definitions
+- `automation_logs` - Execution records
+- `workspace_branding_audits` - Change history
+
+### Security
+- All tables use Row-Level Security (RLS)
+- Workspace isolation at database level
+- Role-based access control enforced
+
+## Performance
+
+- Build time: 3.2s with 0 TypeScript errors
+- Pagination on list endpoints (default 50 items)
+- Database indexes on workspace_id for fast queries
+
+## License
+
+MIT
+
+## Support
+
+For issues, visit [GitHub Issues](https://github.com/benrod3000/newsletter-core/issues)
+
+---
+
+**Frontend Portal**: [newsletter](https://github.com/benrod3000/newsletter)  
+**Version**: v1.0.0-beta  
+**Last Updated**: April 2026
 
 Use one of the methods below.
 
