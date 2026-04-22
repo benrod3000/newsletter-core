@@ -233,8 +233,6 @@ function mergeDataForRecipient(sub: RecipientRow, unsubUrl: string): Record<stri
     region: (sub.region ?? "").trim(),
     country: (sub.country ?? "").trim(),
     location: location,
-    latitude: (sub.latitude ?? "").toString(),
-    longitude: (sub.longitude ?? "").toString(),
     email: sub.email,
     unsubscribe_url: unsubUrl,
   };

@@ -142,8 +142,6 @@ const PERSONALIZATION_TOKENS: Array<{ token: string; meaning: string; example: s
   { token: "{{region}}", meaning: "State or province", example: "California" },
   { token: "{{country}}", meaning: "Country", example: "United States" },
   { token: "{{location}}", meaning: "Full location (City, Region, Country)", example: "Los Angeles, California, United States" },
-  { token: "{{latitude}}", meaning: "Geographic latitude", example: "34.0522" },
-  { token: "{{longitude}}", meaning: "Geographic longitude", example: "-118.2437" },
   { token: "{{email}}", meaning: "Subscriber email", example: "fan@example.com" },
   { token: "{{unsubscribe_url}}", meaning: "Personal unsubscribe link", example: "https://.../unsubscribe?token=..." },
   { token: "{{first_name|there}}", meaning: "First name with fallback", example: "there" },
