@@ -341,6 +341,7 @@ export async function POST(req: NextRequest) {
       await Promise.all(
         batch.map(async (sub) => {
           const unsubUrl = `${baseUrl}/unsubscribe?token=${sub.unsubscribe_token}`;
+          const unsubApiUrl = `${baseUrl}/api/unsubscribe?token=${sub.unsubscribe_token}`;
           let personalHtml = baseHtml.replace(/\{\{unsubscribe_url\}\}/gi, unsubUrl);
           if (campaignId) {
             personalHtml = injectTracking(personalHtml, campaignId, sub.id, baseUrl);
@@ -351,6 +352,10 @@ export async function POST(req: NextRequest) {
             subject,
             text: message,
             html: personalHtml,
+            headers: {
+              "List-Unsubscribe": `<${unsubApiUrl}>, <mailto:${fromEmail}?subject=unsubscribe>`,
+              "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+            },
             ...(campaignId && {
               customArgs: { campaign_id: campaignId, subscriber_id: sub.id },
             }),
