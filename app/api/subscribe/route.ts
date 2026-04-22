@@ -75,6 +75,16 @@ function cleanText(value: unknown, maxLength = 200): string | null {
   return trimmed.slice(0, maxLength);
 }
 
+function cleanDate(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+  const date = new Date(`${trimmed}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return null;
+  return trimmed;
+}
+
 async function resolveClientIdForSignup(supabase: ReturnType<typeof getSupabaseClient>, clientSlug: string | null) {
   const slug = clientSlug || process.env.DEFAULT_CLIENT_SLUG || "default";
 
@@ -186,6 +196,10 @@ export async function POST(req: NextRequest) {
     const referrer = cleanText(body.referrer, 500);
     const landing_path = cleanText(body.landing_path, 300);
     const client_slug = cleanText(body.client_slug, 80);
+    const first_name = cleanText(body.first_name, 80);
+    const last_name = cleanText(body.last_name, 80);
+    const date_of_birth = cleanDate(body.date_of_birth);
+    const job_title = cleanText(body.job_title, 120);
 
     // 2. Validate email
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -234,6 +248,10 @@ export async function POST(req: NextRequest) {
           utm_campaign,
           referrer,
           landing_path,
+          first_name,
+          last_name,
+          date_of_birth,
+          job_title,
           created_at: new Date().toISOString(),
         },
       ])

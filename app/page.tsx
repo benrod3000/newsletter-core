@@ -21,6 +21,10 @@ function getClientContext() {
 
 export default function Home() {
   const [email, setEmail] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [jobTitle, setJobTitle] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState("");
 
@@ -37,7 +41,14 @@ export default function Home() {
       const res = await fetch("/api/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, ...getClientContext() }),
+        body: JSON.stringify({
+          email,
+          first_name: firstName,
+          last_name: lastName,
+          date_of_birth: dateOfBirth,
+          job_title: jobTitle,
+          ...getClientContext(),
+        }),
       });
 
       const data = await res.json();
@@ -89,30 +100,67 @@ export default function Home() {
 
         {/* Form */}
         {status !== "success" ? (
-          <form onSubmit={handleSubmit} className="flex flex-col gap-3 sm:flex-row">
+          <form onSubmit={handleSubmit} className="space-y-3">
             <label htmlFor="email" className="sr-only">
               Email address
             </label>
-            <input
-              id="email"
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                if (status === "error") setStatus("idle");
-              }}
-              placeholder="your@email.com"
-              className="w-full flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-white placeholder-zinc-500 outline-none transition focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
-            />
-            <button
-              type="submit"
-              disabled={status === "loading"}
-              className="rounded-lg bg-amber-400 px-6 py-3 text-sm font-bold text-black transition hover:bg-amber-300 active:scale-95 disabled:opacity-60"
-            >
-              {status === "loading" ? "Joining…" : "Join the list"}
-            </button>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <input
+                id="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (status === "error") setStatus("idle");
+                }}
+                placeholder="your@email.com"
+                className="w-full flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-white placeholder-zinc-500 outline-none transition focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
+              />
+              <button
+                type="submit"
+                disabled={status === "loading"}
+                className="rounded-lg bg-amber-400 px-6 py-3 text-sm font-bold text-black transition hover:bg-amber-300 active:scale-95 disabled:opacity-60"
+              >
+                {status === "loading" ? "Joining…" : "Join the list"}
+              </button>
+            </div>
+
+            <details className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2">
+              <summary className="cursor-pointer list-none text-xs font-medium uppercase tracking-wider text-zinc-400">
+                Optional profile fields
+              </summary>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <input
+                  type="text"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  placeholder="First name"
+                  className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 outline-none focus:border-amber-400"
+                />
+                <input
+                  type="text"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  placeholder="Last name"
+                  className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 outline-none focus:border-amber-400"
+                />
+                <input
+                  type="date"
+                  value={dateOfBirth}
+                  onChange={(e) => setDateOfBirth(e.target.value)}
+                  className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-400"
+                />
+                <input
+                  type="text"
+                  value={jobTitle}
+                  onChange={(e) => setJobTitle(e.target.value)}
+                  placeholder="Job title"
+                  className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 outline-none focus:border-amber-400"
+                />
+              </div>
+            </details>
           </form>
         ) : (
           <div className="rounded-lg border border-zinc-700 bg-zinc-900 px-6 py-5">

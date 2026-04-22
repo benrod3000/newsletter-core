@@ -85,6 +85,10 @@ export async function POST(req: NextRequest) {
 
   // Map CSV columns to subscriber DB columns
   const allowedFields: Record<string, string> = {
+    first_name: "first_name",
+    last_name: "last_name",
+    date_of_birth: "date_of_birth",
+    job_title: "job_title",
     country: "country",
     region: "region",
     city: "city",

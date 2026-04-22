@@ -6,6 +6,7 @@ import SubscriberTable from "./SubscriberTable";
 import DashboardNav from "./DashboardNav";
 import ImportSubscribers from "./ImportSubscribers";
 import HousekeepingPanel from "./HousekeepingPanel";
+import EmbedCodePanel from "./EmbedCodePanel";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,7 @@ export default async function AdminPage() {
   const supabase = getSupabaseClient();
   let query = supabase
     .from("subscribers")
-    .select("id, email, confirmed, country, region, city, timezone, locale, utm_source, utm_medium, utm_campaign, referrer, landing_path, created_at")
+    .select("id, email, confirmed, first_name, last_name, date_of_birth, job_title, country, region, city, timezone, locale, utm_source, utm_medium, utm_campaign, referrer, landing_path, created_at")
     .order("created_at", { ascending: false });
 
   if (role !== "owner" && clientId) {
@@ -72,6 +73,10 @@ export default async function AdminPage() {
 
               <div id="import" className="scroll-mt-40">
                 <ImportSubscribers />
+              </div>
+
+              <div id="embed" className="scroll-mt-40">
+                <EmbedCodePanel />
               </div>
 
               {role === "owner" && (

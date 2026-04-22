@@ -6,6 +6,10 @@ interface Subscriber {
   id: string;
   email: string;
   confirmed: boolean;
+  first_name: string | null;
+  last_name: string | null;
+  date_of_birth: string | null;
+  job_title: string | null;
   country: string | null;
   region: string | null;
   city: string | null;
@@ -49,6 +53,11 @@ function formatSource(subscriber: Subscriber) {
   );
 }
 
+function formatFullName(subscriber: Subscriber) {
+  const full = [subscriber.first_name, subscriber.last_name].filter(Boolean).join(" ").trim();
+  return full || null;
+}
+
 function unique(values: (string | null)[]): string[] {
   return Array.from(new Set(values.filter((v): v is string => Boolean(v)))).sort();
 }
@@ -63,14 +72,18 @@ function escapeCsv(value: string | null | boolean): string {
 }
 
 function exportToCsv(rows: Subscriber[], filename: string) {
-  const headers = ["email", "confirmed", "country", "region", "city", "timezone", "locale", "utm_source", "utm_medium", "utm_campaign", "referrer", "landing_path", "created_at"];
+  const headers = [
+    "email", "confirmed", "first_name", "last_name", "date_of_birth", "job_title",
+    "country", "region", "city", "timezone", "locale", "utm_source", "utm_medium",
+    "utm_campaign", "referrer", "landing_path", "created_at",
+  ];
   const lines = [
     headers.join(","),
     ...rows.map((s) =>
       [
-        s.email, s.confirmed, s.country, s.region, s.city,
-        s.timezone, s.locale, s.utm_source, s.utm_medium,
-        s.utm_campaign, s.referrer, s.landing_path, s.created_at,
+        s.email, s.confirmed, s.first_name, s.last_name, s.date_of_birth, s.job_title,
+        s.country, s.region, s.city, s.timezone, s.locale, s.utm_source,
+        s.utm_medium, s.utm_campaign, s.referrer, s.landing_path, s.created_at,
       ]
         .map(escapeCsv)
         .join(",")
@@ -226,16 +239,21 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
         {copyFeedback && <span className="self-center text-xs text-emerald-400">{copyFeedback}</span>}
       </div>
 
-      <div className="space-y-3 lg:hidden">
+      <div className="space-y-1.5 lg:hidden">
         {filtered.length === 0 ? (
           <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-4 py-8 text-center text-zinc-600">
             No subscribers match the current filters.
           </div>
         ) : (
           filtered.map((s) => (
-            <article key={s.id} className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+            <article key={s.id} className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-2">
               <div className="flex items-start justify-between gap-2">
-                <p className="text-sm font-medium text-white break-all">{s.email}</p>
+                <div>
+                  <p className="text-sm font-medium text-white break-all">{s.email}</p>
+                  {formatFullName(s) && (
+                    <p className="mt-0.5 text-[11px] text-zinc-500">{formatFullName(s)}</p>
+                  )}
+                </div>
                 {s.confirmed ? (
                   <span className="rounded-full bg-emerald-900/60 px-2 py-0.5 text-[11px] font-medium text-emerald-300">
                     Confirmed
@@ -264,6 +282,16 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
                   <dt className="text-zinc-500">Signed up</dt>
                   <dd className="mt-0.5 text-zinc-300">{formatSignupTime(s.created_at)}</dd>
                 </div>
+                {(s.first_name || s.last_name || s.date_of_birth || s.job_title) && (
+                  <div className="rounded border border-zinc-800 bg-zinc-900/60 px-2 py-1.5">
+                    <dt className="text-zinc-500">Profile</dt>
+                    <dd className="mt-0.5 text-zinc-300">
+                      {formatFullName(s) || "-"}
+                      {s.job_title ? ` • ${s.job_title}` : ""}
+                      {s.date_of_birth ? ` • DOB ${s.date_of_birth}` : ""}
+                    </dd>
+                  </div>
+                )}
               </dl>
 
               <div className="mt-3 flex flex-wrap gap-2">
@@ -331,8 +359,11 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
                   key={s.id}
                   className="border-b border-zinc-800 last:border-0 hover:bg-zinc-900/60"
                 >
-                  <td className="px-4 py-3 text-white">{s.email}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-1.5 text-white leading-tight">
+                    <p className="break-all">{s.email}</p>
+                    {formatFullName(s) && <p className="mt-0.5 text-xs text-zinc-500">{formatFullName(s)}</p>}
+                  </td>
+                  <td className="px-4 py-1.5 leading-tight">
                     {s.confirmed ? (
                       <span className="rounded-full bg-emerald-900/60 px-2 py-0.5 text-xs font-medium text-emerald-400">
                         Confirmed
@@ -343,16 +374,16 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-zinc-400">
+                  <td className="px-4 py-1.5 text-zinc-400 leading-tight">
                     {formatLocation(s)}
                   </td>
-                  <td className="px-4 py-3 text-zinc-500">
+                  <td className="px-4 py-1.5 text-zinc-500 leading-tight">
                     {s.timezone || s.locale || "-"}
                   </td>
-                  <td className="px-4 py-3 text-zinc-500">
+                  <td className="px-4 py-1.5 text-zinc-500 leading-tight">
                     {formatSource(s)}
                   </td>
-                  <td className="px-4 py-3 text-zinc-500">{formatSignupTime(s.created_at)}</td>
+                  <td className="px-4 py-1.5 text-zinc-500 leading-tight">{formatSignupTime(s.created_at)}</td>
                 </tr>
               ))
             )}

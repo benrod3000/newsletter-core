@@ -3,6 +3,27 @@
 import { useEffect, useState } from "react";
 
 type Status = "idle" | "loading" | "success" | "error";
+type EmbedStyle = "card" | "bar" | "minimal";
+
+const PROFILE_FIELDS = ["first_name", "last_name", "date_of_birth", "job_title"] as const;
+type ProfileField = (typeof PROFILE_FIELDS)[number];
+
+function parseEmbedConfig() {
+  const searchParams = new URLSearchParams(window.location.search);
+  const styleParam = searchParams.get("style");
+  const style: EmbedStyle = styleParam === "bar" || styleParam === "minimal" ? styleParam : "card";
+
+  const fieldsParam = (searchParams.get("fields") || "").toLowerCase();
+  const enabled = new Set<ProfileField>();
+  for (const field of PROFILE_FIELDS) {
+    if (fieldsParam.includes(field)) enabled.add(field);
+  }
+
+  return {
+    style,
+    enabledFields: enabled,
+  };
+}
 
 function getClientContext() {
   const searchParams = new URLSearchParams(window.location.search);
@@ -21,14 +42,27 @@ function getClientContext() {
 
 export default function EmbedPage() {
   const [email, setEmail] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [jobTitle, setJobTitle] = useState("");
+  const [embedStyle, setEmbedStyle] = useState<EmbedStyle>("card");
+  const [enabledFields, setEnabledFields] = useState<Set<ProfileField>>(new Set());
   const [company, setCompany] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
     document.body.classList.add("embed");
+    const config = parseEmbedConfig();
+    setEmbedStyle(config.style);
+    setEnabledFields(config.enabledFields);
     return () => document.body.classList.remove("embed");
   }, []);
+
+  function hasField(name: ProfileField) {
+    return enabledFields.has(name);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -43,7 +77,15 @@ export default function EmbedPage() {
       const res = await fetch("/api/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, company, ...getClientContext() }),
+        body: JSON.stringify({
+          email,
+          company,
+          first_name: firstName,
+          last_name: lastName,
+          date_of_birth: dateOfBirth,
+          job_title: jobTitle,
+          ...getClientContext(),
+        }),
       });
 
       const data = await res.json();
@@ -68,27 +110,96 @@ export default function EmbedPage() {
     }
   }
 
+  const wrapperClass =
+    embedStyle === "minimal"
+      ? "w-full max-w-xl"
+      : embedStyle === "bar"
+        ? "w-full max-w-2xl"
+        : "w-full max-w-md";
+
+  const formClass =
+    embedStyle === "bar"
+      ? "flex flex-col gap-2 md:flex-row md:items-start"
+      : "flex flex-col gap-2";
+
+  const emailInputClass =
+    embedStyle === "minimal"
+      ? "w-full border-0 border-b border-white/50 bg-transparent px-0 py-2 text-sm text-white placeholder-white/60 outline-none focus:border-white"
+      : "w-full rounded-lg border border-white/40 bg-white/20 px-4 py-3 text-sm text-white placeholder-white/60 outline-none transition focus:border-white focus:ring-1 focus:ring-white";
+
+  const profileInputClass =
+    embedStyle === "minimal"
+      ? "w-full border-0 border-b border-white/40 bg-transparent px-0 py-2 text-sm text-white placeholder-white/60 outline-none focus:border-white"
+      : "w-full rounded-lg border border-white/30 bg-white/15 px-3 py-2 text-sm text-white placeholder-white/60 outline-none transition focus:border-white";
+
+  const buttonClass =
+    embedStyle === "minimal"
+      ? "rounded-md border border-white/70 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10 disabled:opacity-60"
+      : "rounded-lg bg-white px-6 py-3 text-sm font-bold text-orange-500 transition hover:bg-white/90 active:scale-95 disabled:opacity-60 whitespace-nowrap";
+
   return (
     <div className="flex items-center justify-center bg-transparent p-4">
-      <div className="w-full max-w-md">
+      <div className={wrapperClass}>
         {status !== "success" ? (
-          <form onSubmit={handleSubmit} className="flex flex-col gap-2 sm:flex-row">
+          <form onSubmit={handleSubmit} className={formClass}>
             <label htmlFor="embed-email" className="sr-only">
               Email address
             </label>
-            <input
-              id="embed-email"
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                if (status === "error") setStatus("idle");
-              }}
-              placeholder="your@email.com"
-              className="w-full flex-1 rounded-lg border border-white/40 bg-white/20 px-4 py-3 text-sm text-white placeholder-white/60 outline-none transition focus:border-white focus:ring-1 focus:ring-white"
-            />
+            <div className="flex-1 space-y-2">
+              <input
+                id="embed-email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (status === "error") setStatus("idle");
+                }}
+                placeholder="your@email.com"
+                className={emailInputClass}
+              />
+
+              {enabledFields.size > 0 && (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {hasField("first_name") && (
+                    <input
+                      type="text"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      placeholder="First name"
+                      className={profileInputClass}
+                    />
+                  )}
+                  {hasField("last_name") && (
+                    <input
+                      type="text"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      placeholder="Last name"
+                      className={profileInputClass}
+                    />
+                  )}
+                  {hasField("date_of_birth") && (
+                    <input
+                      type="date"
+                      value={dateOfBirth}
+                      onChange={(e) => setDateOfBirth(e.target.value)}
+                      className={profileInputClass}
+                    />
+                  )}
+                  {hasField("job_title") && (
+                    <input
+                      type="text"
+                      value={jobTitle}
+                      onChange={(e) => setJobTitle(e.target.value)}
+                      placeholder="Job title"
+                      className={profileInputClass}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
             <label htmlFor="embed-company" className="sr-only">
               Company
             </label>
@@ -105,7 +216,7 @@ export default function EmbedPage() {
             <button
               type="submit"
               disabled={status === "loading"}
-              className="rounded-lg bg-white px-6 py-3 text-sm font-bold text-orange-500 transition hover:bg-white/90 active:scale-95 disabled:opacity-60 whitespace-nowrap"
+              className={buttonClass}
             >
               {status === "loading" ? "Joining…" : "Join the list"}
             </button>
