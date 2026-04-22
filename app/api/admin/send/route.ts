@@ -15,7 +15,7 @@ function parseGeoFilter(value: unknown) {
       center_lng: null,
       radius_km: null,
       radius_value: null,
-      radius_unit: "km" as "km" | "mi",
+      radius_unit: "mi" as "km" | "mi",
     };
   }
 
@@ -39,7 +39,7 @@ function parseGeoFilter(value: unknown) {
   const legacyCity = clean(input.city);
   const regions = cleanList(input.regions);
   const cities = cleanList(input.cities);
-  const radiusUnit: "km" | "mi" = input.radius_unit === "mi" ? "mi" : "km";
+  const radiusUnit: "km" | "mi" = input.radius_unit === "km" ? "km" : "mi";
   const radiusValue =
     typeof input.radius_value === "number" && Number.isFinite(input.radius_value) && input.radius_value > 0
       ? input.radius_value

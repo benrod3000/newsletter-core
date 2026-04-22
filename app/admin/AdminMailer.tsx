@@ -142,7 +142,7 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
   const [regionSearch, setRegionSearch] = useState("");
   const [citySearch, setCitySearch] = useState("");
   const [geoRadiusValue, setGeoRadiusValue] = useState("");
-  const [geoRadiusUnit, setGeoRadiusUnit] = useState<"km" | "mi">("km");
+  const [geoRadiusUnit, setGeoRadiusUnit] = useState<"km" | "mi">("mi");
   const [previewCount, setPreviewCount] = useState<number | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -326,7 +326,7 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
           ? [campaign.geo_filter.city]
           : []
     );
-    setGeoRadiusUnit(campaign.geo_filter?.radius_unit === "mi" ? "mi" : "km");
+    setGeoRadiusUnit(campaign.geo_filter?.radius_unit === "km" ? "km" : "mi");
     setGeoRadiusValue(
       typeof campaign.geo_filter?.radius_value === "number"
         ? String(campaign.geo_filter.radius_value)
@@ -354,7 +354,7 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
     setGeoRegions([]);
     setGeoCities([]);
     setGeoRadiusValue("");
-    setGeoRadiusUnit("km");
+    setGeoRadiusUnit("mi");
     setPreviewCount(null);
     setScheduledFor("");
     if (editor) {
@@ -821,8 +821,8 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
               onChange={(e) => setGeoRadiusUnit(e.target.value === "mi" ? "mi" : "km")}
               className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-400"
             >
-              <option value="km">Kilometers</option>
               <option value="mi">Miles</option>
+              <option value="km">Kilometers</option>
             </select>
           </div>
         </div>
