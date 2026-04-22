@@ -39,8 +39,8 @@ export default async function AdminPage() {
         confirmationRate={confirmationRate}
       />
 
-      <main className="min-h-screen bg-[#0d0d0d] px-4 py-8 pt-32 sm:px-6 sm:py-10 sm:pt-36">
-        <div className="mx-auto max-w-7xl">
+      <main className="min-h-screen bg-[#0d0d0d] px-3 py-8 pt-32 sm:px-4 sm:py-10 sm:pt-36 lg:px-5">
+        <div className="mx-auto w-full max-w-none">
           <div className="mb-8 rounded-xl border border-zinc-800 bg-zinc-950/85 px-4 py-4 sm:px-5">
             <p className="text-xs font-semibold uppercase tracking-widest text-amber-400">Admin</p>
             <h1 className="mt-1 text-2xl font-bold text-white sm:text-3xl">Dashboard</h1>
@@ -55,9 +55,9 @@ export default async function AdminPage() {
             </p>
           )}
 
-          <div className="grid gap-8 md:grid-cols-2 md:items-start">
+          <div className="grid gap-8 md:grid-cols-10 md:items-start">
             {/* Left Column */}
-            <div className="min-w-0 space-y-8">
+            <div className="min-w-0 space-y-8 md:col-span-3">
               {role === "owner" && (
                 <div id="workspaces" className="scroll-mt-40">
                   <ClientWorkspaceManager />
@@ -70,7 +70,7 @@ export default async function AdminPage() {
             </div>
 
             {/* Right Column */}
-            <div id="campaigns" className="min-w-0 scroll-mt-40">
+            <div id="campaigns" className="min-w-0 scroll-mt-40 md:col-span-7">
               <AdminMailer
                 totalCount={subscribers.length}
                 confirmedCount={confirmedCount}

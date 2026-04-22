@@ -53,7 +53,7 @@ export default function DashboardNav({
 
   return (
     <div className="fixed inset-x-0 top-0 z-40 border-b border-zinc-800 bg-zinc-950/95 px-4 py-3 sm:px-6 backdrop-blur-sm">
-      <div className="mx-auto max-w-6xl">
+      <div className="mx-auto w-full max-w-none">
         <div className="flex items-center justify-between gap-3">
           {/* Nav Toggle (mobile only) */}
           <button
