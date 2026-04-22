@@ -110,6 +110,8 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
   const [sourceFilter, setSourceFilter] = useState("");
   const [search, setSearch] = useState("");
   const [copyFeedback, setCopyFeedback] = useState("");
+  const [actionFeedback, setActionFeedback] = useState("");
+  const [workingSubscriberId, setWorkingSubscriberId] = useState<string | null>(null);
 
   const countries = useMemo(() => unique(subscribers.map((s) => s.country)), [subscribers]);
   const cities = useMemo(() => unique(subscribers.map((s) => s.city)), [subscribers]);
@@ -140,6 +142,55 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
     } catch {
       setCopyFeedback("Could not copy email.");
       window.setTimeout(() => setCopyFeedback(""), 1800);
+    }
+  }
+
+  async function exportSubscriberData(subscriber: Subscriber) {
+    setWorkingSubscriberId(subscriber.id);
+    try {
+      const res = await fetch(`/api/admin/subscribers/${encodeURIComponent(subscriber.id)}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setActionFeedback(data.error ?? "Could not export subscriber data.");
+        return;
+      }
+
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `subscriber-export-${subscriber.email.replace(/[^a-z0-9_.-]/gi, "_")}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setActionFeedback(`Exported data for ${subscriber.email}`);
+    } catch {
+      setActionFeedback("Could not export subscriber data.");
+    } finally {
+      setWorkingSubscriberId(null);
+      window.setTimeout(() => setActionFeedback(""), 2000);
+    }
+  }
+
+  async function deleteSubscriber(subscriber: Subscriber) {
+    const confirmed = window.confirm(`Permanently delete ${subscriber.email}? This cannot be undone.`);
+    if (!confirmed) return;
+
+    setWorkingSubscriberId(subscriber.id);
+    try {
+      const res = await fetch(`/api/admin/subscribers/${encodeURIComponent(subscriber.id)}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) {
+        setActionFeedback(data.error ?? "Could not delete subscriber.");
+        return;
+      }
+
+      setActionFeedback(`Deleted ${subscriber.email}`);
+      window.setTimeout(() => window.location.reload(), 500);
+    } catch {
+      setActionFeedback("Could not delete subscriber.");
+    } finally {
+      setWorkingSubscriberId(null);
+      window.setTimeout(() => setActionFeedback(""), 2500);
     }
   }
 
@@ -273,6 +324,7 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
         </button>
 
         {copyFeedback && <span className="self-center text-xs text-emerald-400">{copyFeedback}</span>}
+        {actionFeedback && <span className="self-center text-xs text-amber-300">{actionFeedback}</span>}
       </div>
 
       <div className="space-y-1.5 lg:hidden">
@@ -345,6 +397,22 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
                 >
                   Copy email
                 </button>
+                <button
+                  type="button"
+                  disabled={workingSubscriberId === s.id}
+                  onClick={() => exportSubscriberData(s)}
+                  className="rounded-md border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 hover:border-zinc-500 disabled:opacity-60"
+                >
+                  Export data
+                </button>
+                <button
+                  type="button"
+                  disabled={workingSubscriberId === s.id}
+                  onClick={() => deleteSubscriber(s)}
+                  className="rounded-md border border-red-900/80 px-2.5 py-1 text-xs text-red-300 hover:border-red-700 disabled:opacity-60"
+                >
+                  Delete
+                </button>
                 <a
                   href={`mailto:${encodeURIComponent(s.email)}`}
                   className="rounded-md border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 hover:border-zinc-500"
@@ -388,12 +456,13 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
               <th className="px-4 py-3">Timezone</th>
               <th className="px-4 py-3">Source</th>
               <th className="px-4 py-3">Signed up</th>
+              <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-zinc-600">
+                <td colSpan={8} className="px-4 py-8 text-center text-zinc-600">
                   No subscribers match the current filters.
                 </td>
               </tr>
@@ -437,6 +506,26 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
                     {formatSource(s)}
                   </td>
                   <td className="px-4 py-1.5 text-zinc-500 leading-tight">{formatSignupTime(s.created_at)}</td>
+                  <td className="px-4 py-1.5">
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        disabled={workingSubscriberId === s.id}
+                        onClick={() => exportSubscriberData(s)}
+                        className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-500 disabled:opacity-60"
+                      >
+                        Export
+                      </button>
+                      <button
+                        type="button"
+                        disabled={workingSubscriberId === s.id}
+                        onClick={() => deleteSubscriber(s)}
+                        className="rounded border border-red-900/80 px-2 py-1 text-xs text-red-300 hover:border-red-700 disabled:opacity-60"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))
             )}
