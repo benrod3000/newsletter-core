@@ -10,6 +10,9 @@ type RecipientRow = {
   email: string;
   confirmed: boolean;
   client_id: string | null;
+  country: string | null;
+  region: string | null;
+  city: string | null;
   latitude: number | null;
   longitude: number | null;
   unsubscribe_token: string;
@@ -217,6 +220,7 @@ function mergeDataForRecipient(sub: RecipientRow, unsubUrl: string): Record<stri
   const lastName = (sub.last_name ?? "").trim();
   const fullName = [firstName, lastName].filter(Boolean).join(" ");
   const dateOfBirth = sub.date_of_birth ?? "";
+  const location = [sub.city, sub.region, sub.country].filter(Boolean).join(", ");
 
   return {
     first_name: firstName,
@@ -225,6 +229,12 @@ function mergeDataForRecipient(sub: RecipientRow, unsubUrl: string): Record<stri
     date_of_birth: dateOfBirth,
     birthday_pretty: formatBirthdayPretty(dateOfBirth),
     phone_number: (sub.phone_number ?? "").trim(),
+    city: (sub.city ?? "").trim(),
+    region: (sub.region ?? "").trim(),
+    country: (sub.country ?? "").trim(),
+    location: location,
+    latitude: (sub.latitude ?? "").toString(),
+    longitude: (sub.longitude ?? "").toString(),
     email: sub.email,
     unsubscribe_url: unsubUrl,
   };
@@ -306,7 +316,7 @@ export async function POST(req: NextRequest) {
 
     let query = supabase
       .from("subscribers")
-      .select("id, email, confirmed, client_id, latitude, longitude, unsubscribe_token, first_name, last_name, date_of_birth, phone_number")
+      .select("id, email, confirmed, client_id, country, region, city, latitude, longitude, unsubscribe_token, first_name, last_name, date_of_birth, phone_number")
       .eq("suppressed", false);
 
     if (audience === "confirmed") query = query.eq("confirmed", true);
