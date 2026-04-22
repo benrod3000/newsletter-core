@@ -6,6 +6,7 @@ interface SubscriberList {
   id: string;
   name: string;
   description: string | null;
+  opt_in_type: "single" | "double";
   created_at: string;
   updated_at: string;
   memberCount?: number;
@@ -16,6 +17,7 @@ export default function SubscriberListsPanel() {
   const [loaded, setLoaded] = useState(false);
   const [newListName, setNewListName] = useState("");
   const [newListDesc, setNewListDesc] = useState("");
+  const [newListOptInType, setNewListOptInType] = useState<"single" | "double">("single");
   const [feedback, setFeedback] = useState("");
   const [working, setWorking] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -49,6 +51,7 @@ export default function SubscriberListsPanel() {
         body: JSON.stringify({
           name: newListName.trim(),
           description: newListDesc.trim() || null,
+          opt_in_type: newListOptInType,
         }),
       });
 
@@ -63,6 +66,7 @@ export default function SubscriberListsPanel() {
       setLists([list, ...lists]);
       setNewListName("");
       setNewListDesc("");
+      setNewListOptInType("single");
       setFeedback(`Created list "${list.name}"`);
       window.setTimeout(() => setFeedback(""), 2000);
       inputRef.current?.focus();
@@ -138,6 +142,18 @@ export default function SubscriberListsPanel() {
             rows={2}
           />
         </div>
+        <div>
+          <label className="block text-xs font-medium text-zinc-400 mb-1.5">Default opt-in type</label>
+          <select
+            value={newListOptInType}
+            onChange={(e) => setNewListOptInType(e.target.value as "single" | "double")}
+            disabled={working}
+            className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 focus:border-zinc-500 focus:outline-none disabled:opacity-60"
+          >
+            <option value="single">Single opt-in (subscribers added directly)</option>
+            <option value="double">Double opt-in (subscribers must confirm)</option>
+          </select>
+        </div>
         <button
           type="submit"
           disabled={working || !newListName.trim()}
@@ -157,7 +173,12 @@ export default function SubscriberListsPanel() {
               <div className="flex-1">
                 <p className="font-medium text-zinc-200">{list.name}</p>
                 {list.description && <p className="text-xs text-zinc-500 mt-1">{list.description}</p>}
-                <p className="text-xs text-zinc-600 mt-1">{list.memberCount ?? 0} member(s)</p>
+                <div className="mt-1 flex gap-2 items-center">
+                  <p className="text-xs text-zinc-600">{list.memberCount ?? 0} member(s)</p>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400">
+                    {list.opt_in_type === "double" ? "Double opt-in" : "Single opt-in"}
+                  </span>
+                </div>
               </div>
               <button
                 onClick={() => deleteList(list.id, list.name)}

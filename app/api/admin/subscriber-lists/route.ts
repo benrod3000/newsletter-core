@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   const supabase = getSupabaseClient();
   let query = supabase
     .from("subscriber_lists")
-    .select("id, name, description, created_at, updated_at, client_id")
+    .select("id, name, description, opt_in_type, created_at, updated_at, client_id")
     .order("created_at", { ascending: false });
 
   if (admin.role !== "owner" && admin.clientId) {
@@ -43,11 +43,14 @@ export async function POST(req: NextRequest) {
   if (admin.role === "viewer") return NextResponse.json({ error: "Forbidden." }, { status: 403 });
 
   const body = await req.json();
-  const { name, description } = body;
+  const { name, description, opt_in_type } = body;
 
   if (!name || typeof name !== "string" || !name.trim()) {
     return NextResponse.json({ error: "List name is required." }, { status: 400 });
   }
+
+  const validOptInTypes = ["single", "double"];
+  const finalOptInType = validOptInTypes.includes(opt_in_type) ? opt_in_type : "single";
 
   const clientId = await resolveClientId(admin.clientId);
   if (!clientId) {
@@ -61,8 +64,9 @@ export async function POST(req: NextRequest) {
       client_id: clientId,
       name: name.trim(),
       description: description?.trim() ?? null,
+      opt_in_type: finalOptInType,
     })
-    .select("id, name, description, created_at, updated_at, client_id")
+    .select("id, name, description, opt_in_type, created_at, updated_at, client_id")
     .single();
 
   if (error) {

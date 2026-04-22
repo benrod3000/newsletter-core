@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import CampaignReportPanel from "./CampaignReportPanel";
+import { checkUnsubscribeTag } from "@/lib/link-validation";
 import type { Editor } from "grapesjs";
 
-type Audience = "confirmed" | "all" | "pending" | "claimed_offer";
+type Audience = "confirmed" | "all" | "pending" | "claimed_offer" | string;
 
 type SendStatus = "idle" | "sending" | "success" | "error";
 
@@ -140,10 +141,14 @@ function toLocalInputValue(iso: string | null) {
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
-function audienceLabel(audience: Audience, totalCount: number, confirmedCount: number, claimedLeadMagnetCount: number) {
+function audienceLabel(audience: Audience, totalCount: number, confirmedCount: number, claimedLeadMagnetCount: number, lists: Array<{ id: string; name: string }> = []) {
   if (audience === "all") return `all subscribers (${totalCount})`;
   if (audience === "pending") return `pending subscribers (${Math.max(totalCount - confirmedCount, 0)})`;
   if (audience === "claimed_offer") return `claimed digital good (${claimedLeadMagnetCount})`;
+  if (audience.startsWith("list:")) {
+    const list = lists.find((l) => l.id === audience.slice(5));
+    return `list: ${list?.name ?? "(unknown)"}`;
+  }
   return `confirmed subscribers (${confirmedCount})`;
 }
 
@@ -192,6 +197,11 @@ export default function AdminMailer({ totalCount, confirmedCount, claimedLeadMag
   const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
   const [reportCache, setReportCache] = useState<Record<string, unknown>>({});
   const [reportLoading, setReportLoading] = useState<Set<string>>(new Set());
+  const [lists, setLists] = useState<Array<{ id: string; name: string }>>([]);
+  const [brokenLinks, setBrokenLinks] = useState<Array<{ url: string; statusCode?: number }>>([]);
+  const [validatingLinks, setValidatingLinks] = useState(false);
+  const [missingUnsubscribeTag, setMissingUnsubscribeTag] = useState(false);
+  const [acknowledgedMissingTag, setAcknowledgedMissingTag] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
   const editorContainerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<Editor | null>(null);
@@ -219,7 +229,20 @@ export default function AdminMailer({ totalCount, confirmedCount, claimedLeadMag
       if (mounted) setEditorReady(true);
     }
 
+    async function loadLists() {
+      try {
+        const res = await fetch("/api/admin/subscriber-lists");
+        if (res.ok) {
+          const data = await res.json();
+          setLists(data ?? []);
+        }
+      } catch {
+        // silent fail
+      }
+    }
+
     initEditor();
+    loadLists();
 
     return () => {
       mounted = false;
@@ -231,8 +254,8 @@ export default function AdminMailer({ totalCount, confirmedCount, claimedLeadMag
   }, []);
 
   const targetLabel = useMemo(
-    () => audienceLabel(audience, totalCount, confirmedCount, claimedLeadMagnetCount),
-    [audience, totalCount, confirmedCount, claimedLeadMagnetCount]
+    () => audienceLabel(audience, totalCount, confirmedCount, claimedLeadMagnetCount, lists),
+    [audience, totalCount, confirmedCount, claimedLeadMagnetCount, lists]
   );
 
   const countryOptions = useMemo(() => uniqueGeo(subscribers.map((s) => s.country)), [subscribers]);
@@ -575,8 +598,38 @@ export default function AdminMailer({ totalCount, confirmedCount, claimedLeadMag
 
     setStatus("sending");
     setFeedback("");
+    setBrokenLinks([]);
 
     try {
+      setValidatingLinks(true);
+      const validationRes = await fetch("/api/admin/validate-links", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ html: content.html }),
+      });
+
+      const validationData = await validationRes.json().catch(() => null);
+      if (validationRes.ok && validationData?.brokenLinks?.length > 0) {
+        setStatus("error");
+        setFeedback(`Found ${validationData.brokenLinks.length} broken link(s). Please fix before sending.`);
+        setBrokenLinks(validationData.brokenLinks);
+        setValidatingLinks(false);
+        return;
+      }
+
+      const hasUnsubscribeTag = checkUnsubscribeTag(content.html);
+      if (!hasUnsubscribeTag && !acknowledgedMissingTag) {
+        setMissingUnsubscribeTag(true);
+        setStatus("idle");
+        setFeedback("");
+        setValidatingLinks(false);
+        return;
+      }
+
+      setValidatingLinks(false);
+      setMissingUnsubscribeTag(false);
+      setAcknowledgedMissingTag(false);
+
       const res = await fetch("/api/admin/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -751,6 +804,15 @@ export default function AdminMailer({ totalCount, confirmedCount, claimedLeadMag
             <option value="pending">Pending subscribers</option>
             <option value="claimed_offer">Claimed digital good</option>
             <option value="all">All subscribers</option>
+            {lists.length > 0 && (
+              <optgroup label="Subscriber Lists">
+                {lists.map((list) => (
+                  <option key={list.id} value={`list:${list.id}`}>
+                    {list.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </div>
 
@@ -1091,10 +1153,10 @@ export default function AdminMailer({ totalCount, confirmedCount, claimedLeadMag
         <div className="flex items-center gap-3">
           <button
             type="submit"
-            disabled={!canEdit || status === "sending"}
+            disabled={!canEdit || status === "sending" || validatingLinks}
             className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-black transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {status === "sending" ? "Sending..." : "Send now"}
+            {validatingLinks ? "Checking links..." : status === "sending" ? "Sending..." : "Send now"}
           </button>
           {feedback && (
             <p
@@ -1106,6 +1168,34 @@ export default function AdminMailer({ totalCount, confirmedCount, claimedLeadMag
             </p>
           )}
         </div>
+        {brokenLinks.length > 0 && (
+          <div className="rounded-lg border border-red-800/60 bg-red-950/40 p-3">
+            <p className="text-xs font-semibold text-red-400 mb-2">Broken links found:</p>
+            <ul className="text-xs text-red-300 space-y-1">
+              {brokenLinks.map((link) => (
+                <li key={link.url}>
+                  <code className="text-red-200 block break-all">{link.url}</code>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {missingUnsubscribeTag && (
+          <div className="rounded-lg border border-amber-800/60 bg-amber-950/40 p-3">
+            <p className="text-xs font-semibold text-amber-400 mb-3">Unsubscribe link missing</p>
+            <p className="text-xs text-amber-300 mb-3">
+              This email does not include an unsubscribe link (<code className="text-amber-200">{"{{unsubscribe_url}}"}</code>). 
+              Adding an unsubscribe link helps minimize spam complaints and improves deliverability.
+            </p>
+            <button
+              type="button"
+              onClick={() => setAcknowledgedMissingTag(true)}
+              className="rounded-lg bg-amber-700/80 px-3 py-1.5 text-xs font-medium text-amber-100 hover:bg-amber-700 transition"
+            >
+              Send anyway
+            </button>
+          </div>
+        )}
         </div>
       </form>
 

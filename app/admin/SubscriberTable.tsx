@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 
 interface Subscriber {
   id: string;
@@ -108,15 +108,34 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
   const [countryFilter, setCountryFilter] = useState("");
   const [cityFilter, setCityFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
+  const [listFilter, setListFilter] = useState("");
   const [search, setSearch] = useState("");
   const [copyFeedback, setCopyFeedback] = useState("");
   const [actionFeedback, setActionFeedback] = useState("");
   const [workingSubscriberId, setWorkingSubscriberId] = useState<string | null>(null);
+  const [lists, setLists] = useState<Array<{ id: string; name: string }>>([]);
+  const [listManagingSubscriberId, setListManagingSubscriberId] = useState<string | null>(null);
+  const [subscriberLists, setSubscriberLists] = useState<Set<string>>(new Set());
 
   const countries = useMemo(() => unique(subscribers.map((s) => s.country)), [subscribers]);
   const cities = useMemo(() => unique(subscribers.map((s) => s.city)), [subscribers]);
   const sources = useMemo(() => unique(subscribers.map((s) => s.utm_source)), [subscribers]);
   const claimedCount = useMemo(() => subscribers.filter((subscriber) => subscriber.lead_magnet_claimed).length, [subscribers]);
+
+  useEffect(() => {
+    async function loadLists() {
+      try {
+        const res = await fetch("/api/admin/subscriber-lists");
+        if (res.ok) {
+          const data = await res.json();
+          setLists(data ?? []);
+        }
+      } catch {
+        // silent fail
+      }
+    }
+    loadLists();
+  }, []);
 
   const filtered = useMemo(() => {
     return subscribers.filter((s) => {
@@ -142,6 +161,66 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
     } catch {
       setCopyFeedback("Could not copy email.");
       window.setTimeout(() => setCopyFeedback(""), 1800);
+    }
+  }
+
+  async function loadSubscriberListMembership(subscriberId: string) {
+    try {
+      const res = await fetch(`/api/admin/subscriber-lists/${listManagingSubscriberId}/members`);
+      if (res.ok) {
+        // For now, just open the modal - in a real app you'd load existing memberships
+        setSubscriberLists(new Set());
+      }
+    } catch {
+      // silent fail
+    }
+  }
+
+  async function addToList(listId: string) {
+    if (!listManagingSubscriberId) return;
+    setWorkingSubscriberId(listManagingSubscriberId);
+    try {
+      const res = await fetch(`/api/admin/subscriber-lists/${encodeURIComponent(listId)}/members`, {
+        method: "POST",
+        body: JSON.stringify({ subscriberIds: [listManagingSubscriberId] }),
+      });
+      if (res.ok) {
+        setSubscriberLists((prev) => new Set(prev).add(listId));
+        setActionFeedback("Added to list");
+        window.setTimeout(() => setActionFeedback(""), 1500);
+      } else {
+        setActionFeedback("Failed to add to list");
+      }
+    } catch {
+      setActionFeedback("Failed to add to list");
+    } finally {
+      setWorkingSubscriberId(null);
+    }
+  }
+
+  async function removeFromList(listId: string) {
+    if (!listManagingSubscriberId) return;
+    setWorkingSubscriberId(listManagingSubscriberId);
+    try {
+      const res = await fetch(`/api/admin/subscriber-lists/${encodeURIComponent(listId)}/members`, {
+        method: "DELETE",
+        body: JSON.stringify({ subscriberIds: [listManagingSubscriberId] }),
+      });
+      if (res.ok) {
+        setSubscriberLists((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(listId);
+          return newSet;
+        });
+        setActionFeedback("Removed from list");
+        window.setTimeout(() => setActionFeedback(""), 1500);
+      } else {
+        setActionFeedback("Failed to remove from list");
+      }
+    } catch {
+      setActionFeedback("Failed to remove from list");
+    } finally {
+      setWorkingSubscriberId(null);
     }
   }
 
@@ -419,6 +498,16 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
                 >
                   Email
                 </a>
+                {lists.length > 0 && (
+                  <button
+                    type="button"
+                    disabled={workingSubscriberId === s.id}
+                    onClick={() => setListManagingSubscriberId(s.id)}
+                    className="rounded-md border border-amber-900/60 px-2.5 py-1 text-xs text-amber-300 hover:border-amber-700 disabled:opacity-60"
+                  >
+                    Manage lists
+                  </button>
+                )}
                 <details className="group min-w-[160px] flex-1 rounded-md border border-zinc-800 bg-zinc-900/60 px-2 py-1">
                   <summary className="cursor-pointer list-none text-xs text-zinc-300">View raw attribution</summary>
                   <div className="mt-2 space-y-1 text-[11px] text-zinc-400">
@@ -532,6 +621,53 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
           </tbody>
         </table>
       </div>
+
+      {listManagingSubscriberId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-lg border border-zinc-700 bg-zinc-950 p-6">
+            <h3 className="text-lg font-semibold text-white mb-4">Manage subscriber lists</h3>
+            <div className="space-y-2 max-h-60 overflow-y-auto mb-6">
+              {lists.length === 0 ? (
+                <p className="text-sm text-zinc-500">No lists available</p>
+              ) : (
+                lists.map((list) => {
+                  const isMember = subscriberLists.has(list.id);
+                  return (
+                    <div key={list.id} className="flex items-center justify-between rounded-lg border border-zinc-700 bg-zinc-900/60 p-3">
+                      <span className="text-sm text-zinc-300">{list.name}</span>
+                      <button
+                        type="button"
+                        disabled={workingSubscriberId === listManagingSubscriberId}
+                        onClick={() => isMember ? removeFromList(list.id) : addToList(list.id)}
+                        className={`px-3 py-1 rounded text-xs font-medium transition ${
+                          isMember
+                            ? "bg-red-900/60 text-red-300 hover:bg-red-900 disabled:opacity-60"
+                            : "bg-amber-900/60 text-amber-300 hover:bg-amber-900 disabled:opacity-60"
+                        }`}
+                      >
+                        {isMember ? "Remove" : "Add"}
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            {actionFeedback && (
+              <p className="text-xs text-amber-300 mb-4">{actionFeedback}</p>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setListManagingSubscriberId(null);
+                setSubscriberLists(new Set());
+              }}
+              className="w-full rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-500"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

@@ -4,7 +4,7 @@ import { getSupabaseClient } from "@/lib/supabase";
 import { canSendCampaigns, getAdminContextFromHeaders } from "@/lib/admin-context";
 import { buildHtmlFromEditor, buildWebVersionUrl, mergeDataForRecipient, renderTemplate, type MergeRecipient } from "@/lib/campaign-personalization";
 
-type Audience = "all" | "confirmed" | "pending" | "claimed_offer";
+type Audience = "all" | "confirmed" | "pending" | "claimed_offer" | string;
 
 type RecipientRow = MergeRecipient & {
   confirmed: boolean;
@@ -153,6 +153,7 @@ function injectTracking(
 
 function parseAudience(value: unknown): Audience {
   if (value === "all" || value === "pending" || value === "claimed_offer") return value;
+  if (typeof value === "string" && value.startsWith("list:")) return value;
   return "confirmed";
 }
 
@@ -319,15 +320,29 @@ export async function POST(req: NextRequest) {
 
       return NextResponse.json({ ok: true, testSent: true, sentCount: 1 });
     }
-
-    const { data, error } = await query;
+let { data, error } = await query;
     if (error) {
       return NextResponse.json({ error: `Failed to load subscribers: ${error.message}` }, { status: 500 });
     }
 
-    const rows = ((data ?? []) as RecipientRow[]).filter(
+    let rows = ((data ?? []) as RecipientRow[]).filter(
       (row) => typeof row.email === "string" && row.email.length > 0
     );
+
+    if (audience.startsWith("list:")) {
+      const listId = audience.slice(5);
+      const { data: listMembers, error: listError } = await supabase
+        .from("subscriber_list_memberships")
+        .select("subscriber_id")
+        .eq("list_id", listId);
+
+      if (listError) {
+        return NextResponse.json({ error: `Failed to load list members: ${listError.message}` }, { status: 500 });
+      }
+
+      const listMemberIds = new Set((listMembers ?? []).map((m) => m.subscriber_id));
+      rows = rows.filter((row) => listMemberIds.has(row.id));
+    }
 
     const audienceRows =
       audience === "claimed_offer"

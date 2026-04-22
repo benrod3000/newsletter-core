@@ -21,7 +21,7 @@ export async function GET(
   const supabase = getSupabaseClient();
   let query = supabase
     .from("subscriber_lists")
-    .select("id, name, description, created_at, updated_at, client_id")
+    .select("id, name, description, opt_in_type, created_at, updated_at, client_id")
     .eq("id", id);
 
   if (admin.role !== "owner" && admin.clientId) {
@@ -62,27 +62,34 @@ export async function PUT(
   }
 
   const body = await req.json();
-  const { name, description } = body;
+  const { name, description, opt_in_type } = body;
 
   if (!name || typeof name !== "string" || !name.trim()) {
     return NextResponse.json({ error: "List name is required." }, { status: 400 });
   }
 
+  const validOptInTypes = ["single", "double"];
+  const updateData: Record<string, unknown> = {
+    name: name.trim(),
+    description: description?.trim() ?? null,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (validOptInTypes.includes(opt_in_type)) {
+    updateData.opt_in_type = opt_in_type;
+  }
+
   const supabase = getSupabaseClient();
   let query = supabase
     .from("subscriber_lists")
-    .update({
-      name: name.trim(),
-      description: description?.trim() ?? null,
-      updated_at: new Date().toISOString(),
-    })
+    .update(updateData)
     .eq("id", id);
 
   if (admin.role !== "owner" && admin.clientId) {
     query = query.eq("client_id", admin.clientId);
   }
 
-  const { data, error } = await query.select("id, name, description, created_at, updated_at, client_id").single();
+  const { data, error } = await query.select("id, name, description, opt_in_type, created_at, updated_at, client_id").single();
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

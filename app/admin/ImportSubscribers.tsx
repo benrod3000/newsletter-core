@@ -10,6 +10,7 @@ interface ImportResult {
 
 export default function ImportSubscribers() {
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const [markConfirmed, setMarkConfirmed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -38,6 +39,8 @@ export default function ImportSubscribers() {
     setError("");
     setResult(null);
 
+    abortControllerRef.current = new AbortController();
+
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -46,6 +49,7 @@ export default function ImportSubscribers() {
       const res = await fetch("/api/admin/subscribers/import", {
         method: "POST",
         body: formData,
+        signal: abortControllerRef.current.signal,
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
@@ -54,9 +58,21 @@ export default function ImportSubscribers() {
         setResult(data);
         if (fileRef.current) fileRef.current.value = "";
       }
-    } catch {
-      setError("Network error during import.");
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        setError("Import stopped by user.");
+      } else {
+        setError("Network error during import.");
+      }
     } finally {
+      setLoading(false);
+      abortControllerRef.current = null;
+    }
+  }
+
+  function handleStopImport() {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
       setLoading(false);
     }
   }
@@ -93,21 +109,41 @@ export default function ImportSubscribers() {
         </label>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={handleImport}
-            disabled={loading}
-            className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-black hover:bg-amber-300 disabled:opacity-60"
-          >
-            {loading ? "Importing…" : "Import"}
-          </button>
-          <button
-            type="button"
-            onClick={downloadTemplate}
-            className="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-500"
-          >
-            Download template
-          </button>
+          {loading ? (
+            <>
+              <button
+                type="button"
+                disabled={true}
+                className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-black cursor-not-allowed opacity-60"
+              >
+                Importing…
+              </button>
+              <button
+                type="button"
+                onClick={handleStopImport}
+                className="rounded-lg border border-red-900/80 px-4 py-2 text-sm font-semibold text-red-300 hover:border-red-700"
+              >
+                Stop import
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={handleImport}
+                className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-black hover:bg-amber-300"
+              >
+                Import
+              </button>
+              <button
+                type="button"
+                onClick={downloadTemplate}
+                className="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-500"
+              >
+                Download template
+              </button>
+            </>
+          )}
         </div>
 
         {error && <p className="text-sm text-red-400">{error}</p>}
