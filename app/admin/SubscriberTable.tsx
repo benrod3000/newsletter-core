@@ -340,7 +340,7 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-zinc-800 bg-zinc-900 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500">
-              <th className="px-4 py-3">Email</th>
+              <th className="px-4 py-3 min-w-[280px]">Email</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Location</th>
               <th className="px-4 py-3">Timezone</th>
@@ -361,7 +361,7 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
                   key={s.id}
                   className="border-b border-zinc-800 last:border-0 hover:bg-zinc-900/60"
                 >
-                  <td className="px-4 py-1.5 text-white leading-tight">
+                  <td className="px-4 py-1.5 text-white leading-tight min-w-[280px]">
                     <p className="break-all">{s.email}</p>
                     {formatFullName(s) && <p className="mt-0.5 text-xs text-zinc-500">{formatFullName(s)}</p>}
                   </td>
