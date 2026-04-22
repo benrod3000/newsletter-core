@@ -87,8 +87,8 @@ export default async function AdminPage() {
             <div className="mb-6 flex items-end justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-widest text-amber-400/80">Dashboard</p>
-                <h1 className="mt-2 text-3xl font-bold text-white">Newsletter Elite Admin</h1>
-                <p className="mt-1 text-sm text-zinc-400">Manage campaigns, subscribers, and lists in one place</p>
+                <h1 className="mt-2 text-4xl font-bold text-white">Newsletter Hub</h1>
+                <p className="mt-1 text-sm text-zinc-400">Manage campaigns, subscribers, and lists all in one place</p>
               </div>
               <div className="hidden text-right sm:block">
                 <p className="text-xs uppercase tracking-wider text-zinc-600">Account</p>
@@ -131,7 +131,7 @@ export default async function AdminPage() {
           </div>
 
           {/* Quick Actions Section */}
-          <div className="mb-6 rounded-lg border border-zinc-700 bg-zinc-900/60 p-6">
+          <div className="mb-6 rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
             <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-zinc-300">Quick Actions</h2>
             <div className="flex flex-wrap gap-3">
               <a href="#campaigns" className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-black hover:bg-amber-400 transition">
