@@ -165,6 +165,41 @@ export async function GET(req: NextRequest) {
 
   const campaignsData = campaigns ?? [];
 
+  const campaignIds = campaignsData.map((campaign) => campaign.id);
+  const statsByCampaign = new Map<string, { opens: number; clicks: number }>();
+
+  if (campaignIds.length > 0) {
+    const { data: events, error: eventsError } = await supabase
+      .from("campaign_events")
+      .select("campaign_id, event_type, email")
+      .in("campaign_id", campaignIds);
+
+    if (eventsError) {
+      return NextResponse.json({ error: `Failed to load campaign stats: ${eventsError.message}` }, { status: 500 });
+    }
+
+    const grouped = new Map<string, { opens: Set<string>; clicks: Set<string> }>();
+    for (const event of events ?? []) {
+      if (!event.campaign_id || !event.email) continue;
+      const current = grouped.get(event.campaign_id) ?? { opens: new Set<string>(), clicks: new Set<string>() };
+      if (event.event_type === "open") current.opens.add(event.email);
+      if (event.event_type === "click") current.clicks.add(event.email);
+      grouped.set(event.campaign_id, current);
+    }
+
+    for (const [campaignId, values] of grouped.entries()) {
+      statsByCampaign.set(campaignId, {
+        opens: values.opens.size,
+        clicks: values.clicks.size,
+      });
+    }
+  }
+
+  const campaignsWithStats = campaignsData.map((campaign) => ({
+    ...campaign,
+    stats: statsByCampaign.get(campaign.id) ?? { opens: 0, clicks: 0 },
+  }));
+
   const clientsQuery = admin.role === "owner"
     ? supabase.from("clients").select("id, name, slug").order("name", { ascending: true })
     : supabase.from("clients").select("id, name, slug").eq("id", admin.clientId ?? "").limit(1);
@@ -175,7 +210,7 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({
-    campaigns: campaignsData,
+    campaigns: campaignsWithStats,
     clients: clients ?? [],
     admin,
   });
