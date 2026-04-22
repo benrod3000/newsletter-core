@@ -5,31 +5,6 @@ import { canEditCampaigns, getAdminContextFromHeaders } from "@/lib/admin-contex
 type CampaignStatus = "draft" | "scheduled" | "sent";
 type Audience = "all" | "confirmed" | "pending";
 
-function isMissingGeoFilterColumn(error: { message?: string } | null | undefined) {
-  if (!error?.message) return false;
-  const msg = error.message.toLowerCase();
-  return msg.includes("campaigns.geo_filter") && msg.includes("does not exist");
-}
-
-function hasGeoFilterTargeting(geoFilter: {
-  country: string | null;
-  regions: string[];
-  cities: string[];
-  center_lat: number | null;
-  center_lng: number | null;
-  radius_km: number | null;
-  radius_value: number | null;
-  radius_unit: "km" | "mi";
-}) {
-  return Boolean(
-    geoFilter.country ||
-      geoFilter.regions.length ||
-      geoFilter.cities.length ||
-      geoFilter.radius_km ||
-      geoFilter.radius_value
-  );
-}
-
 function parseGeoFilter(value: unknown) {
   if (!value || typeof value !== "object") {
     return {
@@ -184,34 +159,11 @@ export async function GET(req: NextRequest) {
   }
 
   const { data: campaigns, error } = await campaignsQuery;
-  if (error && !isMissingGeoFilterColumn(error)) {
+  if (error) {
     return NextResponse.json({ error: `Failed to load campaigns: ${error.message}` }, { status: 500 });
   }
 
-  let fallbackNotice: string | null = null;
-  let campaignsData = campaigns ?? [];
-
-  if (error && isMissingGeoFilterColumn(error)) {
-    fallbackNotice = "Campaign geo targeting is unavailable until migration 009 is applied.";
-    let fallbackQuery = supabase
-      .from("campaigns")
-      .select("id, client_id, title, subject, audience, status, editor_html, editor_css, plain_text, scheduled_for, sent_count, last_sent_at, last_test_sent_at, last_test_recipient, updated_at")
-      .order("updated_at", { ascending: false });
-
-    if (admin.role !== "owner" && admin.clientId) {
-      fallbackQuery = fallbackQuery.eq("client_id", admin.clientId);
-    }
-
-    const { data: fallbackCampaigns, error: fallbackError } = await fallbackQuery;
-    if (fallbackError) {
-      return NextResponse.json({ error: `Failed to load campaigns: ${fallbackError.message}` }, { status: 500 });
-    }
-
-    campaignsData = (fallbackCampaigns ?? []).map((campaign) => ({
-      ...campaign,
-      geo_filter: {},
-    }));
-  }
+  const campaignsData = campaigns ?? [];
 
   const clientsQuery = admin.role === "owner"
     ? supabase.from("clients").select("id, name, slug").order("name", { ascending: true })
@@ -226,7 +178,6 @@ export async function GET(req: NextRequest) {
     campaigns: campaignsData,
     clients: clients ?? [],
     admin,
-    warning: fallbackNotice,
   });
 }
 
@@ -292,20 +243,6 @@ export async function POST(req: NextRequest) {
     created_by: admin.username,
   };
 
-  const fallbackPayload = {
-    client_id: clientId,
-    title,
-    subject,
-    audience,
-    status,
-    editor_html: editorHtml,
-    editor_css: editorCss,
-    plain_text: plainText,
-    scheduled_for: status === "scheduled" ? scheduledFor : null,
-    updated_by: admin.username,
-    created_by: admin.username,
-  };
-
   if (id) {
     let update = supabase.from("campaigns").update(payload).eq("id", id).select("*").single();
     if (admin.role !== "owner" && admin.clientId) {
@@ -320,32 +257,6 @@ export async function POST(req: NextRequest) {
 
     const { data, error } = await update;
     if (error) {
-      if (isMissingGeoFilterColumn(error)) {
-        if (hasGeoFilterTargeting(geoFilter)) {
-          return NextResponse.json(
-            { error: "Geo targeting requires migration 009. Please run migration 009_add_campaign_geo_filter.sql." },
-            { status: 422 }
-          );
-        }
-
-        let retry = supabase.from("campaigns").update(fallbackPayload).eq("id", id).select("*").single();
-        if (admin.role !== "owner" && admin.clientId) {
-          retry = supabase
-            .from("campaigns")
-            .update(fallbackPayload)
-            .eq("id", id)
-            .eq("client_id", admin.clientId)
-            .select("*")
-            .single();
-        }
-
-        const { data: retryData, error: retryError } = await retry;
-        if (retryError) {
-          return NextResponse.json({ error: `Failed to update campaign: ${retryError.message}` }, { status: 500 });
-        }
-
-        return NextResponse.json({ campaign: { ...retryData, geo_filter: {} } });
-      }
       return NextResponse.json({ error: `Failed to update campaign: ${error.message}` }, { status: 500 });
     }
 
@@ -359,26 +270,6 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error) {
-    if (isMissingGeoFilterColumn(error)) {
-      if (hasGeoFilterTargeting(geoFilter)) {
-        return NextResponse.json(
-          { error: "Geo targeting requires migration 009. Please run migration 009_add_campaign_geo_filter.sql." },
-          { status: 422 }
-        );
-      }
-
-      const { data: fallbackData, error: fallbackError } = await supabase
-        .from("campaigns")
-        .insert([{ ...fallbackPayload, created_by: admin.username }])
-        .select("*")
-        .single();
-
-      if (fallbackError) {
-        return NextResponse.json({ error: `Failed to create campaign: ${fallbackError.message}` }, { status: 500 });
-      }
-
-      return NextResponse.json({ campaign: { ...fallbackData, geo_filter: {} } }, { status: 201 });
-    }
     return NextResponse.json({ error: `Failed to create campaign: ${error.message}` }, { status: 500 });
   }
 
