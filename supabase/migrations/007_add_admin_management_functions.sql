@@ -59,7 +59,7 @@ begin
   insert into public.admin_users (username, password_hash, role, client_id)
   values (
     lower(btrim(p_username)),
-    crypt(p_password, gen_salt('bf')),
+    extensions.crypt(p_password, extensions.gen_salt('bf')),
     p_role,
     p_client_id
   )

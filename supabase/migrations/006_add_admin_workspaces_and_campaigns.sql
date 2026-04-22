@@ -89,7 +89,7 @@ as $$
   from public.admin_users au
   where au.active = true
     and au.username = p_username
-    and au.password_hash = crypt(p_password, au.password_hash)
+    and au.password_hash = extensions.crypt(p_password, au.password_hash)
   limit 1;
 $$;
 

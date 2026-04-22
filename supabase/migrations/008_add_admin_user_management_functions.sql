@@ -37,7 +37,7 @@ begin
   end if;
 
   update public.admin_users
-  set password_hash = crypt(p_password, gen_salt('bf')),
+  set password_hash = extensions.crypt(p_password, extensions.gen_salt('bf')),
       updated_at = now()
   where id = p_user_id;
 
