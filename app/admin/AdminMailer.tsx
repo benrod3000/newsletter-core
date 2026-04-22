@@ -78,6 +78,13 @@ const DEFAULT_COMPONENTS = `
       <td align="center">
         <table width="640" cellpadding="0" cellspacing="0" role="presentation" style="max-width:640px;background:#18181b;border:1px solid #27272a;border-radius:12px;overflow:hidden;">
           <tr>
+            <td style="padding:14px 28px 0;text-align:right;">
+              <a href="{{web_version_url|#}}" style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.4;color:#a1a1aa;text-decoration:underline;">
+                View in browser
+              </a>
+            </td>
+          </tr>
+          <tr>
             <td style="padding:20px 28px;border-bottom:1px solid #27272a;">
               <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#fbbf24;">
                 Newsletter Services
