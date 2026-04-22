@@ -278,6 +278,9 @@ export default function EmbedCodePanel() {
         <p className="mt-1 text-xs text-zinc-500">
           Use this for lead magnets like a free song, sample pack, or media kit link delivered after confirmation.
         </p>
+        <p className="mt-1 text-xs text-zinc-500">
+          The download button routes through our tracker first so we can refresh subscriber geolocation and log the claim, then we forward to your file URL with city, region, country, timezone, locale, UTM source, landing path, and referrer attached.
+        </p>
         <div className="mt-2 grid gap-3 sm:grid-cols-2">
           <input
             type="text"

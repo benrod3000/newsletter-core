@@ -6,6 +6,7 @@ interface Subscriber {
   id: string;
   email: string;
   confirmed: boolean;
+  lead_magnet_claimed: boolean;
   first_name: string | null;
   last_name: string | null;
   date_of_birth: string | null;
@@ -75,7 +76,7 @@ function escapeCsv(value: string | null | boolean | number): string {
 
 function exportToCsv(rows: Subscriber[], filename: string) {
   const headers = [
-    "email", "confirmed", "first_name", "last_name", "date_of_birth", "phone_number",
+    "email", "confirmed", "lead_magnet_claimed", "first_name", "last_name", "date_of_birth", "phone_number",
     "country", "region", "city", "latitude", "longitude", "timezone", "locale", "utm_source", "utm_medium",
     "utm_campaign", "referrer", "landing_path", "created_at",
   ];
@@ -83,7 +84,7 @@ function exportToCsv(rows: Subscriber[], filename: string) {
     headers.join(","),
     ...rows.map((s) =>
       [
-        s.email, s.confirmed, s.first_name, s.last_name, s.date_of_birth, s.phone_number,
+        s.email, s.confirmed, s.lead_magnet_claimed, s.first_name, s.last_name, s.date_of_birth, s.phone_number,
         s.country, s.region, s.city, s.latitude, s.longitude, s.timezone, s.locale, s.utm_source,
         s.utm_medium, s.utm_campaign, s.referrer, s.landing_path, s.created_at,
       ]
@@ -103,26 +104,33 @@ function exportToCsv(rows: Subscriber[], filename: string) {
 
 export default function SubscriberTable({ subscribers }: { subscribers: Subscriber[] }) {
   const [statusFilter, setStatusFilter] = useState<"all" | "confirmed" | "pending">("all");
+  const [claimFilter, setClaimFilter] = useState<"all" | "claimed" | "unclaimed">("all");
   const [countryFilter, setCountryFilter] = useState("");
+  const [cityFilter, setCityFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
   const [search, setSearch] = useState("");
   const [copyFeedback, setCopyFeedback] = useState("");
 
   const countries = useMemo(() => unique(subscribers.map((s) => s.country)), [subscribers]);
+  const cities = useMemo(() => unique(subscribers.map((s) => s.city)), [subscribers]);
   const sources = useMemo(() => unique(subscribers.map((s) => s.utm_source)), [subscribers]);
+  const claimedCount = useMemo(() => subscribers.filter((subscriber) => subscriber.lead_magnet_claimed).length, [subscribers]);
 
   const filtered = useMemo(() => {
     return subscribers.filter((s) => {
       if (statusFilter === "confirmed" && !s.confirmed) return false;
       if (statusFilter === "pending" && s.confirmed) return false;
+      if (claimFilter === "claimed" && !s.lead_magnet_claimed) return false;
+      if (claimFilter === "unclaimed" && s.lead_magnet_claimed) return false;
       if (countryFilter && s.country !== countryFilter) return false;
+      if (cityFilter && s.city !== cityFilter) return false;
       if (sourceFilter && s.utm_source !== sourceFilter) return false;
       if (search && !s.email.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
-  }, [subscribers, statusFilter, countryFilter, sourceFilter, search]);
+  }, [subscribers, statusFilter, claimFilter, countryFilter, cityFilter, sourceFilter, search]);
 
-  const hasFilters = statusFilter !== "all" || countryFilter || sourceFilter || search;
+  const hasFilters = statusFilter !== "all" || claimFilter !== "all" || countryFilter || cityFilter || sourceFilter || search;
 
   async function copyEmail(email: string) {
     try {
@@ -142,6 +150,7 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
           <p className="text-xs font-semibold uppercase tracking-widest text-amber-400">Subscribers</p>
           <h2 className="mt-1 text-lg font-semibold text-white">Audience list</h2>
           <p className="mt-1 text-sm text-zinc-500">Filter, inspect attribution, and export subscriber data.</p>
+          <p className="mt-1 text-xs text-zinc-600">{claimedCount} subscribers have claimed a digital good.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -196,6 +205,29 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
           </select>
         )}
 
+        {cities.length > 0 && (
+          <select
+            value={cityFilter}
+            onChange={(e) => setCityFilter(e.target.value)}
+            className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-300 outline-none focus:border-amber-400"
+          >
+            <option value="">All cities</option>
+            {cities.map((city) => (
+              <option key={city} value={city}>{city}</option>
+            ))}
+          </select>
+        )}
+
+        <select
+          value={claimFilter}
+          onChange={(e) => setClaimFilter(e.target.value as "all" | "claimed" | "unclaimed")}
+          className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-300 outline-none focus:border-amber-400"
+        >
+          <option value="all">All downloads</option>
+          <option value="claimed">Claimed digital good</option>
+          <option value="unclaimed">No claim yet</option>
+        </select>
+
         {sources.length > 0 && (
           <select
             value={sourceFilter}
@@ -213,7 +245,9 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
           <button
             onClick={() => {
               setStatusFilter("all");
+              setClaimFilter("all");
               setCountryFilter("");
+              setCityFilter("");
               setSourceFilter("");
               setSearch("");
             }}
@@ -256,15 +290,22 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
                     <p className="mt-0.5 text-[11px] text-zinc-500">{formatFullName(s)}</p>
                   )}
                 </div>
-                {s.confirmed ? (
-                  <span className="rounded-full bg-emerald-900/60 px-2 py-0.5 text-[11px] font-medium text-emerald-300">
-                    Confirmed
-                  </span>
-                ) : (
-                  <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[11px] font-medium text-zinc-400">
-                    Pending
-                  </span>
-                )}
+                <div className="flex flex-wrap justify-end gap-1">
+                  {s.confirmed ? (
+                    <span className="rounded-full bg-emerald-900/60 px-2 py-0.5 text-[11px] font-medium text-emerald-300">
+                      Confirmed
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[11px] font-medium text-zinc-400">
+                      Pending
+                    </span>
+                  )}
+                  {s.lead_magnet_claimed && (
+                    <span className="rounded-full bg-amber-950/80 px-2 py-0.5 text-[11px] font-medium text-amber-300">
+                      Claimed offer
+                    </span>
+                  )}
+                </div>
               </div>
 
               <dl className="mt-3 grid grid-cols-1 gap-2 text-xs">
@@ -342,6 +383,7 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
             <tr className="border-b border-zinc-800 bg-zinc-900 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500">
               <th className="px-4 py-3 min-w-[280px]">Email</th>
               <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Digital good</th>
               <th className="px-4 py-3">Location</th>
               <th className="px-4 py-3">Timezone</th>
               <th className="px-4 py-3">Source</th>
@@ -351,7 +393,7 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-zinc-600">
+                <td colSpan={7} className="px-4 py-8 text-center text-zinc-600">
                   No subscribers match the current filters.
                 </td>
               </tr>
@@ -374,6 +416,15 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
                       <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs font-medium text-zinc-500">
                         Pending
                       </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-1.5 leading-tight text-zinc-400">
+                    {s.lead_magnet_claimed ? (
+                      <span className="rounded-full bg-amber-950/80 px-2 py-0.5 text-xs font-medium text-amber-300">
+                        Claimed
+                      </span>
+                    ) : (
+                      <span className="text-zinc-600">-</span>
                     )}
                   </td>
                   <td className="px-4 py-1.5 text-zinc-400 leading-tight">

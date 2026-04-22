@@ -28,7 +28,28 @@ export default async function AdminPage() {
 
   const { data, error } = await query;
 
-  const subscribers = data ?? [];
+  const baseSubscribers = data ?? [];
+  const subscriberIds = baseSubscribers.map((subscriber) => subscriber.id);
+
+  let claimedLeadMagnetIds = new Set<string>();
+  if (subscriberIds.length > 0) {
+    const { data: clickEvents } = await supabase
+      .from("campaign_events")
+      .select("subscriber_id, metadata")
+      .eq("event_type", "click")
+      .in("subscriber_id", subscriberIds);
+
+    claimedLeadMagnetIds = new Set(
+      (clickEvents ?? [])
+        .filter((event) => event.subscriber_id && event.metadata?.tracking_kind === "lead_magnet")
+        .map((event) => event.subscriber_id as string)
+    );
+  }
+
+  const subscribers = baseSubscribers.map((subscriber) => ({
+    ...subscriber,
+    lead_magnet_claimed: claimedLeadMagnetIds.has(subscriber.id),
+  }));
   const confirmedCount = subscribers.filter((s) => s.confirmed).length;
   const pendingCount = subscribers.length - confirmedCount;
   const confirmationRate = subscribers.length > 0 ? Math.round((confirmedCount / subscribers.length) * 100) : 0;
