@@ -8,6 +8,9 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
+const CONSENT_VERSION = "2026-04-22";
+const CONSENT_COPY = "I agree to receive marketing emails, email performance tracking, and location-based audience analytics as described in the privacy notice.";
+
 // Handle preflight requests
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
@@ -299,9 +302,18 @@ export async function POST(req: NextRequest) {
     const phone_number = cleanPhone(body.phone_number);
     const lead_title = cleanText(body.lead_title, 120);
     const lead_url = cleanUrl(body.lead_url, 500);
-  // Browser geolocation (optional, client-provided)
-  const browser_latitude = parseCoordinate(body.browser_latitude);
-  const browser_longitude = parseCoordinate(body.browser_longitude);
+    const consent_email_marketing = body.consent_email_marketing === true;
+    const consent_analytics_tracking = body.consent_analytics_tracking === true;
+    // Browser geolocation (optional, client-provided)
+    const browser_latitude = parseCoordinate(body.browser_latitude);
+    const browser_longitude = parseCoordinate(body.browser_longitude);
+
+    if (!consent_email_marketing || !consent_analytics_tracking) {
+      return NextResponse.json(
+        { error: "Marketing and analytics consent are required before signup." },
+        { status: 422, headers: CORS_HEADERS }
+      );
+    }
     // 2. Validate email
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json({ error: "Invalid email address." }, { status: 422, headers: CORS_HEADERS });
@@ -373,6 +385,12 @@ export async function POST(req: NextRequest) {
           last_name,
           date_of_birth,
           phone_number,
+          consent_email_marketing,
+          consent_analytics_tracking,
+          consented_at: new Date().toISOString(),
+          consent_version: CONSENT_VERSION,
+          consent_text: CONSENT_COPY,
+          consent_source: landing_path,
           created_at: new Date().toISOString(),
         },
       ])
@@ -395,6 +413,18 @@ export async function POST(req: NextRequest) {
         if (existing.confirmed) {
           return NextResponse.json({ ok: true, alreadyConfirmed: true }, { status: 200, headers: CORS_HEADERS });
         }
+
+        await supabase
+          .from("subscribers")
+          .update({
+            consent_email_marketing,
+            consent_analytics_tracking,
+            consented_at: new Date().toISOString(),
+            consent_version: CONSENT_VERSION,
+            consent_text: CONSENT_COPY,
+            consent_source: landing_path,
+          })
+          .eq("email", email);
 
         const resendResult = await sendConfirmationEmail({
           email,

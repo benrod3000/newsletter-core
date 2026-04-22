@@ -166,7 +166,7 @@ export async function GET(req: NextRequest) {
   const campaignsData = campaigns ?? [];
 
   const campaignIds = campaignsData.map((campaign) => campaign.id);
-  const statsByCampaign = new Map<string, { opens: number; clicks: number }>();
+  const statsByCampaign = new Map<string, { opens: number; clicks: number; openRate: number; clickRate: number }>();
 
   if (campaignIds.length > 0) {
     const { data: events, error: eventsError } = await supabase
@@ -188,16 +188,20 @@ export async function GET(req: NextRequest) {
     }
 
     for (const [campaignId, values] of grouped.entries()) {
+      const campaign = campaignsData.find((item) => item.id === campaignId);
+      const sentCount = campaign?.sent_count ?? 0;
       statsByCampaign.set(campaignId, {
         opens: values.opens.size,
         clicks: values.clicks.size,
+        openRate: sentCount > 0 ? Math.round((values.opens.size / sentCount) * 100) : 0,
+        clickRate: sentCount > 0 ? Math.round((values.clicks.size / sentCount) * 100) : 0,
       });
     }
   }
 
   const campaignsWithStats = campaignsData.map((campaign) => ({
     ...campaign,
-    stats: statsByCampaign.get(campaign.id) ?? { opens: 0, clicks: 0 },
+    stats: statsByCampaign.get(campaign.id) ?? { opens: 0, clicks: 0, openRate: 0, clickRate: 0 },
   }));
 
   const clientsQuery = admin.role === "owner"

@@ -48,6 +48,8 @@ export default function Home() {
   const [lastName, setLastName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [marketingConsent, setMarketingConsent] = useState(false);
+  const [trackingConsent, setTrackingConsent] = useState(false);
   const [browserGeo, setBrowserGeo] = useState<{ latitude: number; longitude: number } | null>(null);
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState("");
@@ -68,6 +70,11 @@ export default function Home() {
       setMessage("Please enter a valid email address.");
       return;
     }
+    if (!marketingConsent || !trackingConsent) {
+      setStatus("error");
+      setMessage("Please confirm email and analytics consent before joining.");
+      return;
+    }
 
     setStatus("loading");
     try {
@@ -80,6 +87,8 @@ export default function Home() {
           last_name: lastName,
           date_of_birth: dateOfBirth,
           phone_number: phoneNumber,
+          consent_email_marketing: marketingConsent,
+          consent_analytics_tracking: trackingConsent,
           ...getClientContext(),
           // Include browser geolocation if available (will override server IP geo if more accurate)
           browser_latitude: browserGeo?.latitude,
@@ -217,6 +226,31 @@ export default function Home() {
                 </label>
               </div>
             </details>
+
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-3 text-sm text-zinc-300">
+              <label className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={marketingConsent}
+                  onChange={(e) => setMarketingConsent(e.target.checked)}
+                  className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-amber-400 focus:ring-amber-400"
+                />
+                <span>
+                  I agree to receive marketing emails and understand I can unsubscribe at any time.
+                </span>
+              </label>
+              <label className="mt-2 flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={trackingConsent}
+                  onChange={(e) => setTrackingConsent(e.target.checked)}
+                  className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-amber-400 focus:ring-amber-400"
+                />
+                <span>
+                  I agree to email performance tracking and location-based audience analytics as described in the <a href="/privacy" className="text-amber-400 underline underline-offset-2 hover:text-amber-300">privacy notice</a>.
+                </span>
+              </label>
+            </div>
           </form>
         ) : (
           <div className="rounded-lg border border-zinc-700 bg-zinc-900 px-6 py-5">
@@ -233,7 +267,7 @@ export default function Home() {
 
         {/* Fine print */}
         <p className="mt-6 text-xs text-zinc-600">
-          No spam. No sharing. Unsubscribe any time.
+          No spam. No sharing. Unsubscribe any time. Read our <a href="/privacy" className="text-amber-400 underline underline-offset-2 hover:text-amber-300">privacy notice</a>.
         </p>
       </div>
     </main>

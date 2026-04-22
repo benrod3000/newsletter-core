@@ -179,7 +179,7 @@ export default function EmbedCodePanel() {
   );
 
   const embedUrl = `${resolvedOrigin}/embed${query}`;
-  const iframeHeight = includeProfileFields ? 360 : 190;
+  const iframeHeight = includeProfileFields ? 470 : 300;
   const iframeSnippet = iframeCode(resolvedOrigin, query, "Newsletter signup", iframeHeight);
   const scriptSnippet = scriptCode(resolvedOrigin, query, iframeHeight);
   const bgTextContrast = contrastRatio(text, bg);

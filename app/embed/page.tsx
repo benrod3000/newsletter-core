@@ -101,6 +101,8 @@ export default function EmbedPage() {
     inputBg: "#2a1710",
   });
   const [company, setCompany] = useState("");
+  const [marketingConsent, setMarketingConsent] = useState(false);
+  const [trackingConsent, setTrackingConsent] = useState(false);
   const [browserGeo, setBrowserGeo] = useState<{ latitude: number; longitude: number } | null>(null);
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState("");
@@ -132,6 +134,11 @@ export default function EmbedPage() {
       setMessage("Please enter a valid email address.");
       return;
     }
+    if (!marketingConsent || !trackingConsent) {
+      setStatus("error");
+      setMessage("Please confirm email and analytics consent before joining.");
+      return;
+    }
 
     setStatus("loading");
     try {
@@ -145,6 +152,8 @@ export default function EmbedPage() {
           last_name: lastName,
           date_of_birth: dateOfBirth,
           phone_number: phoneNumber,
+          consent_email_marketing: marketingConsent,
+          consent_analytics_tracking: trackingConsent,
           ...getClientContext(),
           browser_latitude: browserGeo?.latitude,
           browser_longitude: browserGeo?.longitude,
@@ -313,6 +322,27 @@ export default function EmbedPage() {
                   )}
                 </div>
               )}
+
+              <div className="rounded-lg border px-3 py-2 text-xs" style={embedStyle === "minimal" ? minimalInputStyle : inputStyle}>
+                <label className="flex items-start gap-2" style={helperTextStyle}>
+                  <input
+                    type="checkbox"
+                    checked={marketingConsent}
+                    onChange={(e) => setMarketingConsent(e.target.checked)}
+                    className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-amber-400 focus:ring-amber-400"
+                  />
+                  <span>I agree to receive marketing emails and can unsubscribe at any time.</span>
+                </label>
+                <label className="mt-2 flex items-start gap-2" style={helperTextStyle}>
+                  <input
+                    type="checkbox"
+                    checked={trackingConsent}
+                    onChange={(e) => setTrackingConsent(e.target.checked)}
+                    className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-amber-400 focus:ring-amber-400"
+                  />
+                  <span>I agree to email performance tracking and location-based analytics in the <a href="/privacy" target="_blank" rel="noreferrer" style={{ color: theme.accent, textDecoration: "underline" }}>privacy notice</a>.</span>
+                </label>
+              </div>
             </div>
             <label htmlFor="embed-company" className="sr-only">
               Company
@@ -350,7 +380,7 @@ export default function EmbedPage() {
         )}
 
         <p className="mt-3 text-xs" style={helperTextStyle}>
-          No spam. No sharing. Unsubscribe any time.
+          No spam. No sharing. Unsubscribe any time. <a href="/privacy" target="_blank" rel="noreferrer" style={{ color: theme.accent, textDecoration: "underline" }}>Privacy notice</a>.
         </p>
       </div>
     </div>

@@ -40,6 +40,8 @@ interface Campaign {
   stats?: {
     opens: number;
     clicks: number;
+    openRate: number;
+    clickRate: number;
   };
   updated_at: string;
 }
@@ -1122,6 +1124,8 @@ export default function AdminMailer({ totalCount, confirmedCount, claimedLeadMag
                 <th className="py-2 pr-3">Subject</th>
                 <th className="py-2 pr-3">Opens</th>
                 <th className="py-2 pr-3">Clicks</th>
+                <th className="py-2 pr-3">Open rate</th>
+                <th className="py-2 pr-3">Click rate</th>
                 <th className="py-2 pr-3">Updated</th>
                 <th className="py-2 pr-3">Actions</th>
               </tr>
@@ -1129,7 +1133,7 @@ export default function AdminMailer({ totalCount, confirmedCount, claimedLeadMag
             <tbody>
               {campaigns.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-4 text-zinc-600">No campaigns yet.</td>
+                  <td colSpan={9} className="py-4 text-zinc-600">No campaigns yet.</td>
                 </tr>
               ) : (
                 campaigns.map((campaign) => (
@@ -1140,6 +1144,8 @@ export default function AdminMailer({ totalCount, confirmedCount, claimedLeadMag
                       <td className="py-2 pr-3 text-zinc-400">{campaign.subject}</td>
                       <td className="py-2 pr-3 text-zinc-400">{campaign.status === "sent" ? (campaign.stats?.opens ?? 0) : "-"}</td>
                       <td className="py-2 pr-3 text-zinc-400">{campaign.status === "sent" ? (campaign.stats?.clicks ?? 0) : "-"}</td>
+                      <td className="py-2 pr-3 text-zinc-400">{campaign.status === "sent" ? `${campaign.stats?.openRate ?? 0}%` : "-"}</td>
+                      <td className="py-2 pr-3 text-zinc-400">{campaign.status === "sent" ? `${campaign.stats?.clickRate ?? 0}%` : "-"}</td>
                       <td className="py-2 pr-3 text-zinc-500">{new Date(campaign.updated_at).toLocaleString()}</td>
                       <td className="py-2 pr-3">
                         <div className="flex items-center gap-1.5">
@@ -1168,7 +1174,7 @@ export default function AdminMailer({ totalCount, confirmedCount, claimedLeadMag
                     </tr>
                     {expandedReportId === campaign.id && (
                       <tr>
-                        <td colSpan={7} className="pb-3 pt-1">
+                        <td colSpan={9} className="pb-3 pt-1">
                           <CampaignReportPanel
                             report={reportCache[campaign.id] as Parameters<typeof CampaignReportPanel>[0]["report"]}
                             loading={reportLoading.has(campaign.id)}
