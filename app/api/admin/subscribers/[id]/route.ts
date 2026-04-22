@@ -6,6 +6,46 @@ function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+async function logGdprAuditEvent({
+  req,
+  action,
+  subscriberId,
+  subscriberEmail,
+  clientId,
+  adminUsername,
+  adminRole,
+}: {
+  req: NextRequest;
+  action: "export" | "delete";
+  subscriberId: string;
+  subscriberEmail: string;
+  clientId: string | null;
+  adminUsername: string;
+  adminRole: string;
+}) {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase.from("gdpr_audit_events").insert({
+    action,
+    subscriber_id: subscriberId,
+    subscriber_email: subscriberEmail,
+    client_id: clientId,
+    admin_username: adminUsername,
+    admin_role: adminRole,
+    metadata: {
+      user_agent: req.headers.get("user-agent"),
+      x_forwarded_for: req.headers.get("x-forwarded-for"),
+      x_real_ip: req.headers.get("x-real-ip"),
+    },
+  });
+  if (error) {
+    console.error("Failed to log GDPR audit event", {
+      action,
+      subscriberId,
+      error: error.message,
+    });
+  }
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -48,6 +88,16 @@ export async function GET(
   if (eventsError) {
     return NextResponse.json({ error: `Failed to load subscriber events: ${eventsError.message}` }, { status: 500 });
   }
+
+  await logGdprAuditEvent({
+    req,
+    action: "export",
+    subscriberId: subscriber.id,
+    subscriberEmail: subscriber.email,
+    clientId: subscriber.client_id,
+    adminUsername: admin.username,
+    adminRole: admin.role,
+  });
 
   return NextResponse.json({
     exportedAt: new Date().toISOString(),
@@ -115,6 +165,16 @@ export async function DELETE(
   if (deleteError) {
     return NextResponse.json({ error: `Failed to delete subscriber: ${deleteError.message}` }, { status: 500 });
   }
+
+  await logGdprAuditEvent({
+    req,
+    action: "delete",
+    subscriberId: subscriber.id,
+    subscriberEmail: subscriber.email,
+    clientId: subscriber.client_id,
+    adminUsername: admin.username,
+    adminRole: admin.role,
+  });
 
   return NextResponse.json({ ok: true, deletedSubscriberId: id });
 }
