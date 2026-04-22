@@ -55,9 +55,9 @@ export default async function AdminPage() {
             </p>
           )}
 
-          <div className="grid gap-8 md:grid-cols-[1fr,1fr]">
+          <div className="grid gap-8 md:grid-cols-2 md:items-start">
             {/* Left Column */}
-            <div className="space-y-8">
+            <div className="min-w-0 space-y-8">
               {role === "owner" && (
                 <div id="workspaces" className="scroll-mt-40">
                   <ClientWorkspaceManager />
@@ -70,7 +70,7 @@ export default async function AdminPage() {
             </div>
 
             {/* Right Column */}
-            <div id="campaigns" className="scroll-mt-40">
+            <div id="campaigns" className="min-w-0 scroll-mt-40">
               <AdminMailer
                 totalCount={subscribers.length}
                 confirmedCount={confirmedCount}
