@@ -242,15 +242,17 @@ export default function EmbedPage() {
                   )}
                   {hasField("date_of_birth") && (
                     <label className="block text-[11px]" style={helperTextStyle}>
-                      <span className="mb-1 block">Date of birth</span>
+                      <span className="mb-1 block">Birthday</span>
                       <input
-                        type="date"
+                        type="text"
                         value={dateOfBirth}
                         onChange={(e) => setDateOfBirth(e.target.value)}
+                        inputMode="numeric"
+                        placeholder="MM/DD/YYYY"
                         className={profileInputClass}
                         style={embedStyle === "minimal" ? minimalInputStyle : inputStyle}
                       />
-                      <span className="mt-1 block">Optional. Used for birthday campaigns.</span>
+                      <span className="mt-1 block">Optional. Share your birthday for birthday campaigns and offers.</span>
                     </label>
                   )}
                   {hasField("phone_number") && (

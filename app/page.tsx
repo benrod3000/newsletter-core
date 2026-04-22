@@ -147,14 +147,16 @@ export default function Home() {
                   className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 outline-none focus:border-amber-400"
                 />
                 <label className="block text-xs text-zinc-400">
-                  <span className="mb-1 block">Date of birth</span>
+                  <span className="mb-1 block">Birthday</span>
                   <input
-                    type="date"
+                    type="text"
                     value={dateOfBirth}
                     onChange={(e) => setDateOfBirth(e.target.value)}
-                    className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-400"
+                    inputMode="numeric"
+                    placeholder="MM/DD/YYYY"
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 outline-none focus:border-amber-400"
                   />
-                  <span className="mt-1 block text-[11px] text-zinc-500">Optional. Used for birthday campaigns.</span>
+                  <span className="mt-1 block text-[11px] text-zinc-500">Optional. Share your birthday for birthday campaigns and offers.</span>
                 </label>
                 <input
                   type="tel"
