@@ -278,6 +278,20 @@ export default function EmbedPage() {
                       style={embedStyle === "minimal" ? minimalInputStyle : inputStyle}
                     />
                   )}
+                  {hasField("phone_number") && (
+                    <input
+                      id="embed-phone-number"
+                      name="phone_number"
+                      type="tel"
+                      autoComplete="tel"
+                      inputMode="tel"
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(e.target.value)}
+                      placeholder="Phone number"
+                      className={profileInputClass}
+                      style={embedStyle === "minimal" ? minimalInputStyle : inputStyle}
+                    />
+                  )}
                   {hasField("date_of_birth") && (
                     <label className="block text-[11px]" style={helperTextStyle}>
                       <span className="mb-1 block" id="embed-birthday-label">Birthday</span>
@@ -296,20 +310,6 @@ export default function EmbedPage() {
                       />
                       <span className="mt-1 block">Optional. Share your birthday for birthday campaigns and offers.</span>
                     </label>
-                  )}
-                  {hasField("phone_number") && (
-                    <input
-                      id="embed-phone-number"
-                      name="phone_number"
-                      type="tel"
-                      autoComplete="tel"
-                      inputMode="tel"
-                      value={phoneNumber}
-                      onChange={(e) => setPhoneNumber(e.target.value)}
-                      placeholder="Phone number"
-                      className={profileInputClass}
-                      style={embedStyle === "minimal" ? minimalInputStyle : inputStyle}
-                    />
                   )}
                 </div>
               )}

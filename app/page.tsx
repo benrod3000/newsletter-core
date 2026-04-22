@@ -188,6 +188,17 @@ export default function Home() {
                   placeholder="Last name"
                   className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 outline-none focus:border-amber-400"
                 />
+                <input
+                  id="phone-number"
+                  name="phone_number"
+                  type="tel"
+                  autoComplete="tel"
+                  inputMode="tel"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  placeholder="Phone number"
+                  className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 outline-none focus:border-amber-400"
+                />
                 <label className="block text-xs text-zinc-400">
                   <span className="mb-1 block" id="birthday-label">Birthday</span>
                   <input
@@ -204,17 +215,6 @@ export default function Home() {
                   />
                   <span className="mt-1 block text-[11px] text-zinc-500">Optional. Share your birthday for birthday campaigns and offers.</span>
                 </label>
-                <input
-                  id="phone-number"
-                  name="phone_number"
-                  type="tel"
-                  autoComplete="tel"
-                  inputMode="tel"
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
-                  placeholder="Phone number"
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 outline-none focus:border-amber-400"
-                />
               </div>
             </details>
           </form>
