@@ -227,27 +227,27 @@ export default function Home() {
               </div>
             </details>
 
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-3 text-sm text-zinc-300">
+            <div className="space-y-1.5 text-xs text-zinc-400">
               <label className="flex items-start gap-2">
                 <input
                   type="checkbox"
                   checked={marketingConsent}
                   onChange={(e) => setMarketingConsent(e.target.checked)}
-                  className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-amber-400 focus:ring-amber-400"
+                  className="mt-1 rounded border-zinc-600 bg-zinc-800 text-amber-400 focus:ring-amber-400"
                 />
-                <span>
-                  I agree to receive marketing emails and understand I can unsubscribe at any time.
+                <span className="leading-snug">
+                  I agree to marketing emails and can unsubscribe anytime
                 </span>
               </label>
-              <label className="mt-2 flex items-start gap-2">
+              <label className="flex items-start gap-2">
                 <input
                   type="checkbox"
                   checked={trackingConsent}
                   onChange={(e) => setTrackingConsent(e.target.checked)}
-                  className="mt-0.5 rounded border-zinc-600 bg-zinc-800 text-amber-400 focus:ring-amber-400"
+                  className="mt-1 rounded border-zinc-600 bg-zinc-800 text-amber-400 focus:ring-amber-400"
                 />
-                <span>
-                  I agree to email performance tracking and location-based audience analytics as described in the <a href="/privacy" className="text-amber-400 underline underline-offset-2 hover:text-amber-300">privacy notice</a>.
+                <span className="leading-snug">
+                  I agree to tracking as described in the <a href="/privacy" className="text-amber-400 underline underline-offset-2 hover:text-amber-300">privacy notice</a>
                 </span>
               </label>
             </div>
