@@ -242,6 +242,36 @@ export default function AdminMailer({ totalCount, confirmedCount, claimedLeadMag
     [subscribers, geoCountry, geoRegions]
   );
 
+  const claimedCitySummary = useMemo(() => {
+    const counts = new Map<string, number>();
+    let unknownCount = 0;
+
+    for (const subscriber of subscribers) {
+      if (!subscriber.lead_magnet_claimed) continue;
+      if (geoCountry && subscriber.country !== geoCountry) continue;
+      if (geoRegions.length > 0 && (!subscriber.region || !geoRegions.includes(subscriber.region))) continue;
+
+      const city = subscriber.city?.trim();
+      if (!city) {
+        unknownCount += 1;
+        continue;
+      }
+
+      counts.set(city, (counts.get(city) ?? 0) + 1);
+    }
+
+    const topCities = Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 8)
+      .map(([city, count]) => ({ city, count }));
+
+    return {
+      topCities,
+      unknownCount,
+      total: topCities.reduce((sum, item) => sum + item.count, 0) + unknownCount,
+    };
+  }, [subscribers, geoCountry, geoRegions]);
+
   const filteredRegionOptions = useMemo(() => {
     const term = regionSearch.trim().toLowerCase();
     if (!term) return regionOptions;
@@ -878,6 +908,47 @@ export default function AdminMailer({ totalCount, confirmedCount, claimedLeadMag
               <option value="km">Kilometers</option>
             </select>
           </div>
+        </div>
+
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Claimed By City</p>
+              <p className="mt-1 text-xs text-zinc-600">
+                Based on subscribers who redeemed a digital good{geoCountry || geoRegions.length > 0 ? " within the current geo filters" : ""}.
+              </p>
+            </div>
+            <p className="text-xs text-zinc-500">
+              {claimedCitySummary.total} claimed
+            </p>
+          </div>
+
+          {claimedCitySummary.topCities.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {claimedCitySummary.topCities.map((item) => (
+                <button
+                  key={item.city}
+                  type="button"
+                  onClick={() => toggleCity(item.city)}
+                  className={`rounded-full border px-2.5 py-1 text-xs transition ${
+                    geoCities.includes(item.city)
+                      ? "border-amber-400 bg-amber-400/20 text-amber-200"
+                      : "border-zinc-700 text-zinc-300 hover:border-zinc-500"
+                  }`}
+                >
+                  {item.city} <span className="text-zinc-500">{item.count}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-3 text-xs text-zinc-600">No claimed-offer city data yet for this selection.</p>
+          )}
+
+          {claimedCitySummary.unknownCount > 0 && (
+            <p className="mt-2 text-xs text-zinc-600">
+              {claimedCitySummary.unknownCount} claimed subscribers do not yet have a usable city.
+            </p>
+          )}
         </div>
 
         <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
