@@ -222,7 +222,10 @@ export default function EmbedPage() {
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {hasField("first_name") && (
                     <input
+                      id="embed-first-name"
+                      name="first_name"
                       type="text"
+                      autoComplete="given-name"
                       value={firstName}
                       onChange={(e) => setFirstName(e.target.value)}
                       placeholder="First name"
@@ -232,7 +235,10 @@ export default function EmbedPage() {
                   )}
                   {hasField("last_name") && (
                     <input
+                      id="embed-last-name"
+                      name="last_name"
                       type="text"
+                      autoComplete="family-name"
                       value={lastName}
                       onChange={(e) => setLastName(e.target.value)}
                       placeholder="Last name"
@@ -242,9 +248,13 @@ export default function EmbedPage() {
                   )}
                   {hasField("date_of_birth") && (
                     <label className="block text-[11px]" style={helperTextStyle}>
-                      <span className="mb-1 block">Birthday</span>
+                      <span className="mb-1 block" id="embed-birthday-label">Birthday</span>
                       <input
+                        id="embed-birthday"
+                        name="birthday"
                         type="text"
+                        autoComplete="bday"
+                        aria-labelledby="embed-birthday-label"
                         value={dateOfBirth}
                         onChange={(e) => setDateOfBirth(e.target.value)}
                         inputMode="numeric"
@@ -257,7 +267,11 @@ export default function EmbedPage() {
                   )}
                   {hasField("phone_number") && (
                     <input
+                      id="embed-phone-number"
+                      name="phone_number"
                       type="tel"
+                      autoComplete="tel"
+                      inputMode="tel"
                       value={phoneNumber}
                       onChange={(e) => setPhoneNumber(e.target.value)}
                       placeholder="Phone number"
