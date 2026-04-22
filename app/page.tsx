@@ -146,12 +146,16 @@ export default function Home() {
                   placeholder="Last name"
                   className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 outline-none focus:border-amber-400"
                 />
-                <input
-                  type="date"
-                  value={dateOfBirth}
-                  onChange={(e) => setDateOfBirth(e.target.value)}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-400"
-                />
+                <label className="block text-xs text-zinc-400">
+                  <span className="mb-1 block">Date of birth</span>
+                  <input
+                    type="date"
+                    value={dateOfBirth}
+                    onChange={(e) => setDateOfBirth(e.target.value)}
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-400"
+                  />
+                  <span className="mt-1 block text-[11px] text-zinc-500">Optional. Used for birthday campaigns.</span>
+                </label>
                 <input
                   type="tel"
                   value={phoneNumber}

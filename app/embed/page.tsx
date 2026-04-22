@@ -241,13 +241,17 @@ export default function EmbedPage() {
                     />
                   )}
                   {hasField("date_of_birth") && (
-                    <input
-                      type="date"
-                      value={dateOfBirth}
-                      onChange={(e) => setDateOfBirth(e.target.value)}
-                      className={profileInputClass}
-                      style={embedStyle === "minimal" ? minimalInputStyle : inputStyle}
-                    />
+                    <label className="block text-[11px]" style={helperTextStyle}>
+                      <span className="mb-1 block">Date of birth</span>
+                      <input
+                        type="date"
+                        value={dateOfBirth}
+                        onChange={(e) => setDateOfBirth(e.target.value)}
+                        className={profileInputClass}
+                        style={embedStyle === "minimal" ? minimalInputStyle : inputStyle}
+                      />
+                      <span className="mt-1 block">Optional. Used for birthday campaigns.</span>
+                    </label>
                   )}
                   {hasField("phone_number") && (
                     <input
