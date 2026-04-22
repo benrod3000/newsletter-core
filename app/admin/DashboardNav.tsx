@@ -56,7 +56,7 @@ export default function DashboardNav({
   const pendingCount = totalCount - confirmedCount;
 
   return (
-    <div className="fixed inset-x-0 top-0 z-50 border-b border-zinc-800 bg-gradient-to-b from-zinc-950/98 to-zinc-950/95 px-3 py-3 sm:px-6 backdrop-blur-lg">
+    <div className="fixed inset-x-0 top-0 z-50 border-b border-zinc-700 bg-gradient-to-b from-[#0d0d0d]/95 to-[#1a1a1a]/95 px-3 py-3 sm:px-6 backdrop-blur-lg">
       <div className="mx-auto w-full max-w-7xl">
         <div className="space-y-3">
           {/* Top Row: Branding & Stats */}
@@ -67,7 +67,7 @@ export default function DashboardNav({
               </div>
               <div className="hidden sm:block">
                 <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Newsletter</p>
-                <p className="font-semibold text-white">Elite Hub</p>
+                <p className="font-semibold text-zinc-100">Elite Hub</p>
               </div>
             </div>
 
@@ -75,7 +75,7 @@ export default function DashboardNav({
             <div className="flex items-center gap-2 sm:gap-3">
               <div className="flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/60 px-2 py-1 sm:px-3 sm:py-1.5">
                 <span className="text-xs sm:text-sm font-medium text-zinc-400">👥</span>
-                <span className="text-xs sm:text-sm font-semibold text-white">{totalCount}</span>
+                <span className="text-xs sm:text-sm font-semibold text-zinc-100">{totalCount}</span>
               </div>
               <div className="flex items-center gap-1.5 rounded-lg border border-emerald-900/40 bg-emerald-950/30 px-2 py-1 sm:px-3 sm:py-1.5">
                 <span className="text-xs sm:text-sm font-medium text-emerald-400">✓</span>
@@ -105,7 +105,7 @@ export default function DashboardNav({
                   className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-all sm:text-sm whitespace-nowrap ${
                     activeSection === link.id
                       ? "border border-amber-500 bg-amber-500/15 text-amber-300 shadow-lg shadow-amber-500/10"
-                      : "border border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200 hover:bg-zinc-900/40"
+                      : "border border-zinc-700 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200 hover:bg-zinc-900/40"
                   }`}
                 >
                   <span className="text-sm">{link.icon}</span>
