@@ -12,7 +12,7 @@ type EmbedTheme = {
   inputBg: string;
 };
 
-const PROFILE_FIELDS = ["first_name", "last_name", "date_of_birth", "job_title"] as const;
+const PROFILE_FIELDS = ["first_name", "last_name", "date_of_birth", "phone_number"] as const;
 type ProfileField = (typeof PROFILE_FIELDS)[number];
 
 function parseEmbedConfig() {
@@ -69,7 +69,7 @@ export default function EmbedPage() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
-  const [jobTitle, setJobTitle] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [embedStyle, setEmbedStyle] = useState<EmbedStyle>("card");
   const [enabledFields, setEnabledFields] = useState<Set<ProfileField>>(new Set());
   const [theme, setTheme] = useState<EmbedTheme>({
@@ -114,7 +114,7 @@ export default function EmbedPage() {
           first_name: firstName,
           last_name: lastName,
           date_of_birth: dateOfBirth,
-          job_title: jobTitle,
+          phone_number: phoneNumber,
           ...getClientContext(),
         }),
       });
@@ -249,12 +249,12 @@ export default function EmbedPage() {
                       style={embedStyle === "minimal" ? minimalInputStyle : inputStyle}
                     />
                   )}
-                  {hasField("job_title") && (
+                  {hasField("phone_number") && (
                     <input
-                      type="text"
-                      value={jobTitle}
-                      onChange={(e) => setJobTitle(e.target.value)}
-                      placeholder="Job title"
+                      type="tel"
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(e.target.value)}
+                      placeholder="Phone number"
                       className={profileInputClass}
                       style={embedStyle === "minimal" ? minimalInputStyle : inputStyle}
                     />

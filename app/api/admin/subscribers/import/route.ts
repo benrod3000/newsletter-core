@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
     first_name: "first_name",
     last_name: "last_name",
     date_of_birth: "date_of_birth",
-    job_title: "job_title",
+    phone_number: "phone_number",
     country: "country",
     region: "region",
     city: "city",

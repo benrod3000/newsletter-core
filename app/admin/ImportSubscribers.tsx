@@ -17,8 +17,8 @@ export default function ImportSubscribers() {
 
   function downloadTemplate() {
     const csv =
-      "email,first_name,last_name,date_of_birth,job_title,country,region,city,timezone,locale,utm_source,utm_medium,utm_campaign\n" +
-      "example@email.com,Alex,Rivera,1992-08-14,Product Manager,US,California,Los Angeles,America/Los_Angeles,en-US,newsletter,email,spring2026\n";
+      "email,first_name,last_name,date_of_birth,phone_number,country,region,city,timezone,locale,utm_source,utm_medium,utm_campaign\n" +
+      "example@email.com,Alex,Rivera,1992-08-14,+1 310 555 0188,US,California,Los Angeles,America/Los_Angeles,en-US,newsletter,email,spring2026\n";
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -66,7 +66,7 @@ export default function ImportSubscribers() {
       <p className="text-xs font-semibold uppercase tracking-widest text-amber-400">Import</p>
       <h2 className="mt-1 text-base font-semibold text-white">Bulk import subscribers</h2>
       <p className="mt-1 text-xs text-zinc-500">
-        Upload a CSV with an <code className="text-zinc-300">email</code> column. Optional profile fields: <code className="text-zinc-300">first_name</code>, <code className="text-zinc-300">last_name</code>, <code className="text-zinc-300">date_of_birth</code>, <code className="text-zinc-300">job_title</code>.
+        Upload a CSV with an <code className="text-zinc-300">email</code> column. Optional profile fields: <code className="text-zinc-300">first_name</code>, <code className="text-zinc-300">last_name</code>, <code className="text-zinc-300">date_of_birth</code>, <code className="text-zinc-300">phone_number</code>.
       </p>
 
       <div className="mt-4 space-y-3">

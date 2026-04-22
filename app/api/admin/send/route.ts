@@ -16,7 +16,7 @@ type RecipientRow = {
   first_name: string | null;
   last_name: string | null;
   date_of_birth: string | null;
-  job_title: string | null;
+  phone_number: string | null;
 };
 
 function parseGeoFilter(value: unknown) {
@@ -224,7 +224,7 @@ function mergeDataForRecipient(sub: RecipientRow, unsubUrl: string): Record<stri
     full_name: fullName,
     date_of_birth: dateOfBirth,
     birthday_pretty: formatBirthdayPretty(dateOfBirth),
-    job_title: (sub.job_title ?? "").trim(),
+    phone_number: (sub.phone_number ?? "").trim(),
     email: sub.email,
     unsubscribe_url: unsubUrl,
   };
@@ -306,7 +306,7 @@ export async function POST(req: NextRequest) {
 
     let query = supabase
       .from("subscribers")
-      .select("id, email, confirmed, client_id, latitude, longitude, unsubscribe_token, first_name, last_name, date_of_birth, job_title")
+      .select("id, email, confirmed, client_id, latitude, longitude, unsubscribe_token, first_name, last_name, date_of_birth, phone_number")
       .eq("suppressed", false);
 
     if (audience === "confirmed") query = query.eq("confirmed", true);
@@ -332,7 +332,7 @@ export async function POST(req: NextRequest) {
         full_name: "Friend",
         date_of_birth: "1990-06-10",
         birthday_pretty: "June 10",
-        job_title: "",
+        phone_number: "",
         email: testEmail,
         unsubscribe_url: sampleUnsubUrl,
       };

@@ -9,7 +9,7 @@ interface Subscriber {
   first_name: string | null;
   last_name: string | null;
   date_of_birth: string | null;
-  job_title: string | null;
+  phone_number: string | null;
   country: string | null;
   region: string | null;
   city: string | null;
@@ -73,7 +73,7 @@ function escapeCsv(value: string | null | boolean): string {
 
 function exportToCsv(rows: Subscriber[], filename: string) {
   const headers = [
-    "email", "confirmed", "first_name", "last_name", "date_of_birth", "job_title",
+    "email", "confirmed", "first_name", "last_name", "date_of_birth", "phone_number",
     "country", "region", "city", "timezone", "locale", "utm_source", "utm_medium",
     "utm_campaign", "referrer", "landing_path", "created_at",
   ];
@@ -81,7 +81,7 @@ function exportToCsv(rows: Subscriber[], filename: string) {
     headers.join(","),
     ...rows.map((s) =>
       [
-        s.email, s.confirmed, s.first_name, s.last_name, s.date_of_birth, s.job_title,
+        s.email, s.confirmed, s.first_name, s.last_name, s.date_of_birth, s.phone_number,
         s.country, s.region, s.city, s.timezone, s.locale, s.utm_source,
         s.utm_medium, s.utm_campaign, s.referrer, s.landing_path, s.created_at,
       ]
@@ -282,12 +282,12 @@ export default function SubscriberTable({ subscribers }: { subscribers: Subscrib
                   <dt className="text-zinc-500">Signed up</dt>
                   <dd className="mt-0.5 text-zinc-300">{formatSignupTime(s.created_at)}</dd>
                 </div>
-                {(s.first_name || s.last_name || s.date_of_birth || s.job_title) && (
+                {(s.first_name || s.last_name || s.date_of_birth || s.phone_number) && (
                   <div className="rounded border border-zinc-800 bg-zinc-900/60 px-2 py-1.5">
                     <dt className="text-zinc-500">Profile</dt>
                     <dd className="mt-0.5 text-zinc-300">
                       {formatFullName(s) || "-"}
-                      {s.job_title ? ` • ${s.job_title}` : ""}
+                      {s.phone_number ? ` • ${s.phone_number}` : ""}
                       {s.date_of_birth ? ` • DOB ${s.date_of_birth}` : ""}
                     </dd>
                   </div>

@@ -24,7 +24,7 @@ export default function Home() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
-  const [jobTitle, setJobTitle] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState("");
 
@@ -46,7 +46,7 @@ export default function Home() {
           first_name: firstName,
           last_name: lastName,
           date_of_birth: dateOfBirth,
-          job_title: jobTitle,
+          phone_number: phoneNumber,
           ...getClientContext(),
         }),
       });
@@ -153,10 +153,10 @@ export default function Home() {
                   className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-400"
                 />
                 <input
-                  type="text"
-                  value={jobTitle}
-                  onChange={(e) => setJobTitle(e.target.value)}
-                  placeholder="Job title"
+                  type="tel"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  placeholder="Phone number"
                   className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 outline-none focus:border-amber-400"
                 />
               </div>

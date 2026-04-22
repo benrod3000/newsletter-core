@@ -138,7 +138,7 @@ function buildQuery(
   if (leadMagnet.title.trim()) params.set("lead_title", leadMagnet.title.trim());
   if (leadMagnet.url.trim()) params.set("lead_url", leadMagnet.url.trim());
   if (includeProfileFields) {
-    params.set("fields", "first_name,last_name,date_of_birth,job_title");
+    params.set("fields", "first_name,last_name,date_of_birth,phone_number");
   }
   const query = params.toString();
   return query ? `?${query}` : "";

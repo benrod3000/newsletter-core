@@ -137,7 +137,7 @@ const PERSONALIZATION_TOKENS: Array<{ token: string; meaning: string; example: s
   { token: "{{full_name}}", meaning: "First + last name", example: "Jamie Lee" },
   { token: "{{date_of_birth}}", meaning: "Birth date (YYYY-MM-DD)", example: "1990-06-10" },
   { token: "{{birthday_pretty}}", meaning: "Birth date (Month Day)", example: "June 10" },
-  { token: "{{job_title}}", meaning: "Job title", example: "Product Manager" },
+  { token: "{{phone_number}}", meaning: "Phone number", example: "+1 310 555 0188" },
   { token: "{{email}}", meaning: "Subscriber email", example: "fan@example.com" },
   { token: "{{unsubscribe_url}}", meaning: "Personal unsubscribe link", example: "https://.../unsubscribe?token=..." },
   { token: "{{first_name|there}}", meaning: "First name with fallback", example: "there" },

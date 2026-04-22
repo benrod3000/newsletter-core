@@ -85,6 +85,14 @@ function cleanDate(value: unknown): string | null {
   return trimmed;
 }
 
+function cleanPhone(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const normalized = trimmed.replace(/[^0-9+().\-\s]/g, "").slice(0, 32).trim();
+  return normalized || null;
+}
+
 function cleanUrl(value: unknown, maxLength = 500): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -97,6 +105,50 @@ function cleanUrl(value: unknown, maxLength = 500): string | null {
   } catch {
     return null;
   }
+}
+
+interface SignupSnapshot {
+  firstName: string | null;
+  lastName: string | null;
+  dateOfBirth: string | null;
+  phoneNumber: string | null;
+  country: string | null;
+  region: string | null;
+  city: string | null;
+  timezone: string | null;
+  locale: string | null;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  referrer: string | null;
+  landingPath: string | null;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function buildCapturedSignals(snapshot: SignupSnapshot): Array<{ label: string; value: string }> {
+  const fullName = [snapshot.firstName, snapshot.lastName].filter(Boolean).join(" ").trim();
+  const location = [snapshot.city, snapshot.region, snapshot.country].filter(Boolean).join(", ").trim();
+  const sourceParts = [snapshot.utmSource, snapshot.utmMedium, snapshot.utmCampaign].filter(Boolean).join(" / ").trim();
+
+  return [
+    fullName ? { label: "Profile", value: fullName } : null,
+    snapshot.phoneNumber ? { label: "Phone", value: snapshot.phoneNumber } : null,
+    snapshot.dateOfBirth ? { label: "Birthday", value: snapshot.dateOfBirth } : null,
+    location ? { label: "Location", value: location } : null,
+    snapshot.timezone ? { label: "Timezone", value: snapshot.timezone } : null,
+    snapshot.locale ? { label: "Locale", value: snapshot.locale } : null,
+    sourceParts ? { label: "Campaign Source", value: sourceParts } : null,
+    snapshot.referrer ? { label: "Referrer", value: snapshot.referrer } : null,
+    snapshot.landingPath ? { label: "Landing Path", value: snapshot.landingPath } : null,
+  ].filter((item): item is { label: string; value: string } => Boolean(item));
 }
 
 async function resolveClientIdForSignup(supabase: ReturnType<typeof getSupabaseClient>, clientSlug: string | null) {
@@ -126,6 +178,7 @@ async function sendConfirmationEmail({
   host,
   leadTitle,
   leadUrl,
+  snapshot,
 }: {
   email: string;
   confirmationToken: string;
@@ -133,6 +186,7 @@ async function sendConfirmationEmail({
   host: string | null;
   leadTitle: string | null;
   leadUrl: string | null;
+  snapshot: SignupSnapshot;
 }): Promise<{ sent: boolean; reason?: string }> {
   const sgApiKey = process.env.SENDGRID_API_KEY;
   const fromEmail = process.env.SENDGRID_FROM_EMAIL;
@@ -151,6 +205,26 @@ async function sendConfirmationEmail({
     const confirmUrl = `${appUrl}/api/confirm?${confirmParams.toString()}`;
     const unsubscribeUrl = `${appUrl}/unsubscribe?token=${unsubscribeToken}`;
     const offerLine = leadUrl ? `\n\nConfirm to unlock your free download: ${leadTitle || "Free media"}.` : "";
+    const capturedSignals = buildCapturedSignals(snapshot);
+    const capturedHtml = capturedSignals.length
+      ? `
+      <div style="margin:0 0 28px;padding:16px 18px;border:1px solid #27272a;border-radius:10px;background:#111114;">
+        <p style="margin:0 0 10px;color:#f4f4f5;font-size:13px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;">
+          What this signup captured
+        </p>
+        ${capturedSignals
+          .map(
+            (item) => `
+          <p style="margin:0 0 8px;color:#a1a1aa;font-size:13px;line-height:1.5;">
+            <strong style="color:#fff;">${escapeHtml(item.label)}:</strong> ${escapeHtml(item.value)}
+          </p>`
+          )
+          .join("")}
+      </div>`
+      : "";
+    const capturedText = capturedSignals.length
+      ? `\n\nWhat this signup captured:\n${capturedSignals.map((item) => `- ${item.label}: ${item.value}`).join("\n")}`
+      : "";
 
     await sgMail.send({
       to: email,
@@ -173,6 +247,7 @@ async function sendConfirmationEmail({
         You signed up for <strong style="color:#fff;">Attention → Ownership</strong>.
         Hit the button below to confirm and you&rsquo;re in.${leadUrl ? ` You&rsquo;ll also unlock your <strong style="color:#fff;">${leadTitle || "free media"}</strong>.` : ""}
       </p>
+      ${capturedHtml}
       <a href="${confirmUrl}"
          style="display:inline-block;background:#fbbf24;color:#000;font-size:14px;font-weight:700;padding:14px 28px;border-radius:8px;text-decoration:none;">
         Confirm my subscription
@@ -186,7 +261,7 @@ async function sendConfirmationEmail({
   </table>
 </body>
 </html>`,
-      text: `Confirm your subscription to Attention → Ownership.${offerLine}\n\nVisit this link to confirm:\n${confirmUrl}\n\nIf you didn't sign up, ignore this email.\nUnsubscribe: ${unsubscribeUrl}`,
+      text: `Confirm your subscription to Attention → Ownership.${offerLine}${capturedText}\n\nVisit this link to confirm:\n${confirmUrl}\n\nIf you didn't sign up, ignore this email.\nUnsubscribe: ${unsubscribeUrl}`,
     });
 
     return { sent: true };
@@ -221,7 +296,7 @@ export async function POST(req: NextRequest) {
     const first_name = cleanText(body.first_name, 80);
     const last_name = cleanText(body.last_name, 80);
     const date_of_birth = cleanDate(body.date_of_birth);
-    const job_title = cleanText(body.job_title, 120);
+    const phone_number = cleanPhone(body.phone_number);
     const lead_title = cleanText(body.lead_title, 120);
     const lead_url = cleanUrl(body.lead_url, 500);
 
@@ -248,6 +323,22 @@ export async function POST(req: NextRequest) {
 
     // 6. Geo lookup (Vercel headers)
     const geo = getGeoData(req);
+    const snapshot: SignupSnapshot = {
+      firstName: first_name,
+      lastName: last_name,
+      dateOfBirth: date_of_birth,
+      phoneNumber: phone_number,
+      country: geo.country,
+      region: geo.region,
+      city: geo.city,
+      timezone,
+      locale,
+      utmSource: utm_source,
+      utmMedium: utm_medium,
+      utmCampaign: utm_campaign,
+      referrer,
+      landingPath: landing_path,
+    };
 
     // 7. Insert into Supabase, returning tokens for the email
     const supabase = getSupabaseClient();
@@ -275,7 +366,7 @@ export async function POST(req: NextRequest) {
           first_name,
           last_name,
           date_of_birth,
-          job_title,
+          phone_number,
           created_at: new Date().toISOString(),
         },
       ])
@@ -306,6 +397,7 @@ export async function POST(req: NextRequest) {
           host: req.headers.get("host"),
           leadTitle: lead_title,
           leadUrl: lead_url,
+          snapshot,
         });
 
         if (!resendResult.sent) {
@@ -337,6 +429,7 @@ export async function POST(req: NextRequest) {
       host: req.headers.get("host"),
       leadTitle: lead_title,
       leadUrl: lead_url,
+      snapshot,
     });
 
     if (!emailResult.sent) {
