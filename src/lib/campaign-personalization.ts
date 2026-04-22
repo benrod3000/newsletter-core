@@ -66,13 +66,20 @@ export function buildWebVersionUrl(baseUrl: string, campaignId: string, subscrib
   return `${baseUrl}/web/${encodeURIComponent(campaignId)}?s=${encodeURIComponent(subscriberId)}`;
 }
 
+function maybeCapitalizeLowercaseName(value: string | null): string {
+  const trimmed = (value ?? "").trim();
+  if (!trimmed) return "";
+  if (trimmed !== trimmed.toLowerCase()) return trimmed;
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+}
+
 export function mergeDataForRecipient(
   sub: MergeRecipient,
   unsubUrl: string,
   webVersionUrl?: string
 ): Record<string, string> {
-  const firstName = (sub.first_name ?? "").trim();
-  const lastName = (sub.last_name ?? "").trim();
+  const firstName = maybeCapitalizeLowercaseName(sub.first_name);
+  const lastName = maybeCapitalizeLowercaseName(sub.last_name);
   const fullName = [firstName, lastName].filter(Boolean).join(" ");
   const dateOfBirth = sub.date_of_birth ?? "";
   const location = [sub.city, sub.region, sub.country].filter(Boolean).join(", ");
