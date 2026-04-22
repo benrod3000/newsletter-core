@@ -146,6 +146,7 @@ const PERSONALIZATION_TOKENS: Array<{ token: string; meaning: string; example: s
   { token: "{{country}}", meaning: "Country", example: "United States" },
   { token: "{{location}}", meaning: "Full location (City, Region, Country)", example: "Los Angeles, California, United States" },
   { token: "{{email}}", meaning: "Subscriber email", example: "fan@example.com" },
+  { token: "{{web_version_url}}", meaning: "Personal browser-view link for this newsletter", example: "https://.../web/campaign-id?s=subscriber-id" },
   { token: "{{unsubscribe_url}}", meaning: "Personal unsubscribe link", example: "https://.../unsubscribe?token=..." },
   { token: "{{first_name|there}}", meaning: "First name with fallback", example: "there" },
 ];

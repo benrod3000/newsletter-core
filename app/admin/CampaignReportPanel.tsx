@@ -15,10 +15,16 @@ interface TopUrl {
   count: number;
 }
 
+interface TopCity {
+  city: string;
+  count: number;
+}
+
 interface ReportData {
   campaign: { id: string; title: string; subject: string; sentCount: number; lastSentAt: string | null };
   stats: CampaignStats;
   topUrls: TopUrl[];
+  topCities: TopCity[];
 }
 
 interface Props {
@@ -34,7 +40,7 @@ export default function CampaignReportPanel({ report, loading }: Props) {
     return <p className="py-3 text-xs text-zinc-500">No data yet.</p>;
   }
 
-  const { stats, topUrls } = report;
+  const { stats, topUrls, topCities } = report;
 
   const statItems = [
     { label: "Sent", value: report.campaign.sentCount, note: "" },
@@ -57,26 +63,42 @@ export default function CampaignReportPanel({ report, loading }: Props) {
         ))}
       </div>
 
-      {topUrls.length > 0 && (
-        <div>
-          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-500">Top clicked links</p>
-          <ul className="space-y-1">
-            {topUrls.map((item) => (
-              <li key={item.url} className="flex items-center gap-2 text-xs">
-                <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-amber-300">{item.count}</span>
-                <a
-                  href={item.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="truncate text-zinc-400 hover:text-zinc-200 max-w-xs"
-                >
-                  {item.url}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <div className="grid gap-3 lg:grid-cols-2">
+        {topUrls.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-500">Top clicked links</p>
+            <ul className="space-y-1">
+              {topUrls.map((item) => (
+                <li key={item.url} className="flex items-center gap-2 text-xs">
+                  <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-amber-300">{item.count}</span>
+                  <a
+                    href={item.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="truncate text-zinc-400 hover:text-zinc-200 max-w-xs"
+                  >
+                    {item.url}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {topCities.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-500">Clicks by city</p>
+            <ul className="space-y-1">
+              {topCities.map((item) => (
+                <li key={item.city} className="flex items-center gap-2 text-xs text-zinc-400">
+                  <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-amber-300">{item.count}</span>
+                  <span className="truncate">{item.city}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

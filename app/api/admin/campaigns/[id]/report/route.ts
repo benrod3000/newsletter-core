@@ -36,7 +36,7 @@ export async function GET(
   // Fetch all events for this campaign
   const { data: events } = await supabase
     .from("campaign_events")
-    .select("event_type, email, url")
+    .select("event_type, email, url, metadata")
     .eq("campaign_id", campaignId);
 
   const rows = events ?? [];
@@ -64,6 +64,17 @@ export async function GET(
     .slice(0, 5)
     .map(([url, count]) => ({ url, count }));
 
+  const cityCounts: Record<string, number> = {};
+  for (const row of rows.filter((r) => r.event_type === "click")) {
+    const city = typeof row.metadata?.city === "string" ? row.metadata.city.trim() : "";
+    if (!city) continue;
+    cityCounts[city] = (cityCounts[city] ?? 0) + 1;
+  }
+  const topCities = Object.entries(cityCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([city, count]) => ({ city, count }));
+
   return NextResponse.json({
     campaign: {
       id: campaign.id,
@@ -74,5 +85,6 @@ export async function GET(
     },
     stats: { opens, clicks, bounces, complaints, unsubscribes, openRate, clickRate },
     topUrls,
+    topCities,
   });
 }

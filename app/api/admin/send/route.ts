@@ -2,24 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import sgMail from "@sendgrid/mail";
 import { getSupabaseClient } from "@/lib/supabase";
 import { canSendCampaigns, getAdminContextFromHeaders } from "@/lib/admin-context";
+import { buildHtmlFromEditor, buildWebVersionUrl, mergeDataForRecipient, renderTemplate, type MergeRecipient } from "@/lib/campaign-personalization";
 
 type Audience = "all" | "confirmed" | "pending" | "claimed_offer";
 
-type RecipientRow = {
-  id: string;
-  email: string;
+type RecipientRow = MergeRecipient & {
   confirmed: boolean;
   client_id: string | null;
-  country: string | null;
-  region: string | null;
-  city: string | null;
   latitude: number | null;
   longitude: number | null;
-  unsubscribe_token: string;
-  first_name: string | null;
-  last_name: string | null;
-  date_of_birth: string | null;
-  phone_number: string | null;
 };
 
 function parseGeoFilter(value: unknown) {
@@ -160,33 +151,6 @@ function injectTracking(
   return result;
 }
 
-function buildHtmlFromEditor(editorHtml: string, editorCss = "") {
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  ${editorCss ? `<style>${editorCss}</style>` : ""}
-</head>
-<body style="background:#0d0d0d;font-family:sans-serif;margin:0;padding:40px 24px;">
-  <table style="max-width:640px;margin:0 auto;width:100%;">
-    <tr><td>
-      <p style="color:#fbbf24;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin:0 0 16px;">
-        Newsletter Services
-      </p>
-      <div style="color:#e4e4e7;font-size:15px;line-height:1.7;white-space:normal;">
-        ${editorHtml}
-      </div>
-      <hr style="border:none;border-top:1px solid #27272a;margin:32px 0;">
-      <p style="color:#71717a;font-size:12px;line-height:1.5;margin:0;">
-        You are receiving this email because you subscribed to the newsletter.
-      </p>
-    </td></tr>
-  </table>
-</body>
-</html>`;
-}
-
 function parseAudience(value: unknown): Audience {
   if (value === "all" || value === "pending" || value === "claimed_offer") return value;
   return "confirmed";
@@ -213,52 +177,6 @@ async function fetchClaimedLeadMagnetIds(
       .filter((event) => event.subscriber_id && event.metadata?.tracking_kind === "lead_magnet")
       .map((event) => event.subscriber_id as string)
   );
-}
-
-function formatBirthdayPretty(value: string | null): string {
-  if (!value) return "";
-  const date = new Date(`${value}T00:00:00Z`);
-  if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("en-US", {
-    month: "long",
-    day: "numeric",
-    timeZone: "UTC",
-  }).format(date);
-}
-
-function renderTemplate(template: string, data: Record<string, string>): string {
-  return template.replace(/\{\{\s*([a-z0-9_]+)(?:\s*\|\s*([^}]+))?\s*\}\}/gi, (full, key: string, fallbackRaw?: string) => {
-    const value = data[key.toLowerCase()];
-    if (typeof value === "string" && value.length > 0) return value;
-
-    const fallback = typeof fallbackRaw === "string" ? fallbackRaw.trim() : "";
-    if (fallback.length > 0) return fallback;
-
-    return "";
-  });
-}
-
-function mergeDataForRecipient(sub: RecipientRow, unsubUrl: string): Record<string, string> {
-  const firstName = (sub.first_name ?? "").trim();
-  const lastName = (sub.last_name ?? "").trim();
-  const fullName = [firstName, lastName].filter(Boolean).join(" ");
-  const dateOfBirth = sub.date_of_birth ?? "";
-  const location = [sub.city, sub.region, sub.country].filter(Boolean).join(", ");
-
-  return {
-    first_name: firstName,
-    last_name: lastName,
-    full_name: fullName,
-    date_of_birth: dateOfBirth,
-    birthday_pretty: formatBirthdayPretty(dateOfBirth),
-    phone_number: (sub.phone_number ?? "").trim(),
-    city: (sub.city ?? "").trim(),
-    region: (sub.region ?? "").trim(),
-    country: (sub.country ?? "").trim(),
-    location: location,
-    email: sub.email,
-    unsubscribe_url: unsubUrl,
-  };
 }
 
 export async function POST(req: NextRequest) {
@@ -357,6 +275,7 @@ export async function POST(req: NextRequest) {
       }
 
       const sampleUnsubUrl = `${baseUrl}/unsubscribe?token=test-token`;
+      const sampleWebVersionUrl = `${baseUrl}/web/test-campaign?s=test-subscriber`;
       const sampleData = {
         first_name: "Friend",
         last_name: "",
@@ -366,6 +285,7 @@ export async function POST(req: NextRequest) {
         phone_number: "",
         email: testEmail,
         unsubscribe_url: sampleUnsubUrl,
+        web_version_url: sampleWebVersionUrl,
       };
 
       const testSubject = renderTemplate(subject, sampleData);
@@ -462,7 +382,8 @@ export async function POST(req: NextRequest) {
         batch.map(async (sub) => {
           const unsubUrl = `${baseUrl}/unsubscribe?token=${sub.unsubscribe_token}`;
           const unsubApiUrl = `${baseUrl}/api/unsubscribe?token=${sub.unsubscribe_token}`;
-          const mergeData = mergeDataForRecipient(sub, unsubUrl);
+          const webVersionUrl = campaignId ? buildWebVersionUrl(baseUrl, campaignId, sub.id) : "";
+          const mergeData = mergeDataForRecipient(sub, unsubUrl, webVersionUrl);
           const personalSubject = renderTemplate(subject, mergeData);
           const personalText = renderTemplate(message, mergeData);
           let personalHtml = renderTemplate(baseHtml, mergeData);
