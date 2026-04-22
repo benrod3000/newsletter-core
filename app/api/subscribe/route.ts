@@ -85,6 +85,20 @@ function cleanDate(value: unknown): string | null {
   return trimmed;
 }
 
+function cleanUrl(value: unknown, maxLength = 500): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.length > maxLength) return null;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
 async function resolveClientIdForSignup(supabase: ReturnType<typeof getSupabaseClient>, clientSlug: string | null) {
   const slug = clientSlug || process.env.DEFAULT_CLIENT_SLUG || "default";
 
@@ -110,11 +124,15 @@ async function sendConfirmationEmail({
   confirmationToken,
   unsubscribeToken,
   host,
+  leadTitle,
+  leadUrl,
 }: {
   email: string;
   confirmationToken: string;
   unsubscribeToken: string;
   host: string | null;
+  leadTitle: string | null;
+  leadUrl: string | null;
 }): Promise<{ sent: boolean; reason?: string }> {
   const sgApiKey = process.env.SENDGRID_API_KEY;
   const fromEmail = process.env.SENDGRID_FROM_EMAIL;
@@ -127,8 +145,12 @@ async function sendConfirmationEmail({
 
   try {
     sgMail.setApiKey(sgApiKey);
-    const confirmUrl = `${appUrl}/api/confirm?token=${confirmationToken}`;
+    const confirmParams = new URLSearchParams({ token: confirmationToken });
+    if (leadTitle) confirmParams.set("lead_title", leadTitle);
+    if (leadUrl) confirmParams.set("lead_url", leadUrl);
+    const confirmUrl = `${appUrl}/api/confirm?${confirmParams.toString()}`;
     const unsubscribeUrl = `${appUrl}/unsubscribe?token=${unsubscribeToken}`;
+    const offerLine = leadUrl ? `\n\nConfirm to unlock your free download: ${leadTitle || "Free media"}.` : "";
 
     await sgMail.send({
       to: email,
@@ -149,7 +171,7 @@ async function sendConfirmationEmail({
       </h1>
       <p style="color:#a1a1aa;font-size:15px;line-height:1.6;margin:0 0 32px;">
         You signed up for <strong style="color:#fff;">Attention → Ownership</strong>.
-        Hit the button below to confirm and you&rsquo;re in.
+        Hit the button below to confirm and you&rsquo;re in.${leadUrl ? ` You&rsquo;ll also unlock your <strong style="color:#fff;">${leadTitle || "free media"}</strong>.` : ""}
       </p>
       <a href="${confirmUrl}"
          style="display:inline-block;background:#fbbf24;color:#000;font-size:14px;font-weight:700;padding:14px 28px;border-radius:8px;text-decoration:none;">
@@ -164,7 +186,7 @@ async function sendConfirmationEmail({
   </table>
 </body>
 </html>`,
-      text: `Confirm your subscription to Attention → Ownership.\n\nVisit this link to confirm:\n${confirmUrl}\n\nIf you didn't sign up, ignore this email.\nUnsubscribe: ${unsubscribeUrl}`,
+      text: `Confirm your subscription to Attention → Ownership.${offerLine}\n\nVisit this link to confirm:\n${confirmUrl}\n\nIf you didn't sign up, ignore this email.\nUnsubscribe: ${unsubscribeUrl}`,
     });
 
     return { sent: true };
@@ -200,6 +222,8 @@ export async function POST(req: NextRequest) {
     const last_name = cleanText(body.last_name, 80);
     const date_of_birth = cleanDate(body.date_of_birth);
     const job_title = cleanText(body.job_title, 120);
+    const lead_title = cleanText(body.lead_title, 120);
+    const lead_url = cleanUrl(body.lead_url, 500);
 
     // 2. Validate email
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -280,6 +304,8 @@ export async function POST(req: NextRequest) {
           confirmationToken: existing.confirmation_token,
           unsubscribeToken: existing.unsubscribe_token,
           host: req.headers.get("host"),
+          leadTitle: lead_title,
+          leadUrl: lead_url,
         });
 
         if (!resendResult.sent) {
@@ -309,6 +335,8 @@ export async function POST(req: NextRequest) {
       confirmationToken: subscriber.confirmation_token,
       unsubscribeToken: subscriber.unsubscribe_token,
       host: req.headers.get("host"),
+      leadTitle: lead_title,
+      leadUrl: lead_url,
     });
 
     if (!emailResult.sent) {

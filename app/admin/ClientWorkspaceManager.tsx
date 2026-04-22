@@ -21,6 +21,7 @@ interface AdminUser {
 }
 
 export default function ClientWorkspaceManager() {
+  const [expanded, setExpanded] = useState(false);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -211,14 +212,25 @@ export default function ClientWorkspaceManager() {
 
   return (
     <section className="mb-6 rounded-lg border border-zinc-800 bg-zinc-900/70 p-4 sm:p-5">
-      <div className="mb-4">
-        <p className="text-xs font-semibold uppercase tracking-widest text-amber-400">Client Accounts</p>
-        <h2 className="mt-1 text-lg font-semibold text-white">Workspaces and logins</h2>
-        <p className="mt-1 text-sm text-zinc-500">
-          Owner-only panel to create client workspaces and role-based accounts.
-        </p>
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-amber-400">Client Accounts</p>
+          <h2 className="mt-1 text-lg font-semibold text-white">Workspaces and logins</h2>
+          <p className="mt-1 text-sm text-zinc-500">
+            Owner-only panel to create client workspaces and role-based accounts.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setExpanded((current) => !current)}
+          className="rounded border border-zinc-700 px-2.5 py-1 text-xs font-medium text-zinc-300 hover:border-zinc-500"
+        >
+          {expanded ? "Hide" : "Show"}
+        </button>
       </div>
 
+      {expanded && (
+        <>
       <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
         <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2">
           <p className="text-xs uppercase tracking-wider text-zinc-500">Workspaces</p>
@@ -399,6 +411,8 @@ export default function ClientWorkspaceManager() {
           )}
         </div>
       </div>
+        </>
+      )}
     </section>
   );
 }

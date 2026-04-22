@@ -57,6 +57,8 @@ function getClientContext() {
     utm_source: searchParams.get("utm_source"),
     utm_medium: searchParams.get("utm_medium"),
     utm_campaign: searchParams.get("utm_campaign"),
+    lead_title: searchParams.get("lead_title"),
+    lead_url: searchParams.get("lead_url"),
     referrer: document.referrer || null,
     landing_path: window.location.pathname + window.location.search,
   };

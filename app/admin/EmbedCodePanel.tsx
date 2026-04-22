@@ -125,7 +125,8 @@ function buildQuery(
   clientSlug: string,
   style: EmbedStyle,
   includeProfileFields: boolean,
-  colors: { accent: string; bg: string; text: string; inputBg: string }
+  colors: { accent: string; bg: string; text: string; inputBg: string },
+  leadMagnet: { title: string; url: string }
 ) {
   const params = new URLSearchParams();
   if (clientSlug.trim()) params.set("client", clientSlug.trim());
@@ -134,6 +135,8 @@ function buildQuery(
   params.set("bg", colors.bg);
   params.set("text", colors.text);
   params.set("input_bg", colors.inputBg);
+  if (leadMagnet.title.trim()) params.set("lead_title", leadMagnet.title.trim());
+  if (leadMagnet.url.trim()) params.set("lead_url", leadMagnet.url.trim());
   if (includeProfileFields) {
     params.set("fields", "first_name,last_name,date_of_birth,job_title");
   }
@@ -160,7 +163,10 @@ export default function EmbedCodePanel() {
   const [bg, setBg] = useState(THEME_PRESETS[0].bg);
   const [text, setText] = useState(THEME_PRESETS[0].text);
   const [inputBg, setInputBg] = useState(THEME_PRESETS[0].inputBg);
+  const [leadTitle, setLeadTitle] = useState("Free Track Download");
+  const [leadUrl, setLeadUrl] = useState("");
   const [copied, setCopied] = useState("");
+  const [showPreview, setShowPreview] = useState(false);
 
   const resolvedOrigin = useMemo(() => {
     if (typeof window === "undefined") return origin || "https://your-domain.com";
@@ -168,8 +174,8 @@ export default function EmbedCodePanel() {
   }, [origin]);
 
   const query = useMemo(
-    () => buildQuery(clientSlug, style, includeProfileFields, { accent, bg, text, inputBg }),
-    [clientSlug, style, includeProfileFields, accent, bg, text, inputBg]
+    () => buildQuery(clientSlug, style, includeProfileFields, { accent, bg, text, inputBg }, { title: leadTitle, url: leadUrl }),
+    [clientSlug, style, includeProfileFields, accent, bg, text, inputBg, leadTitle, leadUrl]
   );
 
   const embedUrl = `${resolvedOrigin}/embed${query}`;
@@ -268,6 +274,29 @@ export default function EmbedCodePanel() {
       </div>
 
       <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+        <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">Media campaign offer (optional)</p>
+        <p className="mt-1 text-xs text-zinc-500">
+          Use this for lead magnets like a free song, sample pack, or media kit link delivered after confirmation.
+        </p>
+        <div className="mt-2 grid gap-3 sm:grid-cols-2">
+          <input
+            type="text"
+            value={leadTitle}
+            onChange={(e) => setLeadTitle(e.target.value)}
+            placeholder="Free Track Download"
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-400"
+          />
+          <input
+            type="url"
+            value={leadUrl}
+            onChange={(e) => setLeadUrl(e.target.value)}
+            placeholder="https://yourcdn.com/free-song.mp3"
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-400"
+          />
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
         <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">Theme presets</p>
         <div className="mt-2 flex flex-wrap gap-2">
           {THEME_PRESETS.map((preset) => (
@@ -340,14 +369,25 @@ export default function EmbedCodePanel() {
             Open standalone preview
           </a>
         </div>
-        <iframe
-          key={embedUrl}
-          src={embedUrl}
-          title="Embed preview"
-          width="100%"
-          height={iframeHeight}
-          style={{ border: 0, borderRadius: 8 }}
-        />
+        <button
+          type="button"
+          onClick={() => setShowPreview((current) => !current)}
+          className="w-full rounded border border-zinc-700 px-3 py-2 text-left text-xs font-medium text-zinc-300 hover:border-zinc-500"
+        >
+          {showPreview ? "Hide embed sign up form" : "Show embed sign up form"}
+        </button>
+        {showPreview && (
+          <div className="mt-3 rounded border border-zinc-800 bg-zinc-900/30 p-2">
+            <iframe
+              key={embedUrl}
+              src={embedUrl}
+              title="Embed preview"
+              width="100%"
+              height={iframeHeight}
+              style={{ border: 0, borderRadius: 8 }}
+            />
+          </div>
+        )}
       </div>
 
       <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3 text-xs text-zinc-400">
