@@ -190,7 +190,7 @@ export default function Home() {
                 />
                 <input
                   id="phone-number"
-                  name="phone_number"
+                  name="tel"
                   type="tel"
                   autoComplete="tel"
                   inputMode="tel"

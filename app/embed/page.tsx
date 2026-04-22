@@ -281,7 +281,7 @@ export default function EmbedPage() {
                   {hasField("phone_number") && (
                     <input
                       id="embed-phone-number"
-                      name="phone_number"
+                      name="tel"
                       type="tel"
                       autoComplete="tel"
                       inputMode="tel"
