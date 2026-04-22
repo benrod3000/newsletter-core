@@ -3,7 +3,7 @@ import { getSupabaseClient } from "@/lib/supabase";
 import { canEditCampaigns, getAdminContextFromHeaders } from "@/lib/admin-context";
 
 type CampaignStatus = "draft" | "scheduled" | "sent";
-type Audience = "all" | "confirmed" | "pending";
+type Audience = "all" | "confirmed" | "pending" | "claimed_offer";
 
 function parseGeoFilter(value: unknown) {
   if (!value || typeof value !== "object") {
@@ -118,7 +118,7 @@ async function resolveGeoCenter(
 }
 
 function parseAudience(value: unknown): Audience {
-  if (value === "all" || value === "pending") return value;
+  if (value === "all" || value === "pending" || value === "claimed_offer") return value;
   return "confirmed";
 }
 

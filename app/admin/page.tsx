@@ -51,6 +51,7 @@ export default async function AdminPage() {
     lead_magnet_claimed: claimedLeadMagnetIds.has(subscriber.id),
   }));
   const confirmedCount = subscribers.filter((s) => s.confirmed).length;
+  const claimedLeadMagnetCount = subscribers.filter((s) => s.lead_magnet_claimed).length;
   const pendingCount = subscribers.length - confirmedCount;
   const confirmationRate = subscribers.length > 0 ? Math.round((confirmedCount / subscribers.length) * 100) : 0;
 
@@ -112,6 +113,7 @@ export default async function AdminPage() {
               <AdminMailer
                 totalCount={subscribers.length}
                 confirmedCount={confirmedCount}
+                claimedLeadMagnetCount={claimedLeadMagnetCount}
                 subscribers={subscribers}
               />
             </div>

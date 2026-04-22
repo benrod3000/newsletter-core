@@ -3,7 +3,7 @@ import sgMail from "@sendgrid/mail";
 import { getSupabaseClient } from "@/lib/supabase";
 import { canSendCampaigns, getAdminContextFromHeaders } from "@/lib/admin-context";
 
-type Audience = "all" | "confirmed" | "pending";
+type Audience = "all" | "confirmed" | "pending" | "claimed_offer";
 
 type RecipientRow = {
   id: string;
@@ -188,8 +188,31 @@ function buildHtmlFromEditor(editorHtml: string, editorCss = "") {
 }
 
 function parseAudience(value: unknown): Audience {
-  if (value === "all" || value === "pending") return value;
+  if (value === "all" || value === "pending" || value === "claimed_offer") return value;
   return "confirmed";
+}
+
+async function fetchClaimedLeadMagnetIds(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  subscriberIds: string[]
+) {
+  if (subscriberIds.length === 0) return new Set<string>();
+
+  const { data, error } = await supabase
+    .from("campaign_events")
+    .select("subscriber_id, metadata")
+    .eq("event_type", "click")
+    .in("subscriber_id", subscriberIds);
+
+  if (error) {
+    throw new Error(`Failed to load claimed-offer events: ${error.message}`);
+  }
+
+  return new Set(
+    (data ?? [])
+      .filter((event) => event.subscriber_id && event.metadata?.tracking_kind === "lead_magnet")
+      .map((event) => event.subscriber_id as string)
+  );
 }
 
 function formatBirthdayPretty(value: string | null): string {
@@ -386,6 +409,24 @@ export async function POST(req: NextRequest) {
       (row) => typeof row.email === "string" && row.email.length > 0
     );
 
+    const audienceRows =
+      audience === "claimed_offer"
+        ? rows.filter((row) => row.confirmed)
+        : rows;
+
+    const claimedLeadMagnetIds =
+      audience === "claimed_offer"
+        ? await fetchClaimedLeadMagnetIds(
+            supabase,
+            audienceRows.map((row) => row.id)
+          )
+        : null;
+
+    const filteredAudienceRows =
+      audience === "claimed_offer"
+        ? audienceRows.filter((row) => claimedLeadMagnetIds?.has(row.id))
+        : audienceRows;
+
     const hasRadiusFilter =
       geoFilter.radius_km !== null && geoFilter.center_lat !== null && geoFilter.center_lng !== null;
     const centerLat = geoFilter.center_lat;
@@ -394,7 +435,7 @@ export async function POST(req: NextRequest) {
 
     const geoRecipients =
       hasRadiusFilter && centerLat !== null && centerLng !== null && radiusKm !== null
-        ? rows.filter((row) => {
+        ? filteredAudienceRows.filter((row) => {
             if (typeof row.latitude !== "number" || typeof row.longitude !== "number") {
               return false;
             }
@@ -407,7 +448,7 @@ export async function POST(req: NextRequest) {
               ) <= radiusKm
             );
           })
-        : rows;
+        : filteredAudienceRows;
 
     if (geoRecipients.length === 0) {
       return NextResponse.json({ error: "No matching subscribers to send to." }, { status: 422 });

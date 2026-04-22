@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import CampaignReportPanel from "./CampaignReportPanel";
 import type { Editor } from "grapesjs";
 
-type Audience = "confirmed" | "all" | "pending";
+type Audience = "confirmed" | "all" | "pending" | "claimed_offer";
 
 type SendStatus = "idle" | "sending" | "success" | "error";
 
@@ -59,10 +59,12 @@ interface CampaignApiResponse {
 interface AdminMailerProps {
   totalCount: number;
   confirmedCount: number;
+  claimedLeadMagnetCount: number;
   subscribers: Array<{
     country: string | null;
     region: string | null;
     city: string | null;
+    lead_magnet_claimed?: boolean;
   }>;
 }
 
@@ -125,9 +127,10 @@ function toLocalInputValue(iso: string | null) {
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
-function audienceLabel(audience: Audience, totalCount: number, confirmedCount: number) {
+function audienceLabel(audience: Audience, totalCount: number, confirmedCount: number, claimedLeadMagnetCount: number) {
   if (audience === "all") return `all subscribers (${totalCount})`;
   if (audience === "pending") return `pending subscribers (${Math.max(totalCount - confirmedCount, 0)})`;
+  if (audience === "claimed_offer") return `claimed digital good (${claimedLeadMagnetCount})`;
   return `confirmed subscribers (${confirmedCount})`;
 }
 
@@ -147,7 +150,7 @@ const PERSONALIZATION_TOKENS: Array<{ token: string; meaning: string; example: s
   { token: "{{first_name|there}}", meaning: "First name with fallback", example: "there" },
 ];
 
-export default function AdminMailer({ totalCount, confirmedCount, subscribers }: AdminMailerProps) {
+export default function AdminMailer({ totalCount, confirmedCount, claimedLeadMagnetCount, subscribers }: AdminMailerProps) {
   const [audience, setAudience] = useState<Audience>("confirmed");
   const [title, setTitle] = useState("Untitled Draft");
   const [subject, setSubject] = useState("");
@@ -214,8 +217,8 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
   }, []);
 
   const targetLabel = useMemo(
-    () => audienceLabel(audience, totalCount, confirmedCount),
-    [audience, totalCount, confirmedCount]
+    () => audienceLabel(audience, totalCount, confirmedCount, claimedLeadMagnetCount),
+    [audience, totalCount, confirmedCount, claimedLeadMagnetCount]
   );
 
   const countryOptions = useMemo(() => uniqueGeo(subscribers.map((s) => s.country)), [subscribers]);
@@ -702,6 +705,7 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
           >
             <option value="confirmed">Confirmed subscribers</option>
             <option value="pending">Pending subscribers</option>
+            <option value="claimed_offer">Claimed digital good</option>
             <option value="all">All subscribers</option>
           </select>
         </div>
