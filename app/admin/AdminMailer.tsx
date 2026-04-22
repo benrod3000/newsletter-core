@@ -131,6 +131,18 @@ function audienceLabel(audience: Audience, totalCount: number, confirmedCount: n
   return `confirmed subscribers (${confirmedCount})`;
 }
 
+const PERSONALIZATION_TOKENS: Array<{ token: string; meaning: string; example: string }> = [
+  { token: "{{first_name}}", meaning: "Subscriber first name", example: "Jamie" },
+  { token: "{{last_name}}", meaning: "Subscriber last name", example: "Lee" },
+  { token: "{{full_name}}", meaning: "First + last name", example: "Jamie Lee" },
+  { token: "{{date_of_birth}}", meaning: "Birth date (YYYY-MM-DD)", example: "1990-06-10" },
+  { token: "{{birthday_pretty}}", meaning: "Birth date (Month Day)", example: "June 10" },
+  { token: "{{job_title}}", meaning: "Job title", example: "Product Manager" },
+  { token: "{{email}}", meaning: "Subscriber email", example: "fan@example.com" },
+  { token: "{{unsubscribe_url}}", meaning: "Personal unsubscribe link", example: "https://.../unsubscribe?token=..." },
+  { token: "{{first_name|there}}", meaning: "First name with fallback", example: "there" },
+];
+
 export default function AdminMailer({ totalCount, confirmedCount, subscribers }: AdminMailerProps) {
   const [audience, setAudience] = useState<Audience>("confirmed");
   const [title, setTitle] = useState("Untitled Draft");
@@ -155,6 +167,7 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
   const [status, setStatus] = useState<SendStatus>("idle");
   const [feedback, setFeedback] = useState("");
+  const [tokenCopyFeedback, setTokenCopyFeedback] = useState("");
   const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
   const [reportCache, setReportCache] = useState<Record<string, unknown>>({});
   const [reportLoading, setReportLoading] = useState<Set<string>>(new Set());
@@ -614,6 +627,17 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
     }
   }
 
+  async function copyToken(token: string) {
+    try {
+      await navigator.clipboard.writeText(token);
+      setTokenCopyFeedback(`${token} copied`);
+      setTimeout(() => setTokenCopyFeedback(""), 1400);
+    } catch {
+      setTokenCopyFeedback("Could not copy token.");
+      setTimeout(() => setTokenCopyFeedback(""), 1400);
+    }
+  }
+
   return (
     <section className="mb-6 rounded-lg border border-zinc-800 bg-zinc-900/70 p-4 sm:p-5">
       <div className="mb-4">
@@ -1062,6 +1086,51 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
               )}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <div className="mt-6 rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
+        <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">Personalization key</h3>
+        <p className="mt-1 text-sm text-zinc-500">
+          Use merge tokens in your subject and newsletter content. Tokens are wrapped in double curly braces.
+        </p>
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-zinc-800 text-left text-xs uppercase tracking-wider text-zinc-500">
+                <th className="py-2 pr-3">Token</th>
+                <th className="py-2 pr-3">Meaning</th>
+                <th className="py-2 pr-3">Example output</th>
+                <th className="py-2 pr-3">Copy</th>
+              </tr>
+            </thead>
+            <tbody>
+              {PERSONALIZATION_TOKENS.map((item) => (
+                <tr key={item.token} className="border-b border-zinc-900 last:border-0">
+                  <td className="py-2 pr-3 font-mono text-xs text-amber-300">{item.token}</td>
+                  <td className="py-2 pr-3 text-zinc-400">{item.meaning}</td>
+                  <td className="py-2 pr-3 text-zinc-500">{item.example}</td>
+                  <td className="py-2 pr-3">
+                    <button
+                      type="button"
+                      onClick={() => copyToken(item.token)}
+                      className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-500"
+                    >
+                      Copy
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-3 rounded border border-zinc-800 bg-zinc-900/40 p-3 text-xs text-zinc-400">
+          <p className="font-semibold text-zinc-300">Example</p>
+          <p className="mt-1 font-mono text-amber-300">{"Hi {{first_name}}, we know your birthday is coming up on {{birthday_pretty}}."}</p>
+          <p className="mt-1 font-mono text-amber-300">{"Hi {{first_name|there}}, we know your birthday is coming up on {{birthday_pretty|soon}}."}</p>
+          <p className="mt-2 text-zinc-500">If a field is missing for a subscriber, the token resolves to an empty value.</p>
+          <p className="mt-1 text-zinc-500">{"Use a fallback with the pipe syntax to avoid blanks, e.g. {{first_name|there}}."}</p>
+          {tokenCopyFeedback && <p className="mt-2 text-emerald-400">{tokenCopyFeedback}</p>}
         </div>
       </div>
     </section>

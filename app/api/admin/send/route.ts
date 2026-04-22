@@ -5,6 +5,20 @@ import { canSendCampaigns, getAdminContextFromHeaders } from "@/lib/admin-contex
 
 type Audience = "all" | "confirmed" | "pending";
 
+type RecipientRow = {
+  id: string;
+  email: string;
+  confirmed: boolean;
+  client_id: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  unsubscribe_token: string;
+  first_name: string | null;
+  last_name: string | null;
+  date_of_birth: string | null;
+  job_title: string | null;
+};
+
 function parseGeoFilter(value: unknown) {
   if (!value || typeof value !== "object") {
     return {
@@ -175,6 +189,47 @@ function parseAudience(value: unknown): Audience {
   return "confirmed";
 }
 
+function formatBirthdayPretty(value: string | null): string {
+  if (!value) return "";
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(date);
+}
+
+function renderTemplate(template: string, data: Record<string, string>): string {
+  return template.replace(/\{\{\s*([a-z0-9_]+)(?:\s*\|\s*([^}]+))?\s*\}\}/gi, (full, key: string, fallbackRaw?: string) => {
+    const value = data[key.toLowerCase()];
+    if (typeof value === "string" && value.length > 0) return value;
+
+    const fallback = typeof fallbackRaw === "string" ? fallbackRaw.trim() : "";
+    if (fallback.length > 0) return fallback;
+
+    return "";
+  });
+}
+
+function mergeDataForRecipient(sub: RecipientRow, unsubUrl: string): Record<string, string> {
+  const firstName = (sub.first_name ?? "").trim();
+  const lastName = (sub.last_name ?? "").trim();
+  const fullName = [firstName, lastName].filter(Boolean).join(" ");
+  const dateOfBirth = sub.date_of_birth ?? "";
+
+  return {
+    first_name: firstName,
+    last_name: lastName,
+    full_name: fullName,
+    date_of_birth: dateOfBirth,
+    birthday_pretty: formatBirthdayPretty(dateOfBirth),
+    job_title: (sub.job_title ?? "").trim(),
+    email: sub.email,
+    unsubscribe_url: unsubUrl,
+  };
+}
+
 export async function POST(req: NextRequest) {
   const admin = getAdminContextFromHeaders(req.headers);
   if (!admin) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
@@ -251,7 +306,7 @@ export async function POST(req: NextRequest) {
 
     let query = supabase
       .from("subscribers")
-      .select("id, email, confirmed, client_id, latitude, longitude, unsubscribe_token")
+      .select("id, email, confirmed, client_id, latitude, longitude, unsubscribe_token, first_name, last_name, date_of_birth, job_title")
       .eq("suppressed", false);
 
     if (audience === "confirmed") query = query.eq("confirmed", true);
@@ -270,12 +325,28 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Invalid test email address." }, { status: 422 });
       }
 
+      const sampleUnsubUrl = `${baseUrl}/unsubscribe?token=test-token`;
+      const sampleData = {
+        first_name: "Friend",
+        last_name: "",
+        full_name: "Friend",
+        date_of_birth: "1990-06-10",
+        birthday_pretty: "June 10",
+        job_title: "",
+        email: testEmail,
+        unsubscribe_url: sampleUnsubUrl,
+      };
+
+      const testSubject = renderTemplate(subject, sampleData);
+      const testText = renderTemplate(message, sampleData);
+      const testHtml = renderTemplate(baseHtml, sampleData);
+
       await sgMail.send({
         to: testEmail,
         from: fromEmail,
-        subject: `[TEST] ${subject}`,
-        text: message,
-        html: baseHtml,
+        subject: `[TEST] ${testSubject}`,
+        text: testText,
+        html: testHtml,
       });
 
       if (campaignId) {
@@ -303,7 +374,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Failed to load subscribers: ${error.message}` }, { status: 500 });
     }
 
-    const rows = (data ?? []).filter(
+    const rows = ((data ?? []) as RecipientRow[]).filter(
       (row) => typeof row.email === "string" && row.email.length > 0
     );
 
@@ -342,15 +413,18 @@ export async function POST(req: NextRequest) {
         batch.map(async (sub) => {
           const unsubUrl = `${baseUrl}/unsubscribe?token=${sub.unsubscribe_token}`;
           const unsubApiUrl = `${baseUrl}/api/unsubscribe?token=${sub.unsubscribe_token}`;
-          let personalHtml = baseHtml.replace(/\{\{unsubscribe_url\}\}/gi, unsubUrl);
+          const mergeData = mergeDataForRecipient(sub, unsubUrl);
+          const personalSubject = renderTemplate(subject, mergeData);
+          const personalText = renderTemplate(message, mergeData);
+          let personalHtml = renderTemplate(baseHtml, mergeData);
           if (campaignId) {
             personalHtml = injectTracking(personalHtml, campaignId, sub.id, baseUrl);
           }
           await sgMail.send({
             to: sub.email,
             from: fromEmail,
-            subject,
-            text: message,
+            subject: personalSubject,
+            text: personalText,
             html: personalHtml,
             headers: {
               "List-Unsubscribe": `<${unsubApiUrl}>, <mailto:${fromEmail}?subject=unsubscribe>`,
