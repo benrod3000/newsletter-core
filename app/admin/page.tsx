@@ -4,6 +4,8 @@ import AdminMailer from "./AdminMailer";
 import ClientWorkspaceManager from "./ClientWorkspaceManager";
 import SubscriberTable from "./SubscriberTable";
 import DashboardNav from "./DashboardNav";
+import ImportSubscribers from "./ImportSubscribers";
+import HousekeepingPanel from "./HousekeepingPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -67,6 +69,16 @@ export default async function AdminPage() {
               <div id="subscribers" className="scroll-mt-40">
                 <SubscriberTable subscribers={subscribers} />
               </div>
+
+              <div id="import" className="scroll-mt-40">
+                <ImportSubscribers />
+              </div>
+
+              {role === "owner" && (
+                <div id="housekeeping" className="scroll-mt-40">
+                  <HousekeepingPanel />
+                </div>
+              )}
             </div>
 
             {/* Right Column */}

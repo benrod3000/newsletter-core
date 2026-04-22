@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import CampaignReportPanel from "./CampaignReportPanel";
 import type { Editor } from "grapesjs";
 
 type Audience = "confirmed" | "all" | "pending";
@@ -154,6 +155,9 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
   const [status, setStatus] = useState<SendStatus>("idle");
   const [feedback, setFeedback] = useState("");
+  const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
+  const [reportCache, setReportCache] = useState<Record<string, unknown>>({});
+  const [reportLoading, setReportLoading] = useState<Set<string>>(new Set());
   const [editorReady, setEditorReady] = useState(false);
   const editorContainerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<Editor | null>(null);
@@ -559,6 +563,23 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
     } catch {
       setStatus("error");
       setFeedback("Network error while processing scheduled campaigns.");
+    }
+  }
+
+  async function toggleReport(campaignId: string) {
+    if (expandedReportId === campaignId) {
+      setExpandedReportId(null);
+      return;
+    }
+    setExpandedReportId(campaignId);
+    if (reportCache[campaignId]) return; // already fetched
+    setReportLoading((prev) => new Set(prev).add(campaignId));
+    try {
+      const res = await fetch(`/api/admin/campaigns/${campaignId}/report`);
+      const data = await res.json().catch(() => null);
+      if (res.ok) setReportCache((prev) => ({ ...prev, [campaignId]: data }));
+    } finally {
+      setReportLoading((prev) => { const s = new Set(prev); s.delete(campaignId); return s; });
     }
   }
 
@@ -985,7 +1006,7 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
                 <th className="py-2 pr-3">Status</th>
                 <th className="py-2 pr-3">Subject</th>
                 <th className="py-2 pr-3">Updated</th>
-                <th className="py-2 pr-3">Action</th>
+                <th className="py-2 pr-3">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -995,21 +1016,48 @@ export default function AdminMailer({ totalCount, confirmedCount, subscribers }:
                 </tr>
               ) : (
                 campaigns.map((campaign) => (
-                  <tr key={campaign.id} className="border-b border-zinc-900 last:border-0">
-                    <td className="py-2 pr-3 text-zinc-200">{campaign.title}</td>
-                    <td className="py-2 pr-3 text-zinc-400">{campaign.status}</td>
-                    <td className="py-2 pr-3 text-zinc-400">{campaign.subject}</td>
-                    <td className="py-2 pr-3 text-zinc-500">{new Date(campaign.updated_at).toLocaleString()}</td>
-                    <td className="py-2 pr-3">
-                      <button
-                        type="button"
-                        onClick={() => loadCampaign(campaign)}
-                        className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-500"
-                      >
-                        Load
-                      </button>
-                    </td>
-                  </tr>
+                  <>
+                    <tr key={campaign.id} className="border-b border-zinc-900 last:border-0">
+                      <td className="py-2 pr-3 text-zinc-200">{campaign.title}</td>
+                      <td className="py-2 pr-3 text-zinc-400">{campaign.status}</td>
+                      <td className="py-2 pr-3 text-zinc-400">{campaign.subject}</td>
+                      <td className="py-2 pr-3 text-zinc-500">{new Date(campaign.updated_at).toLocaleString()}</td>
+                      <td className="py-2 pr-3">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => loadCampaign(campaign)}
+                            className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-500"
+                          >
+                            Load
+                          </button>
+                          {campaign.status === "sent" && (
+                            <button
+                              type="button"
+                              onClick={() => toggleReport(campaign.id)}
+                              className={`rounded border px-2 py-1 text-xs transition ${
+                                expandedReportId === campaign.id
+                                  ? "border-amber-500/60 bg-amber-500/10 text-amber-300"
+                                  : "border-zinc-700 text-zinc-300 hover:border-zinc-500"
+                              }`}
+                            >
+                              Stats
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                    {expandedReportId === campaign.id && (
+                      <tr>
+                        <td colSpan={5} className="pb-3 pt-1">
+                          <CampaignReportPanel
+                            report={reportCache[campaign.id] as Parameters<typeof CampaignReportPanel>[0]["report"]}
+                            loading={reportLoading.has(campaign.id)}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 ))
               )}
             </tbody>

@@ -114,6 +114,35 @@ function buildHtml(message: string) {
 </html>`;
 }
 
+function getBaseUrl(req: NextRequest): string {
+  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
+  const proto = req.headers.get("x-forwarded-proto") ?? "https";
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "";
+  return `${proto}://${host}`;
+}
+
+function injectTracking(
+  html: string,
+  campaignId: string,
+  subscriberId: string,
+  baseUrl: string
+): string {
+  // Rewrite external links for click tracking
+  let result = html.replace(/href="(https?:\/\/[^"]+)"/gi, (_, url: string) => {
+    if (url.includes("/api/track/")) return `href="${url}"`;
+    return `href="${baseUrl}/api/track/click?c=${encodeURIComponent(campaignId)}&s=${encodeURIComponent(subscriberId)}&u=${encodeURIComponent(url)}"`;
+  });
+
+  // Inject open-tracking pixel
+  const pixel = `<img src="${baseUrl}/api/track/open?c=${encodeURIComponent(campaignId)}&s=${encodeURIComponent(subscriberId)}" width="1" height="1" style="display:none" alt="">`;
+  if (result.includes("</body>")) {
+    result = result.replace("</body>", `${pixel}</body>`);
+  } else {
+    result += pixel;
+  }
+  return result;
+}
+
 function buildHtmlFromEditor(editorHtml: string, editorCss = "") {
   return `
 <!DOCTYPE html>
@@ -222,7 +251,8 @@ export async function POST(req: NextRequest) {
 
     let query = supabase
       .from("subscribers")
-      .select("email, confirmed, client_id, latitude, longitude");
+      .select("id, email, confirmed, client_id, latitude, longitude, unsubscribe_token")
+      .eq("suppressed", false);
 
     if (audience === "confirmed") query = query.eq("confirmed", true);
     if (audience === "pending") query = query.eq("confirmed", false);
@@ -232,7 +262,8 @@ export async function POST(req: NextRequest) {
     if (geoFilter.cities.length > 0) query = query.in("city", geoFilter.cities);
 
     sgMail.setApiKey(sgApiKey);
-    const html = messageHtml ? buildHtmlFromEditor(messageHtml, messageCss) : buildHtml(message);
+    const baseUrl = getBaseUrl(req);
+    const baseHtml = messageHtml ? buildHtmlFromEditor(messageHtml, messageCss) : buildHtml(message);
 
     if (testEmail) {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testEmail)) {
@@ -244,7 +275,7 @@ export async function POST(req: NextRequest) {
         from: fromEmail,
         subject: `[TEST] ${subject}`,
         text: message,
-        html,
+        html: baseHtml,
       });
 
       if (campaignId) {
@@ -299,28 +330,33 @@ export async function POST(req: NextRequest) {
           })
         : rows;
 
-    const recipients = geoRecipients.map((row) => row.email);
-
-    if (recipients.length === 0) {
+    if (geoRecipients.length === 0) {
       return NextResponse.json({ error: "No matching subscribers to send to." }, { status: 422 });
     }
 
-    if (recipients.length > 300) {
-      return NextResponse.json(
-        { error: "Too many recipients for one send. Narrow your audience first." },
-        { status: 422 }
+    // Send individually per subscriber for per-recipient personalization (tracking + unsubscribe link)
+    const BATCH = 20;
+    for (let i = 0; i < geoRecipients.length; i += BATCH) {
+      const batch = geoRecipients.slice(i, i + BATCH);
+      await Promise.all(
+        batch.map(async (sub) => {
+          const unsubUrl = `${baseUrl}/unsubscribe?token=${sub.unsubscribe_token}`;
+          let personalHtml = baseHtml.replace(/\{\{unsubscribe_url\}\}/gi, unsubUrl);
+          if (campaignId) {
+            personalHtml = injectTracking(personalHtml, campaignId, sub.id, baseUrl);
+          }
+          await sgMail.send({
+            to: sub.email,
+            from: fromEmail,
+            subject,
+            text: message,
+            html: personalHtml,
+            ...(campaignId && {
+              customArgs: { campaign_id: campaignId, subscriber_id: sub.id },
+            }),
+          });
+        })
       );
-    }
-
-    // Send one message per recipient to avoid exposing subscriber emails.
-    for (const to of recipients) {
-      await sgMail.send({
-        to,
-        from: fromEmail,
-        subject,
-        text: message,
-        html,
-      });
     }
 
     if (campaignId) {
@@ -330,7 +366,7 @@ export async function POST(req: NextRequest) {
         .from("campaigns")
         .update({
           status: "sent",
-          sent_count: recipients.length,
+          sent_count: geoRecipients.length,
           last_sent_at: nowIso,
           last_error: null,
           updated_by: admin.username,
@@ -344,7 +380,7 @@ export async function POST(req: NextRequest) {
       await campaignUpdate;
     }
 
-    return NextResponse.json({ ok: true, sentCount: recipients.length });
+    return NextResponse.json({ ok: true, sentCount: geoRecipients.length });
   } catch (err) {
     console.error("[admin/send] Unexpected error:", err);
     return NextResponse.json({ error: "Internal server error." }, { status: 500 });
