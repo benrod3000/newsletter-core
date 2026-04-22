@@ -166,7 +166,7 @@ export default function EmbedCodePanel() {
   const [leadTitle, setLeadTitle] = useState("Free Track Download");
   const [leadUrl, setLeadUrl] = useState("");
   const [copied, setCopied] = useState("");
-  const [showPreview, setShowPreview] = useState(false);
+  const [showSnippets, setShowSnippets] = useState(false);
 
   const resolvedOrigin = useMemo(() => {
     if (typeof window === "undefined") return origin || "https://your-domain.com";
@@ -369,71 +369,74 @@ export default function EmbedCodePanel() {
             Open standalone preview
           </a>
         </div>
+        <div className="rounded border border-zinc-800 bg-zinc-900/30 p-2">
+          <iframe
+            key={embedUrl}
+            src={embedUrl}
+            title="Embed preview"
+            width="100%"
+            height={iframeHeight}
+            style={{ border: 0, borderRadius: 8 }}
+          />
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
         <button
           type="button"
-          onClick={() => setShowPreview((current) => !current)}
+          onClick={() => setShowSnippets((current) => !current)}
           className="w-full rounded border border-zinc-700 px-3 py-2 text-left text-xs font-medium text-zinc-300 hover:border-zinc-500"
         >
-          {showPreview ? "Hide embed sign up form" : "Show embed sign up form"}
+          {showSnippets ? "Hide embed code snippets" : "Show embed code snippets"}
         </button>
-        {showPreview && (
-          <div className="mt-3 rounded border border-zinc-800 bg-zinc-900/30 p-2">
-            <iframe
-              key={embedUrl}
-              src={embedUrl}
-              title="Embed preview"
-              width="100%"
-              height={iframeHeight}
-              style={{ border: 0, borderRadius: 8 }}
-            />
+
+        {showSnippets && (
+          <div className="mt-3 space-y-3 text-xs text-zinc-400">
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-zinc-300">Embed URL</p>
+                <button
+                  type="button"
+                  onClick={() => copy("Embed URL", embedUrl)}
+                  className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-500"
+                >
+                  Copy URL
+                </button>
+              </div>
+              <p className="mt-1 break-all">{embedUrl}</p>
+            </div>
+
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">Iframe snippet</p>
+                <button
+                  type="button"
+                  onClick={() => copy("Iframe", iframeSnippet)}
+                  className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-500"
+                >
+                  Copy
+                </button>
+              </div>
+              <pre className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 text-[11px] text-zinc-300">{iframeSnippet}</pre>
+            </div>
+
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">Script snippet</p>
+                <button
+                  type="button"
+                  onClick={() => copy("Script", scriptSnippet)}
+                  className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-500"
+                >
+                  Copy
+                </button>
+              </div>
+              <pre className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 text-[11px] text-zinc-300">{scriptSnippet}</pre>
+            </div>
+
+            {copied && <p className="text-xs text-emerald-400">{copied}</p>}
           </div>
         )}
-      </div>
-
-      <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3 text-xs text-zinc-400">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-zinc-300">Embed URL</p>
-          <button
-            type="button"
-            onClick={() => copy("Embed URL", embedUrl)}
-            className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-500"
-          >
-            Copy URL
-          </button>
-        </div>
-        <p className="mt-1 break-all">{embedUrl}</p>
-      </div>
-
-      <div className="mt-4 space-y-3">
-        <div>
-          <div className="mb-1 flex items-center justify-between">
-            <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">Iframe snippet</p>
-            <button
-              type="button"
-              onClick={() => copy("Iframe", iframeSnippet)}
-              className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-500"
-            >
-              Copy
-            </button>
-          </div>
-          <pre className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 text-[11px] text-zinc-300">{iframeSnippet}</pre>
-        </div>
-
-        <div>
-          <div className="mb-1 flex items-center justify-between">
-            <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">Script snippet</p>
-            <button
-              type="button"
-              onClick={() => copy("Script", scriptSnippet)}
-              className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-500"
-            >
-              Copy
-            </button>
-          </div>
-          <pre className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 text-[11px] text-zinc-300">{scriptSnippet}</pre>
-        </div>
-
-        {copied && <p className="text-xs text-emerald-400">{copied}</p>}
       </div>
     </section>
   );
