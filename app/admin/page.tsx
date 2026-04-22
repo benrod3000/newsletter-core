@@ -83,7 +83,7 @@ export default async function AdminPage() {
       <main className="min-h-screen bg-gradient-to-b from-[#0d0d0d] to-[#1a1a1a] px-3 py-8 pt-32 sm:px-5 sm:py-10 sm:pt-36 lg:px-6">
         <div className="mx-auto w-full max-w-7xl">
           {/* Header Section */}
-          <div className="mb-10">
+          <div className="mb-6">
             <div className="mb-6 flex items-end justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-widest text-amber-400/80">Dashboard</p>
@@ -105,7 +105,7 @@ export default async function AdminPage() {
           </div>
 
           {/* Key Metrics Section */}
-          <div className="mb-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <MetricCard
               label="Total Subscribers"
               value={subscribers.length.toLocaleString()}
@@ -131,7 +131,7 @@ export default async function AdminPage() {
           </div>
 
           {/* Quick Actions Section */}
-          <div className="mb-10 rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
+          <div className="mb-6 rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
             <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-zinc-300">Quick Actions</h2>
             <div className="flex flex-wrap gap-3">
               <a href="#campaigns" className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-black hover:bg-amber-400 transition">
@@ -150,9 +150,9 @@ export default async function AdminPage() {
           </div>
 
           {/* Main Content Grid */}
-          <div className="grid gap-10 lg:grid-cols-10 lg:items-start">
+          <div className="grid gap-6 lg:grid-cols-10 lg:items-start">
             {/* Sidebar - Left Column */}
-            <div className="space-y-10 lg:col-span-3">
+            <div className="space-y-6 lg:col-span-3">
               {/* Workspaces Section */}
               {role === "owner" && (
                 <div id="workspaces" className="scroll-mt-40">
