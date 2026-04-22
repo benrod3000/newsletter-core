@@ -299,7 +299,9 @@ export async function POST(req: NextRequest) {
     const phone_number = cleanPhone(body.phone_number);
     const lead_title = cleanText(body.lead_title, 120);
     const lead_url = cleanUrl(body.lead_url, 500);
-
+  // Browser geolocation (optional, client-provided)
+  const browser_latitude = parseCoordinate(body.browser_latitude);
+  const browser_longitude = parseCoordinate(body.browser_longitude);
     // 2. Validate email
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json({ error: "Invalid email address." }, { status: 422, headers: CORS_HEADERS });
@@ -321,8 +323,12 @@ export async function POST(req: NextRequest) {
     // 5. User-Agent (raw)
     const user_agent = req.headers.get("user-agent") ?? null;
 
-    // 6. Geo lookup (Vercel headers)
+    // 6. Geo lookup (Vercel headers + browser geolocation override)
     const geo = getGeoData(req);
+    // Prefer browser geolocation if provided (more accurate), otherwise use server-side IP geolocation
+    const finalLatitude = browser_latitude ?? geo.latitude;
+    const finalLongitude = browser_longitude ?? geo.longitude;
+
     const snapshot: SignupSnapshot = {
       firstName: first_name,
       lastName: last_name,
@@ -353,8 +359,8 @@ export async function POST(req: NextRequest) {
           country: geo.country,
           region: geo.region,
           city: geo.city,
-          latitude: geo.latitude,
-          longitude: geo.longitude,
+          latitude: finalLatitude,
+          longitude: finalLongitude,
           user_agent,
           timezone,
           locale,

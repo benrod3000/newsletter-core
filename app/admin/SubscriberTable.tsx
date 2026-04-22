@@ -13,6 +13,8 @@ interface Subscriber {
   country: string | null;
   region: string | null;
   city: string | null;
+  latitude: number | null;
+  longitude: number | null;
   timezone: string | null;
   locale: string | null;
   utm_source: string | null;
@@ -62,7 +64,7 @@ function unique(values: (string | null)[]): string[] {
   return Array.from(new Set(values.filter((v): v is string => Boolean(v)))).sort();
 }
 
-function escapeCsv(value: string | null | boolean): string {
+function escapeCsv(value: string | null | boolean | number): string {
   if (value === null || value === undefined) return "";
   const str = String(value);
   if (str.includes(",") || str.includes('"') || str.includes("\n")) {
@@ -74,7 +76,7 @@ function escapeCsv(value: string | null | boolean): string {
 function exportToCsv(rows: Subscriber[], filename: string) {
   const headers = [
     "email", "confirmed", "first_name", "last_name", "date_of_birth", "phone_number",
-    "country", "region", "city", "timezone", "locale", "utm_source", "utm_medium",
+    "country", "region", "city", "latitude", "longitude", "timezone", "locale", "utm_source", "utm_medium",
     "utm_campaign", "referrer", "landing_path", "created_at",
   ];
   const lines = [
@@ -82,7 +84,7 @@ function exportToCsv(rows: Subscriber[], filename: string) {
     ...rows.map((s) =>
       [
         s.email, s.confirmed, s.first_name, s.last_name, s.date_of_birth, s.phone_number,
-        s.country, s.region, s.city, s.timezone, s.locale, s.utm_source,
+        s.country, s.region, s.city, s.latitude, s.longitude, s.timezone, s.locale, s.utm_source,
         s.utm_medium, s.utm_campaign, s.referrer, s.landing_path, s.created_at,
       ]
         .map(escapeCsv)

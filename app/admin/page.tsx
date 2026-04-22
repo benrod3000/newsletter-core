@@ -19,7 +19,7 @@ export default async function AdminPage() {
   const supabase = getSupabaseClient();
   let query = supabase
     .from("subscribers")
-    .select("id, email, confirmed, first_name, last_name, date_of_birth, phone_number, country, region, city, timezone, locale, utm_source, utm_medium, utm_campaign, referrer, landing_path, created_at")
+    .select("id, email, confirmed, first_name, last_name, date_of_birth, phone_number, country, region, city, latitude, longitude, timezone, locale, utm_source, utm_medium, utm_campaign, referrer, landing_path, created_at")
     .order("created_at", { ascending: false });
 
   if (role !== "owner" && clientId) {

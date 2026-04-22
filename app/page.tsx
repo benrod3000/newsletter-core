@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 type Status = "idle" | "loading" | "success" | "error";
 
@@ -19,14 +19,47 @@ function getClientContext() {
   };
 }
 
+async function requestBrowserGeolocation(): Promise<{ latitude: number; longitude: number } | null> {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      resolve(null);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+      },
+      () => {
+        // User denied permission or error occurred, fallback to server-side geolocation
+        resolve(null);
+      },
+      { timeout: 5000 }
+    );
+  });
+}
+
 export default function Home() {
   const [email, setEmail] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [browserGeo, setBrowserGeo] = useState<{ latitude: number; longitude: number } | null>(null);
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState("");
+
+  // Request geolocation on mount
+  useEffect(() => {
+    requestBrowserGeolocation().then((geo) => {
+      if (geo) {
+        setBrowserGeo(geo);
+      }
+    });
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -48,6 +81,9 @@ export default function Home() {
           date_of_birth: dateOfBirth,
           phone_number: phoneNumber,
           ...getClientContext(),
+          // Include browser geolocation if available (will override server IP geo if more accurate)
+          browser_latitude: browserGeo?.latitude,
+          browser_longitude: browserGeo?.longitude,
         }),
       });
 

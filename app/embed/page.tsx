@@ -64,6 +64,28 @@ function getClientContext() {
   };
 }
 
+async function requestBrowserGeolocation(): Promise<{ latitude: number; longitude: number } | null> {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      resolve(null);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+      },
+      () => {
+        resolve(null);
+      },
+      { timeout: 5000 }
+    );
+  });
+}
+
 export default function EmbedPage() {
   const [email, setEmail] = useState("");
   const [firstName, setFirstName] = useState("");
@@ -79,6 +101,7 @@ export default function EmbedPage() {
     inputBg: "#2a1710",
   });
   const [company, setCompany] = useState("");
+  const [browserGeo, setBrowserGeo] = useState<{ latitude: number; longitude: number } | null>(null);
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState("");
 
@@ -88,6 +111,13 @@ export default function EmbedPage() {
     setEmbedStyle(config.style);
     setEnabledFields(config.enabledFields);
     setTheme(config.theme);
+
+    requestBrowserGeolocation().then((geo) => {
+      if (geo) {
+        setBrowserGeo(geo);
+      }
+    });
+
     return () => document.body.classList.remove("embed");
   }, []);
 
@@ -116,6 +146,8 @@ export default function EmbedPage() {
           date_of_birth: dateOfBirth,
           phone_number: phoneNumber,
           ...getClientContext(),
+          browser_latitude: browserGeo?.latitude,
+          browser_longitude: browserGeo?.longitude,
         }),
       });
 
