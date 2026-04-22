@@ -361,9 +361,9 @@ export default function ClientWorkspaceManager() {
           ) : filteredUsers.length === 0 ? (
             <p className="text-xs text-zinc-600">No admin users yet.</p>
           ) : (
-            <ul className="space-y-2 text-sm text-zinc-300">
+            <ul className="space-y-1 text-sm text-zinc-300">
               {filteredUsers.map((u) => (
-                <li key={u.id} className="rounded border border-zinc-800 px-2 py-2">
+                <li key={u.id} className="rounded border border-zinc-800 px-2 py-1">
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <span className="font-medium text-zinc-200">{u.username}</span>{" "}
