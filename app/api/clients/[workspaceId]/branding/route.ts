@@ -27,7 +27,7 @@ export async function GET(
     const { data, error } = await supabase
       .from("clients")
       .select(
-        "id, logo_url, brand_colors, custom_domain, sender_name, sender_email"
+        "id, logo_url, brand_colors, custom_domain, sender_name, sender_email, email_provider, ses_region, ses_from_email"
       )
       .eq("id", workspaceId)
       .single();
@@ -59,6 +59,11 @@ export async function GET(
  *   custom_domain?: string;
  *   sender_name?: string;
  *   sender_email?: string;
+ *   email_provider?: "sendgrid" | "ses";
+ *   ses_access_key?: string;
+ *   ses_secret_key?: string;
+ *   ses_region?: string;
+ *   ses_from_email?: string;
  * }
  */
 export async function PUT(
@@ -81,8 +86,18 @@ export async function PUT(
   }
 
   const body = await req.json();
-  const { logo_url, brand_colors, custom_domain, sender_name, sender_email } =
-    body;
+  const {
+    logo_url,
+    brand_colors,
+    custom_domain,
+    sender_name,
+    sender_email,
+    email_provider,
+    ses_access_key,
+    ses_secret_key,
+    ses_region,
+    ses_from_email,
+  } = body;
 
   const supabase = getSupabaseClient();
 
@@ -94,13 +109,18 @@ export async function PUT(
     if (custom_domain !== undefined) updateData.custom_domain = custom_domain;
     if (sender_name !== undefined) updateData.sender_name = sender_name;
     if (sender_email !== undefined) updateData.sender_email = sender_email;
+    if (email_provider !== undefined) updateData.email_provider = email_provider;
+    if (ses_access_key !== undefined) updateData.ses_access_key = ses_access_key;
+    if (ses_secret_key !== undefined) updateData.ses_secret_key = ses_secret_key;
+    if (ses_region !== undefined) updateData.ses_region = ses_region;
+    if (ses_from_email !== undefined) updateData.ses_from_email = ses_from_email;
 
     const { data, error } = await supabase
       .from("clients")
       .update(updateData)
       .eq("id", workspaceId)
       .select(
-        "id, logo_url, brand_colors, custom_domain, sender_name, sender_email"
+        "id, logo_url, brand_colors, custom_domain, sender_name, sender_email, email_provider, ses_region, ses_from_email"
       )
       .single();
 

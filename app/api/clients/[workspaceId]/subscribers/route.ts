@@ -3,6 +3,7 @@ import { getSupabaseClient } from "@/lib/supabase";
 import {
   getClientContextFromJWT,
   assertWorkspaceAccess,
+  canEditAsClient,
 } from "@/lib/client-context";
 
 /**
@@ -161,6 +162,74 @@ export async function POST(
     return NextResponse.json(data, { status: 201 });
   } catch (error) {
     console.error("Subscriber creation endpoint error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * DELETE /api/clients/[workspaceId]/subscribers
+ * Bulk-delete subscribers by ID. JWT authenticated, requires edit permission.
+ *
+ * Body: { ids: string[] }
+ */
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ workspaceId: string }> }
+) {
+  const { workspaceId } = await params;
+  const context = getClientContextFromJWT(req);
+
+  if (!context || !assertWorkspaceAccess(context, workspaceId)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (!canEditAsClient(context)) {
+    return NextResponse.json(
+      { error: "Insufficient permissions" },
+      { status: 403 }
+    );
+  }
+
+  const body = await req.json();
+  const { ids } = body;
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return NextResponse.json(
+      { error: "ids must be a non-empty array" },
+      { status: 400 }
+    );
+  }
+
+  if (ids.length > 500) {
+    return NextResponse.json(
+      { error: "Maximum 500 subscribers per batch delete" },
+      { status: 400 }
+    );
+  }
+
+  const supabase = getSupabaseClient();
+
+  try {
+    const { error } = await supabase
+      .from("subscribers")
+      .delete()
+      .eq("client_id", workspaceId)
+      .in("id", ids);
+
+    if (error) {
+      console.error("Bulk subscriber delete error:", error);
+      return NextResponse.json(
+        { error: "Failed to delete subscribers" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ ok: true, deleted: ids.length });
+  } catch (error) {
+    console.error("Bulk delete endpoint error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

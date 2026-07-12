@@ -10,6 +10,7 @@
     "geo:backfill": "node scripts/backfill-subscriber-geo.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-ses": "^3.1085.0",
     "@sendgrid/mail": "^8.1.6",
     "@supabase/supabase-js": "^2.103.3",
     "@vercel/analytics": "^2.0.1",
