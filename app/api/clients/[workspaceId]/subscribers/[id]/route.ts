@@ -11,11 +11,11 @@ function isUuid(value: string) {
 }
 
 /**
- * DELETE /api/clients/[workspaceId]/subscriber-lists/[id]
- * Delete a subscriber list. JWT authenticated, requires edit permission.
+ * DELETE /api/clients/[workspaceId]/subscribers/[id]
+ * Remove a subscriber from the workspace. JWT authenticated, requires edit permission.
  *
- * This only deletes the list container — subscriber records are not affected.
- * Memberships in subscriber_list_memberships are cleaned up by the DB cascade.
+ * This is a hard-delete — the subscriber row is removed entirely.
+ * (Unsubscribing via the public /api/unsubscribe endpoint also hard-deletes.)
  */
 export async function DELETE(
   req: NextRequest,
@@ -36,36 +36,36 @@ export async function DELETE(
   }
 
   if (!isUuid(id)) {
-    return NextResponse.json({ error: "Invalid list ID" }, { status: 422 });
+    return NextResponse.json({ error: "Invalid subscriber ID" }, { status: 422 });
   }
 
   const supabase = getSupabaseClient();
 
-  // Verify the list exists and belongs to this workspace.
-  const { data: list, error: fetchError } = await supabase
-    .from("subscriber_lists")
+  // Verify the subscriber exists and belongs to this workspace.
+  const { data: subscriber, error: fetchError } = await supabase
+    .from("subscribers")
     .select("id")
     .eq("id", id)
     .eq("client_id", workspaceId)
     .single();
 
-  if (fetchError || !list) {
+  if (fetchError || !subscriber) {
     return NextResponse.json(
-      { error: "List not found" },
+      { error: "Subscriber not found" },
       { status: 404 }
     );
   }
 
   const { error: deleteError } = await supabase
-    .from("subscriber_lists")
+    .from("subscribers")
     .delete()
     .eq("id", id)
     .eq("client_id", workspaceId);
 
   if (deleteError) {
-    console.error("List delete error:", deleteError);
+    console.error("Subscriber delete error:", deleteError);
     return NextResponse.json(
-      { error: "Failed to delete list" },
+      { error: "Failed to delete subscriber" },
       { status: 500 }
     );
   }
