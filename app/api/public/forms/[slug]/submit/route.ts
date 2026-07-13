@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
+import { geolocateIP } from "@/lib/geo";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -17,7 +18,12 @@ export async function OPTIONS() {
  * target list, records the submission, and fires a subscriber_joined
  * automation so a download email gets sent.
  *
- * Body: { email: string }
+ * Body: {
+ *   email: string,
+ *   first_name?: string,
+ *   browser_latitude?: number,
+ *   browser_longitude?: number,
+ * }
  */
 export async function POST(
   req: NextRequest,
@@ -27,7 +33,7 @@ export async function POST(
   const supabase = getSupabaseClient();
 
   // Parse body
-  let body: { email?: string };
+  let body: { email?: string; first_name?: string; browser_latitude?: number; browser_longitude?: number };
   try {
     body = await req.json();
   } catch {
@@ -74,6 +80,13 @@ export async function POST(
   const userAgent = req.headers.get("user-agent") || null;
   const referrer = req.headers.get("referer") || null;
 
+  // Resolve location — browser GPS overrides IP lookup
+  const ipGeo = await geolocateIP(ip);
+  const finalLatitude = body.browser_latitude ?? ipGeo?.latitude ?? null;
+  const finalLongitude = body.browser_longitude ?? ipGeo?.longitude ?? null;
+  const finalPostalCode = ipGeo?.postal_code ?? null;
+  const finalFirstName = body.first_name?.trim().slice(0, 80) || null;
+
   // Check if subscriber already exists for this workspace
   const { data: existingSub } = await supabase
     .from("subscribers")
@@ -94,17 +107,27 @@ export async function POST(
         .update({ unsubscribed: false, updated_at: new Date().toISOString() })
         .eq("id", subscriberId);
     }
+
+    // Update geo data if we have new coordinates
+    if (finalLatitude != null && finalLongitude != null) {
+      await supabase
+        .from("subscribers")
+        .update({ latitude: finalLatitude, longitude: finalLongitude, postal_code: finalPostalCode })
+        .eq("id", subscriberId)
+        .is("latitude", null);
+    }
   } else {
     // Create new subscriber
-    const geoCountry = req.headers.get("x-vercel-ip-country") ?? null;
-    const geoRegion = req.headers.get("x-vercel-ip-country-region") ?? null;
-    const geoCity = req.headers.get("x-vercel-ip-city") ?? null;
+    const geoCountry = ipGeo?.country ?? req.headers.get("x-vercel-ip-country") ?? null;
+    const geoRegion = ipGeo?.region ?? req.headers.get("x-vercel-ip-country-region") ?? null;
+    const geoCity = ipGeo?.city ?? req.headers.get("x-vercel-ip-city") ?? null;
 
     const { data: newSub, error: createError } = await supabase
       .from("subscribers")
       .insert({
         client_id: workspaceId,
         email,
+        first_name: finalFirstName,
         confirmed: true, // widget signups are single opt-in by default
         consent_email_marketing: true,
         consent_version: "widget-2026",
@@ -113,6 +136,9 @@ export async function POST(
         country: geoCountry,
         region: geoRegion,
         city: geoCity,
+        latitude: finalLatitude,
+        longitude: finalLongitude,
+        postal_code: finalPostalCode,
         source: `widget:${slug}`,
       })
       .select("id")
@@ -156,6 +182,9 @@ export async function POST(
     ip_address: ip,
     user_agent: userAgent,
     referrer: referrer,
+    latitude: finalLatitude,
+    longitude: finalLongitude,
+    postal_code: finalPostalCode,
   });
 
   // Fire subscriber_joined automation (send download email)

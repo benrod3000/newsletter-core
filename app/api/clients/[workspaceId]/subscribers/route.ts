@@ -13,6 +13,9 @@ import {
  * - limit: number (default 100)
  * - offset: number (default 0)
  * - status: "confirmed" | "pending" | "unsubscribed" (optional)
+ * - near_lat: number (optional, for radius query)
+ * - near_lng: number (optional, for radius query)
+ * - radius: number (optional, miles, default 10)
  * 
  * Returns: { subscribers: [...], total: number, limit: number, offset: number }
  */
@@ -50,6 +53,40 @@ export async function GET(
 
     const search = url.searchParams.get("search");
     if (search) filters += `&or=(email.ilike.*${encodeURIComponent(search)}*,first_name.ilike.*${encodeURIComponent(search)}*,last_name.ilike.*${encodeURIComponent(search)}*)`;
+
+    // Geo-radius query: use Postgres nearby_subscribers RPC
+    const nearLat = url.searchParams.get("near_lat");
+    const nearLng = url.searchParams.get("near_lng");
+    const radius = url.searchParams.get("radius") || "10";
+
+    if (nearLat && nearLng) {
+      const rpcRes = await fetch(
+        `${supabaseUrl}/rest/v1/rpc/nearby_subscribers`,
+        {
+          method: "POST",
+          headers: { ...auth, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            p_workspace_id: workspaceId,
+            center_lat: parseFloat(nearLat),
+            center_lng: parseFloat(nearLng),
+            radius_miles: parseFloat(radius),
+          }),
+        }
+      );
+
+      if (!rpcRes.ok) {
+        const errText = await rpcRes.text();
+        console.error("Nearby subscribers RPC error:", rpcRes.status, errText);
+        return NextResponse.json({ error: "Failed to fetch nearby subscribers" }, { status: 500 });
+      }
+
+      const data = await rpcRes.json();
+      const rows = Array.isArray(data) ? data : [];
+      const total = rows.length;
+      const paged = rows.slice(offset, offset + limit);
+
+      return NextResponse.json({ subscribers: paged, total, limit, offset }, { status: 200 });
+    }
 
     const countRes = await fetch(`${supabaseUrl}/rest/v1/subscribers?${filters}&select=count`, { headers: auth });
     const countResult = await countRes.json();
