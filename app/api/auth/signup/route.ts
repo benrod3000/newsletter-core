@@ -36,10 +36,15 @@ export async function POST(req: NextRequest) {
     const workspaceName = (workspace_name || "My Workspace").trim();
     const userEmail = email.toLowerCase().trim();
     const passwordHash = await hashPassword(password);
+    const slug = userEmail.split("@")[0].replace(/[^a-z0-9-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
 
     const { data: workspace, error: wsError } = await supabase
       .from("clients")
-      .insert({ name: workspaceName, email_provider: "sendgrid" })
+      .insert({
+        name: workspaceName,
+        slug,
+        email_provider: "sendgrid",
+      })
       .select("id")
       .single();
 
