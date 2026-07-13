@@ -107,17 +107,34 @@ export async function POST(
     );
   }
 
-  const supabase = getSupabaseClient();
-
   try {
-    const { data, error } = await supabase
-      .from("campaigns")
-      .insert({
+    const supabaseUrl = process.env.SUPABASE_URL!;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    const auth = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json", Prefer: "return=representation" };
+
+    const res = await fetch(`${supabaseUrl}/rest/v1/campaigns`, {
+      method: "POST",
+      headers: auth,
+      body: JSON.stringify({
         client_id: workspaceId,
         name,
         subject,
         audience: audience || "confirmed",
-        editor_html: editor_html || null,
+        editor_html: editor_html || "",
+        editor_css: editor_css || null,
+        status: "draft",
+        sent_count: 0,
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("Campaign create error:", res.status, errText);
+      return NextResponse.json({ error: "Failed to create campaign" }, { status: 500 });
+    }
+
+    const data = await res.json();
+    return NextResponse.json(data?.[0] || data, { status: 201 });
         editor_css: editor_css || null,
         status: "draft",
         processed: false,
