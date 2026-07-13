@@ -34,11 +34,11 @@ export async function POST(req: NextRequest) {
 
     const supabase = getSupabaseClient();
 
-    // Find workspace user by email
+    // Find workspace user by email (case-insensitive)
     let query = supabase
       .from("workspace_users")
       .select("id, workspace_id, email, password_hash, role, is_active")
-      .eq("email", email)
+      .eq("email", email.toLowerCase().trim())
       .eq("is_active", true);
 
     // If workspaceId provided, filter to that workspace
