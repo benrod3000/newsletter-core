@@ -90,7 +90,7 @@ export async function POST(
   // Check if subscriber already exists for this workspace
   const { data: existingSub } = await supabase
     .from("subscribers")
-    .select("id, unsubscribed, confirmed")
+    .select("id, confirmed")
     .eq("email", email)
     .eq("client_id", workspaceId)
     .maybeSingle();
@@ -99,14 +99,6 @@ export async function POST(
 
   if (existingSub) {
     subscriberId = existingSub.id;
-
-    // Re-subscribe if previously unsubscribed
-    if (existingSub.unsubscribed) {
-      await supabase
-        .from("subscribers")
-        .update({ unsubscribed: false, updated_at: new Date().toISOString() })
-        .eq("id", subscriberId);
-    }
 
     // Update geo data if we have new coordinates
     if (finalLatitude != null && finalLongitude != null) {
@@ -131,15 +123,15 @@ export async function POST(
         confirmed: true, // widget signups are single opt-in by default
         consent_email_marketing: true,
         consent_version: "widget-2026",
-        consent_copy: "I agree to receive emails from this sender.",
-        consent_timestamp: new Date().toISOString(),
+        consent_text: "I agree to receive emails from this sender.",
+        consented_at: new Date().toISOString(),
         country: geoCountry,
         region: geoRegion,
         city: geoCity,
         latitude: finalLatitude,
         longitude: finalLongitude,
         postal_code: finalPostalCode,
-        source: `widget:${slug}`,
+        consent_source: `widget:${slug}`,
       })
       .select("id")
       .single();
