@@ -72,7 +72,7 @@ export async function GET(
  * Create a new campaign (JWT authenticated, requires edit permission)
  * 
  * Body: {
- *   name: string;
+ *   title: string;
  *   subject: string;
  *   audience: "confirmed" | "all" | "pending" | "claimed_offer" | "list:<id>";
  *   editor_html?: string;
@@ -98,11 +98,11 @@ export async function POST(
   }
 
   const body = await req.json();
-  const { name, subject, audience, editor_html, editor_css } = body;
+  const { title, subject, audience, editor_html, editor_css } = body;
 
-  if (!name || !subject) {
+  if (!title || !subject) {
     return NextResponse.json(
-      { error: "Name and subject required" },
+      { error: "Title and subject required" },
       { status: 400 }
     );
   }
@@ -117,7 +117,7 @@ export async function POST(
       headers: auth,
       body: JSON.stringify({
         client_id: workspaceId,
-        name,
+        title,
         subject,
         audience: audience || "confirmed",
         editor_html: editor_html || "",
@@ -135,24 +135,8 @@ export async function POST(
 
     const data = await res.json();
     return NextResponse.json(data?.[0] || data, { status: 201 });
-        editor_css: editor_css || null,
-        status: "draft",
-        processed: false,
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error("Campaign creation error:", error);
-      return NextResponse.json(
-        { error: "Failed to create campaign" },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json(data, { status: 201 });
   } catch (error) {
-    console.error("Campaign creation endpoint error:", error);
+    console.error("Campaign creation error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

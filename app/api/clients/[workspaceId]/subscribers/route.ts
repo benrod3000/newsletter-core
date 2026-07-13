@@ -114,7 +114,7 @@ export async function POST(
   }
 
   const body = await req.json();
-  const { email, first_name, last_name, phone_number, date_of_birth, country, region, city, latitude, longitude, consent_email_marketing, consent_analytics_tracking } = body;
+  const { email, first_name, last_name, phone_number, date_of_birth, country, region, city, latitude, longitude } = body;
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json({ error: "Invalid email" }, { status: 400 });
@@ -140,8 +140,6 @@ export async function POST(
         city: city || null,
         latitude: latitude || null,
         longitude: longitude || null,
-        consent_email_marketing: consent_email_marketing || false,
-        consent_analytics_tracking: consent_analytics_tracking || false,
         confirmed: false,
       }),
     });
