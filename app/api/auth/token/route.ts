@@ -1,100 +1,52 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseClient } from "@/lib/supabase";
 import { createClientJWT, verifyPassword } from "@/lib/jwt";
 
-/**
- * POST /api/auth/token
- * Client login endpoint - exchange email + password for JWT token
- * 
- * Body: {
- *   email: string;
- *   password: string;
- *   workspaceId?: string; // optional, for specific workspace login
- * }
- * 
- * Response: {
- *   token: string;
- *   workspaceId: string;
- *   email: string;
- *   role: "owner" | "editor" | "viewer";
- *   expiresIn: number; // seconds
- * }
- */
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { email, password, workspaceId } = body;
-
+    const { email, password, workspaceId } = await req.json();
     if (!email || !password) {
-      return NextResponse.json(
-        { error: "Email and password required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Email and password required" }, { status: 400, headers: CORS_HEADERS });
     }
 
-    const supabase = getSupabaseClient();
+    const supabaseUrl = process.env.SUPABASE_URL!;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    const userEmail = email.toLowerCase().trim();
+    const auth = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` };
 
-    // Find workspace user by email (case-insensitive)
-    let query = supabase
-      .from("workspace_users")
-      .select("id, workspace_id, email, password_hash, role, is_active")
-      .eq("email", email.toLowerCase().trim())
-      .eq("is_active", true);
+    let url = `${supabaseUrl}/rest/v1/workspace_users?select=id,workspace_id,email,password_hash,role&email=eq.${encodeURIComponent(userEmail)}&is_active=eq.true&limit=1`;
+    if (workspaceId) url += `&workspace_id=eq.${encodeURIComponent(workspaceId)}`;
 
-    // If workspaceId provided, filter to that workspace
-    if (workspaceId) {
-      query = query.eq("workspace_id", workspaceId);
+    const res = await fetch(url, { headers: auth });
+    const users = await res.json();
+
+    if (!users?.length) {
+      return NextResponse.json({ error: "Invalid email or password" }, { status: 401, headers: CORS_HEADERS });
     }
 
-    const { data: user, error: userError } = await query.maybeSingle();
-
-    if (userError || !user) {
-      return NextResponse.json(
-        { error: "Invalid email or password" },
-        { status: 401 }
-      );
+    const user = users[0];
+    const valid = await verifyPassword(password, user.password_hash);
+    if (!valid) {
+      return NextResponse.json({ error: "Invalid email or password" }, { status: 401, headers: CORS_HEADERS });
     }
 
-    // Verify password
-    const passwordValid = await verifyPassword(password, user.password_hash);
-    if (!passwordValid) {
-      return NextResponse.json(
-        { error: "Invalid email or password" },
-        { status: 401 }
-      );
-    }
+    const expiresIn = 86400 * 30;
+    const token = createClientJWT(user.workspace_id, user.id, user.email, user.role, expiresIn);
 
-    // Create JWT token (30 day expiry)
-    const expiresInSeconds = 86400 * 30;
-    const token = createClientJWT(
-      user.workspace_id,
-      user.id,
-      user.email,
-      user.role as "owner" | "editor" | "viewer",
-      expiresInSeconds
-    );
-
-    // Update last_login_at
-    await supabase
-      .from("workspace_users")
-      .update({ last_login_at: new Date().toISOString() })
-      .eq("id", user.id);
-
-    return NextResponse.json(
-      {
-        token,
-        workspaceId: user.workspace_id,
-        email: user.email,
-        role: user.role,
-        expiresIn: expiresInSeconds,
-      },
-      { status: 200 }
-    );
-  } catch (error) {
-    console.error("Auth token error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      token, workspaceId: user.workspace_id, email: user.email, role: user.role, expiresIn,
+    }, { status: 200, headers: CORS_HEADERS });
+  } catch (e: any) {
+    console.error("Login error:", e?.message);
+    return NextResponse.json({ error: "Login failed" }, { status: 500, headers: CORS_HEADERS });
   }
 }
