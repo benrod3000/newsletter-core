@@ -53,6 +53,8 @@ export async function runSmartTags() {
       if (e.event_type === "click") { d.clicks++; if (!d.lastClick || e.occurred_at > d.lastClick) d.lastClick = e.occurred_at; }
     }
 
+    const batchUpserts: Array<{ subscriber_id: string; client_id: string; tag: string }> = [];
+
     for (const [subId, d] of subData) {
       const tags = [];
       if (d.opens >= 3) tags.push("engaged");
@@ -65,14 +67,20 @@ export async function runSmartTags() {
       if (d.userAgent?.toLowerCase().includes("mobile")) tags.push("mobile");
 
       for (const tag of tags) {
-        // Upsert tag (ignore if already exists)
-        await fetch(`${supabaseUrl}/rest/v1/subscriber_tags`, {
-          method: "POST",
-          headers: { ...auth, Prefer: "resolution=ignore-duplicates" },
-          body: JSON.stringify({ subscriber_id: subId, client_id: d.clientId, tag }),
-        });
+        batchUpserts.push({ subscriber_id: subId, client_id: d.clientId, tag });
         tagged++;
       }
+    }
+
+    // Bulk upsert tags in batches of 100 to avoid rate limits
+    const batchSize = 100;
+    for (let i = 0; i < batchUpserts.length; i += batchSize) {
+      const batch = batchUpserts.slice(i, i + batchSize);
+      await fetch(`${supabaseUrl}/rest/v1/subscriber_tags`, {
+        method: "POST",
+        headers: { ...auth, Prefer: "resolution=ignore-duplicates" },
+        body: JSON.stringify(batch),
+      });
     }
 
     return { tagged, evaluated: subscribers.length };

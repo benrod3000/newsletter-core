@@ -32,7 +32,17 @@ export async function runAutoClean() {
     for (const sub of coldSubs) {
       const createdDate = new Date(sub.created_at);
       if (createdDate < new Date(ninetyDaysAgo)) {
-        // 90+ days cold — delete
+        // 90+ days cold — log GDPR event, then delete
+        await fetch(`${supabaseUrl}/rest/v1/gdpr_audit_events`, {
+          method: "POST",
+          headers: auth,
+          body: JSON.stringify({
+            subscriber_id: sub.id,
+            event_type: "auto_clean_delete",
+            details: "Deleted after 90+ days cold (auto-clean)",
+            occurred_at: new Date().toISOString(),
+          }),
+        });
         await fetch(`${supabaseUrl}/rest/v1/subscribers?id=eq.${sub.id}`, {
           method: "DELETE",
           headers: auth,

@@ -24,25 +24,46 @@ export async function recalculateHealthScores() {
   let updated = 0;
 
   try {
-    // Get all subscribers with their latest engagement
-    const subsRes = await fetch(
-      `${supabaseUrl}/rest/v1/subscribers?select=id,created_at&limit=10000`,
-      { headers: auth }
-    );
-    const subscribers = await subsRes.json();
-    if (!Array.isArray(subscribers)) return { error: "Failed to fetch subscribers" };
+    // Paginate through all subscribers (1000 at a time)
+    let offset = 0;
+    const pageSize = 1000;
+    let subscribers: any[] = [];
+
+    while (true) {
+      const subsRes = await fetch(
+        `${supabaseUrl}/rest/v1/subscribers?select=id,created_at&limit=${pageSize}&offset=${offset}`,
+        { headers: auth }
+      );
+      const page = await subsRes.json();
+      if (!Array.isArray(page) || page.length === 0) break;
+      subscribers = subscribers.concat(page);
+      offset += pageSize;
+      if (page.length < pageSize) break;
+    }
+
+    if (subscribers.length === 0) return { error: "No subscribers found" };
 
     // Get all campaign events (opens + clicks) for engagement lookup
-    const eventsRes = await fetch(
-      `${supabaseUrl}/rest/v1/campaign_events?select=subscriber_id,event_type,occurred_at&event_type=in.(open,click)&order=occurred_at.desc&limit=50000`,
-      { headers: auth }
-    );
-    const events = await eventsRes.json();
-    if (!Array.isArray(events)) return { error: "Failed to fetch events" };
+    // Fetch in pages as well to avoid truncation
+    const allEvents: any[] = [];
+    let eventOffset = 0;
+    const eventPageSize = 5000;
+
+    while (true) {
+      const eventsRes = await fetch(
+        `${supabaseUrl}/rest/v1/campaign_events?select=subscriber_id,event_type,occurred_at&event_type=in.(open,click)&order=occurred_at.desc&limit=${eventPageSize}&offset=${eventOffset}`,
+        { headers: auth }
+      );
+      const page = await eventsRes.json();
+      if (!Array.isArray(page) || page.length === 0) break;
+      allEvents.push(...page);
+      eventOffset += eventPageSize;
+      if (page.length < eventPageSize) break;
+    }
 
     // Build engagement map: subscriber_id -> latest event date
     const engagement = new Map<string, string>();
-    for (const e of events) {
+    for (const e of allEvents) {
       if (!engagement.has(e.subscriber_id)) {
         engagement.set(e.subscriber_id, e.occurred_at);
       }

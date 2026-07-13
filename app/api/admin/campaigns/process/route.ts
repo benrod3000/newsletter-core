@@ -216,15 +216,29 @@ export async function POST(req: NextRequest) {
 
     const html = buildHtmlFromEditor(campaign.editor_html ?? "", campaign.editor_css ?? "");
     const text = campaign.plain_text || "Newsletter update.";
+    const appUrl = process.env.APP_URL || "https://newsletter.brod3000.com";
 
     try {
       for (const to of recipients) {
+        const unsubscribeUrl = `${appUrl}/unsubscribe?email=${encodeURIComponent(to)}`;
+        const mailHtml = html.replace(
+          "</body>",
+          `<div style="display:none"><img src="${appUrl}/api/track/open?email=${encodeURIComponent(to)}&campaign=${campaign.id}" width="1" height="1" alt=""/></div>\n<p style="color:#52525b;font-size:11px;line-height:1.5;margin:32px 0 0;">\n  <a href="${unsubscribeUrl}" style="color:#71717a;">Unsubscribe</a>\n</p>\n</body>`
+        );
+
         await sgMail.send({
           to,
           from: fromEmail,
           subject: campaign.subject,
-          text,
-          html,
+          text: `${text}\n\nUnsubscribe: ${unsubscribeUrl}`,
+          html: mailHtml,
+          headers: {
+            "List-Unsubscribe": `<${unsubscribeUrl}>`,
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+          },
+          mailSettings: {
+            sandboxMode: { enable: false },
+          },
         });
       }
 
