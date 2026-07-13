@@ -5,6 +5,21 @@ if (!JWT_SECRET) {
   throw new Error("JWT_SECRET environment variable is required");
 }
 
+function toBase64Url(str: string): string {
+  return Buffer.from(str).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function fromBase64Url(b64: string): string {
+  const base64 = b64.replace(/-/g, "+").replace(/_/g, "/");
+  return Buffer.from(base64, "base64").toString("utf-8");
+}
+
+function hmacDigestBase64Url(data: string): string {
+  const hmac = crypto.createHmac("sha256", JWT_SECRET);
+  hmac.update(data);
+  return hmac.digest("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
 export interface ClientJWTPayload {
   workspaceId: string;
   userId: string;
@@ -40,13 +55,10 @@ export function createClientJWT(
     typ: "JWT",
   };
 
-  const headerB64 = Buffer.from(JSON.stringify(header)).toString("base64url");
-  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const headerB64 = toBase64Url(JSON.stringify(header));
+  const payloadB64 = toBase64Url(JSON.stringify(payload));
 
-  // Create signature
-  const hmac = crypto.createHmac("sha256", JWT_SECRET);
-  hmac.update(`${headerB64}.${payloadB64}`);
-  const signatureB64 = hmac.digest("base64url");
+  const signatureB64 = hmacDigestBase64Url(`${headerB64}.${payloadB64}`);
 
   return `${headerB64}.${payloadB64}.${signatureB64}`;
 }
@@ -63,14 +75,12 @@ export function verifyClientJWT(token: string): ClientJWTPayload | null {
     const [headerB64, payloadB64, signatureB64] = parts;
 
     // Verify signature
-    const hmac = crypto.createHmac("sha256", JWT_SECRET);
-    hmac.update(`${headerB64}.${payloadB64}`);
-    const expectedSignature = hmac.digest("base64url");
+    const expectedSignature = hmacDigestBase64Url(`${headerB64}.${payloadB64}`);
 
     if (signatureB64 !== expectedSignature) return null;
 
     // Decode payload
-    const payloadJson = Buffer.from(payloadB64, "base64url").toString("utf-8");
+    const payloadJson = fromBase64Url(payloadB64);
     const payload = JSON.parse(payloadJson) as ClientJWTPayload;
 
     // Check expiration
