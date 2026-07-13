@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseClient } from "@/lib/supabase";
 import {
   getClientContextFromJWT,
   assertWorkspaceAccess,
@@ -24,7 +23,6 @@ export async function GET(
   const { workspaceId } = await params;
   const context = getClientContextFromJWT(req);
 
-  // Verify authentication and workspace access
   if (!context || !assertWorkspaceAccess(context, workspaceId)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -34,51 +32,36 @@ export async function GET(
   const offset = parseInt(url.searchParams.get("offset") || "0");
   const status = url.searchParams.get("status");
 
-  const supabase = getSupabaseClient();
+  const supabaseUrl = process.env.SUPABASE_URL!;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  const auth = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, Accept: "application/json" };
 
   try {
-    let query = supabase
-      .from("subscribers")
-      .select("*", { count: "exact" })
-      .eq("client_id", workspaceId);
+    let filters = `client_id=eq.${workspaceId}`;
+    if (status === "confirmed") filters += `&confirmed=eq.true`;
+    else if (status === "pending") filters += `&confirmed=eq.false`;
+    else if (status === "unsubscribed") filters += `&unsubscribed=eq.true`;
 
-    // Filter by status if provided
-    if (status === "confirmed") {
-      query = query.eq("confirmed", true);
-    } else if (status === "pending") {
-      query = query.eq("confirmed", false);
-    } else if (status === "unsubscribed") {
-      query = query.eq("unsubscribed", true);
-    }
+    const countRes = await fetch(`${supabaseUrl}/rest/v1/subscribers?${filters}&select=count`, { headers: auth });
+    const countResult = await countRes.json();
+    const total = countResult?.[0]?.count ?? 0;
 
-    // Paginate
-    const { data, count, error } = await query
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    if (error) {
-      console.error("Subscriber fetch error:", error);
-      return NextResponse.json(
-        { error: "Failed to fetch subscribers" },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json(
-      {
-        subscribers: data || [],
-        total: count || 0,
-        limit,
-        offset,
-      },
-      { status: 200 }
+    const res = await fetch(
+      `${supabaseUrl}/rest/v1/subscribers?${filters}&order=created_at.desc&limit=${limit}&offset=${offset}`,
+      { headers: auth }
     );
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("Subscriber fetch error:", res.status, errText);
+      return NextResponse.json({ error: "Failed to fetch subscribers" }, { status: 500 });
+    }
+
+    const data = await res.json();
+    return NextResponse.json({ subscribers: data || [], total, limit, offset }, { status: 200 });
   } catch (error) {
     console.error("Subscriber endpoint error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
@@ -205,29 +188,26 @@ export async function DELETE(
     );
   }
 
-  const supabase = getSupabaseClient();
+  const supabaseUrl = process.env.SUPABASE_URL!;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  const auth = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" };
 
   try {
-    const { error } = await supabase
-      .from("subscribers")
-      .delete()
-      .eq("client_id", workspaceId)
-      .in("id", ids);
+    const orFilters = ids.map(id => `id.eq.${id}`).join(",");
+    const res = await fetch(`${supabaseUrl}/rest/v1/subscribers?or=(${orFilters})&client_id=eq.${workspaceId}`, {
+      method: "DELETE",
+      headers: auth,
+    });
 
-    if (error) {
-      console.error("Bulk subscriber delete error:", error);
-      return NextResponse.json(
-        { error: "Failed to delete subscribers" },
-        { status: 500 }
-      );
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("Bulk subscriber delete error:", res.status, errText);
+      return NextResponse.json({ error: "Failed to delete subscribers" }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true, deleted: ids.length });
   } catch (error) {
     console.error("Bulk delete endpoint error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
