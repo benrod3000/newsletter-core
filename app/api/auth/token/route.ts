@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
     }, { status: 200, headers: { "Access-Control-Allow-Origin": "*" } });
   } catch (e: any) {
     if (e instanceof ZodError) {
-      return apiError(400, "VALIDATION_ERROR", "Invalid request", { fields: e.errors });
+      return apiError(400, "VALIDATION_ERROR", "Invalid request", { fields: e.issues });
     }
     console.error("Login error:", e?.message);
     return apiError(500, "INTERNAL_ERROR", "Login failed");
