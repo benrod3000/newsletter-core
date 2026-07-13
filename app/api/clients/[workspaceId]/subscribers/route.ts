@@ -48,6 +48,9 @@ export async function GET(
     if (joinedAfter) filters += `&created_at=gte.${encodeURIComponent(joinedAfter)}`;
     if (joinedBefore) filters += `&created_at=lte.${encodeURIComponent(joinedBefore + 'T23:59:59')}`;
 
+    const search = url.searchParams.get("search");
+    if (search) filters += `&or=(email.ilike.*${encodeURIComponent(search)}*,first_name.ilike.*${encodeURIComponent(search)}*,last_name.ilike.*${encodeURIComponent(search)}*)`;
+
     const countRes = await fetch(`${supabaseUrl}/rest/v1/subscribers?${filters}&select=count`, { headers: auth });
     const countResult = await countRes.json();
     const total = countResult?.[0]?.count ?? 0;
