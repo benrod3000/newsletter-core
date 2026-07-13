@@ -3,6 +3,10 @@
     {
       "path": "/api/admin/campaigns/process",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/admin/health-scores/recalculate",
+      "schedule": "0 3 * * *"
     }
   ]
 }
