@@ -1,6 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseClient } from "@/lib/supabase";
 import { createClientJWT, hashPassword } from "@/lib/jwt";
+
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+}
+
+async function supabaseFetch(path: string, options: RequestInit = {}) {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error("Missing Supabase env vars");
+
+  const res = await fetch(`${url}/rest/v1${path}`, {
+    ...options,
+    headers: {
+      "apikey": key,
+      "Authorization": `Bearer ${key}`,
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Supabase ${res.status}: ${err}`);
+  }
+  return res;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -8,13 +38,12 @@ export async function POST(req: NextRequest) {
     const { email, password, workspace_name } = body;
 
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return NextResponse.json({ error: "Valid email required" }, { status: 400 });
+      return NextResponse.json({ error: "Valid email required" }, { status: 400, headers: CORS_HEADERS });
     }
     if (!password || password.length < 6) {
-      return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 });
+      return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400, headers: CORS_HEADERS });
     }
 
-    const supabase = getSupabaseClient();
     const userEmail = email.toLowerCase().trim();
     const workspaceName = (workspace_name || "My Workspace").trim();
     const passwordHash = await hashPassword(password);
@@ -24,66 +53,68 @@ export async function POST(req: NextRequest) {
       .replace(/^-|-$/g, "");
 
     // Check if email already exists
-    const { data: existing } = await supabase
-      .from("workspace_users")
-      .select("id")
-      .eq("email", userEmail)
-      .maybeSingle();
-
-    if (existing) {
-      return NextResponse.json(
-        { error: "An account with this email already exists." },
-        { status: 409 }
-      );
+    const checkRes = await supabaseFetch(
+      `/workspace_users?select=id&email=eq.${encodeURIComponent(userEmail)}&limit=1`,
+      { headers: { "Prefer": "count=exact" } }
+    );
+    const existing = await checkRes.json();
+    if (existing && existing.length > 0) {
+      return NextResponse.json({ error: "An account with this email already exists." }, { status: 409, headers: CORS_HEADERS });
     }
 
-    // Try to create a new workspace directly
+    // Create workspace via REST API
     let workspaceId: string | null = null;
 
-    const { data: newWs, error: wsError } = await supabase
-      .from("clients")
-      .insert({ name: workspaceName, slug })
-      .select("id")
-      .single();
+    try {
+      const wsRes = await supabaseFetch("/clients", {
+        method: "POST",
+        body: JSON.stringify({ name: workspaceName, slug }),
+        headers: { "Prefer": "return=representation" },
+      });
+      const wsData = await wsRes.json();
+      workspaceId = wsData?.[0]?.id || null;
+    } catch (err) {
+      console.warn("Could not create workspace, trying default:", err);
+    }
 
-    if (wsError) {
-      console.warn("Could not create new workspace, falling back to default:", wsError.message);
-      // Fallback: use default workspace if it exists
-      const { data: defaultWs } = await supabase
-        .from("clients")
-        .select("id")
-        .eq("slug", "default")
-        .single();
-
-      workspaceId = defaultWs?.id || null;
-    } else {
-      workspaceId = newWs?.id || null;
+    // Fallback: use default workspace
+    if (!workspaceId) {
+      try {
+        const defRes = await supabaseFetch(
+          `/clients?select=id&slug=eq.default&limit=1`,
+          { headers: { "Prefer": "count=exact" } }
+        );
+        const defData = await defRes.json();
+        workspaceId = defData?.[0]?.id || null;
+      } catch (err) {
+        console.warn("Could not find default workspace:", err);
+      }
     }
 
     if (!workspaceId) {
       return NextResponse.json(
-        { error: "Unable to set up workspace. Please try again or contact support." },
-        { status: 500 }
+        { error: "Unable to set up workspace. Please try again." },
+        { status: 500, headers: CORS_HEADERS }
       );
     }
 
-    // Create the user
-    const { data: user, error: userError } = await supabase
-      .from("workspace_users")
-      .insert({
+    // Create user
+    const userRes = await supabaseFetch("/workspace_users", {
+      method: "POST",
+      body: JSON.stringify({
         workspace_id: workspaceId,
         email: userEmail,
         password_hash: passwordHash,
         role: "owner",
         is_active: true,
-      })
-      .select("id, workspace_id, email, role")
-      .single();
+      }),
+      headers: { "Prefer": "return=representation" },
+    });
+    const userData = await userRes.json();
+    const user = userData?.[0];
 
-    if (userError || !user) {
-      // Clean up workspace if we created one
-      if (newWs?.id) await supabase.from("clients").delete().eq("id", newWs.id);
-      return NextResponse.json({ error: "Failed to create user" }, { status: 500 });
+    if (!user) {
+      return NextResponse.json({ error: "Failed to create user" }, { status: 500, headers: CORS_HEADERS });
     }
 
     const expiresIn = 86400 * 30;
@@ -96,9 +127,12 @@ export async function POST(req: NextRequest) {
       role: "owner",
       expiresIn,
       workspace_name: workspaceName,
-    }, { status: 201 });
-  } catch (error) {
-    console.error("Signup error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }, { status: 201, headers: CORS_HEADERS });
+  } catch (error: any) {
+    console.error("Signup error:", error?.message || error, error?.stack?.slice(0, 500));
+    return NextResponse.json(
+      { error: error?.message || "Internal server error" },
+      { status: 500, headers: CORS_HEADERS }
+    );
   }
 }
