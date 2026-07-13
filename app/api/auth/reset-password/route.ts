@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hashPassword } from "@/lib/jwt";
+import { rateLimit } from "@/lib/rate-limit";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -12,6 +13,16 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: NextRequest) {
+  // Rate limit: 3 attempts per minute per IP
+  const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown";
+  const { allowed, retryAfter } = rateLimit(`reset-password:${ip}`, 3, 3 / 60);
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Too many attempts. Please try again later." },
+      { status: 429, headers: { "Retry-After": String(retryAfter), "Access-Control-Allow-Origin": "*" } }
+    );
+  }
+
   try {
     const { token, password } = await req.json();
     if (!token || !password || password.length < 6) {

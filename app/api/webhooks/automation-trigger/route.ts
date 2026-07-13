@@ -21,12 +21,21 @@ import { getSupabaseClient } from "@/lib/supabase";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { workspace_id, trigger_type, subscriber_id, event_data } = body;
+    const { workspace_id, trigger_type, subscriber_id, event_data, api_key } = body;
 
     if (!workspace_id || !trigger_type) {
       return NextResponse.json(
         { error: "workspace_id and trigger_type required" },
         { status: 400 }
+      );
+    }
+
+    // Require API key matching the WEBHOOK_SECRET env var
+    const expectedKey = process.env.WEBHOOK_SECRET;
+    if (expectedKey && api_key !== expectedKey) {
+      return NextResponse.json(
+        { error: "Invalid or missing API key" },
+        { status: 401 }
       );
     }
 

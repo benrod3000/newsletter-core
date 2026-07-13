@@ -51,11 +51,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({ reset_token: resetToken, reset_token_expires_at: expiresAt }),
     });
 
-    return NextResponse.json({
-      ok: true,
-      reset_token: resetToken,
-      reset_url: `https://newsletter.brod3000.com/reset-password?token=${resetToken}`,
-    }, { status: 200, headers: CORS_HEADERS });
+    return NextResponse.json({ ok: true }, { status: 200, headers: CORS_HEADERS });
   } catch (error: any) {
     console.error("Forgot password error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500, headers: CORS_HEADERS });
