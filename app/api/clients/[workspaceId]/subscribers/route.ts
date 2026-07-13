@@ -41,6 +41,7 @@ export async function GET(
     if (status === "confirmed") filters += `&confirmed=eq.true`;
     else if (status === "pending") filters += `&confirmed=eq.false`;
     else if (status === "unsubscribed") filters += `&unsubscribed=eq.true`;
+    else if (status === "active" || status === "at_risk" || status === "cold") filters += `&health_score=eq.${status}`;
 
     const countRes = await fetch(`${supabaseUrl}/rest/v1/subscribers?${filters}&select=count`, { headers: auth });
     const countResult = await countRes.json();
