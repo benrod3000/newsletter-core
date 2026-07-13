@@ -76,7 +76,7 @@ export async function runSmartTags() {
     }
 
     return { tagged, evaluated: subscribers.length };
-  } catch (e) {
+  } catch (e: any) {
     return { error: e?.message };
   }
 }
