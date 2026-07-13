@@ -7,6 +7,18 @@
     {
       "path": "/api/admin/health-scores/recalculate",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/admin/automations/confirm-remind/run",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/admin/automations/auto-clean/run",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/admin/automations/smart-tags/run",
+      "schedule": "0 4 * * *"
     }
   ]
 }
