@@ -155,23 +155,16 @@ function buildCapturedSignals(snapshot: SignupSnapshot): Array<{ label: string; 
 }
 
 async function resolveClientIdForSignup(supabase: ReturnType<typeof getSupabaseClient>, clientSlug: string | null) {
-  const slug = clientSlug || process.env.DEFAULT_CLIENT_SLUG || "default";
+  // Require an explicit workspace slug — no default fallback
+  if (!clientSlug) return null;
 
   const { data } = await supabase
     .from("clients")
     .select("id")
-    .eq("slug", slug)
+    .eq("slug", clientSlug)
     .maybeSingle();
 
-  if (data?.id) return data.id;
-
-  const { data: fallback } = await supabase
-    .from("clients")
-    .select("id")
-    .eq("slug", "default")
-    .maybeSingle();
-
-  return fallback?.id ?? null;
+  return data?.id ?? null;
 }
 
 async function sendConfirmationEmail({
@@ -361,6 +354,14 @@ export async function POST(req: NextRequest) {
     // 7. Insert into Supabase, returning tokens for the email
     const supabase = getSupabaseClient();
     const client_id = await resolveClientIdForSignup(supabase, client_slug);
+
+    if (!client_id) {
+      return NextResponse.json(
+        { error: "Invalid or missing workspace identifier." },
+        { status: 400, headers: CORS_HEADERS }
+      );
+    }
+
     const { data: subscriber, error: dbError } = await supabase
       .from("subscribers")
       .insert([

@@ -58,10 +58,11 @@ export async function POST(req: NextRequest) {
     const userEmail = email.toLowerCase().trim();
     const workspaceName = (workspace_name || "My Workspace").trim();
     const passwordHash = await hashPassword(password);
-    const slug = userEmail.split("@")[0]
+    const baseSlug = userEmail.split("@")[0]
       .replace(/[^a-z0-9-]+/g, "-")
       .replace(/-+/g, "-")
       .replace(/^-|-$/g, "");
+    const slug = `${baseSlug}-${crypto.randomUUID().split("-")[0]}`;
 
     // Check if email already exists
     const checkRes = await supabaseFetch(
@@ -73,7 +74,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "An account with this email already exists." }, { status: 409, headers: CORS_HEADERS });
     }
 
-    // Create workspace via REST API
+    // Create workspace via REST API (slug includes a random suffix, so collisions are near-impossible)
     let workspaceId: string | null = null;
 
     try {
@@ -85,24 +86,16 @@ export async function POST(req: NextRequest) {
       const wsData = await wsRes.json();
       workspaceId = wsData?.[0]?.id || null;
     } catch (err) {
-      console.warn("Could not create workspace, trying default:", err);
+      console.error("Workspace creation failed:", err);
+      return NextResponse.json(
+        { error: "Unable to create workspace. Please try again." },
+        { status: 500, headers: CORS_HEADERS }
+      );
     }
 
-    // Fallback: use default workspace
+    // If Supabase returned no data despite a 2xx response, fail safely
     if (!workspaceId) {
-      try {
-        const defRes = await supabaseFetch(
-          `/clients?select=id&slug=eq.default&limit=1`,
-          { headers: { "Prefer": "count=exact" } }
-        );
-        const defData = await defRes.json();
-        workspaceId = defData?.[0]?.id || null;
-      } catch (err) {
-        console.warn("Could not find default workspace:", err);
-      }
-    }
-
-    if (!workspaceId) {
+      console.error("Workspace creation returned no ID");
       return NextResponse.json(
         { error: "Unable to set up workspace. Please try again." },
         { status: 500, headers: CORS_HEADERS }
