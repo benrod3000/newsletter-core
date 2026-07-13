@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
+import { rateLimit } from "@/lib/rate-limit";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -12,6 +13,16 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: NextRequest) {
+  // Rate limit: 3 requests per minute per IP
+  const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown";
+  const { allowed, retryAfter } = rateLimit(`forgot-password:${ip}`, 3, 3 / 60);
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Please try again later." },
+      { status: 429, headers: { "Retry-After": String(retryAfter), "Access-Control-Allow-Origin": "*" } }
+    );
+  }
+
   try {
     const { email } = await req.json();
     if (!email) {

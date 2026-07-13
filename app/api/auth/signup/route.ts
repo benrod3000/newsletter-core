@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClientJWT, hashPassword } from "@/lib/jwt";
+import { rateLimit } from "@/lib/rate-limit";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -33,6 +34,16 @@ async function supabaseFetch(path: string, options: RequestInit = {}) {
 }
 
 export async function POST(req: NextRequest) {
+  // Rate limit: 3 signup attempts per minute per IP
+  const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown";
+  const { allowed, retryAfter } = rateLimit(`signup:${ip}`, 3, 3 / 60);
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Too many signup attempts. Please try again later." },
+      { status: 429, headers: { "Retry-After": String(retryAfter), "Access-Control-Allow-Origin": "*" } }
+    );
+  }
+
   try {
     const body = await req.json();
     const { email, password, workspace_name } = body;
