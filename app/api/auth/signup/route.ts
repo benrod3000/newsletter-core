@@ -38,25 +38,21 @@ export async function POST(req: NextRequest) {
     const passwordHash = await hashPassword(password);
     const slug = userEmail.split("@")[0].replace(/[^a-z0-9-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
 
-    const { data: workspace, error: wsError } = await supabase
-      .from("clients")
-      .insert({
-        name: workspaceName,
-        slug,
-        email_provider: "sendgrid",
-      })
-      .select("id")
-      .single();
+    const { data: workspaceId, error: wsError } = await supabase
+      .rpc("create_client_workspace", { p_name: workspaceName, p_slug: slug });
 
     if (wsError || !workspace) {
-      console.error("Signup workspace create error:", wsError);
-      return NextResponse.json({ error: "Failed to create workspace" }, { status: 500 });
+      console.error("Signup workspace create error:", JSON.stringify(wsError));
+      return NextResponse.json(
+        { error: "Failed to create workspace: " + (wsError?.message || "unknown error") },
+        { status: 500 }
+      );
     }
 
     const { data: user, error: userError } = await supabase
       .from("workspace_users")
       .insert({
-        workspace_id: workspace.id,
+        workspace_id: workspaceId,
         email: userEmail,
         password_hash: passwordHash,
         role: "owner",
@@ -66,7 +62,7 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (userError || !user) {
-      await supabase.from("clients").delete().eq("id", workspace.id);
+      await supabase.from("clients").delete().eq("id", workspaceId);
       console.error("Signup user create error:", userError);
       return NextResponse.json({ error: "Failed to create user" }, { status: 500 });
     }
