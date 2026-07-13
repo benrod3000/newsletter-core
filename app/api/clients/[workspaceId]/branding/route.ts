@@ -1,150 +1,77 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseClient } from "@/lib/supabase";
 import {
   getClientContextFromJWT,
   assertWorkspaceAccess,
   isClientOwner,
 } from "@/lib/client-context";
 
-/**
- * GET /api/clients/[workspaceId]/branding
- * Fetch workspace branding settings (JWT authenticated)
- */
+const CORS = { "Access-Control-Allow-Origin": "*" };
+const BRANDING_FIELDS = "id,logo_url,brand_colors,custom_domain,sender_name,sender_email,email_provider,ses_region,ses_from_email";
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ workspaceId: string }> }
 ) {
   const { workspaceId } = await params;
   const context = getClientContextFromJWT(req);
-
   if (!context || !assertWorkspaceAccess(context, workspaceId)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: CORS });
   }
-
-  const supabase = getSupabaseClient();
-
+  const supabaseUrl = process.env.SUPABASE_URL!;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  const auth = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` };
   try {
-    const { data, error } = await supabase
-      .from("clients")
-      .select(
-        "id, logo_url, brand_colors, custom_domain, sender_name, sender_email, email_provider, ses_region, ses_from_email"
-      )
-      .eq("id", workspaceId)
-      .single();
-
-    if (error || !data) {
-      return NextResponse.json(
-        { error: "Workspace not found" },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json(data, { status: 200 });
-  } catch (error) {
-    console.error("Branding fetch error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
+    const res = await fetch(
+      `${supabaseUrl}/rest/v1/clients?select=${BRANDING_FIELDS}&id=eq.${encodeURIComponent(workspaceId)}&limit=1`,
+      { headers: auth }
     );
+    const data = await res.json();
+    if (!Array.isArray(data) || data.length === 0) {
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404, headers: CORS });
+    }
+    return NextResponse.json(data[0], { status: 200, headers: CORS });
+  } catch {
+    return NextResponse.json({ error: "Internal server error" }, { status: 500, headers: CORS });
   }
 }
 
-/**
- * PUT /api/clients/[workspaceId]/branding
- * Update workspace branding (JWT authenticated, owner only)
- * 
- * Body: {
- *   logo_url?: string;
- *   brand_colors?: { primary: string; secondary: string; };
- *   custom_domain?: string;
- *   sender_name?: string;
- *   sender_email?: string;
- *   email_provider?: "sendgrid" | "ses";
- *   ses_access_key?: string;
- *   ses_secret_key?: string;
- *   ses_region?: string;
- *   ses_from_email?: string;
- * }
- */
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ workspaceId: string }> }
 ) {
   const { workspaceId } = await params;
   const context = getClientContextFromJWT(req);
-
   if (!context || !assertWorkspaceAccess(context, workspaceId)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: CORS });
   }
-
-  // Only workspace owners can update branding
   if (!isClientOwner(context)) {
-    return NextResponse.json(
-      { error: "Insufficient permissions. Only workspace owners can update branding." },
-      { status: 403 }
-    );
+    return NextResponse.json({ error: "Only owners can update branding" }, { status: 403, headers: CORS });
   }
-
   const body = await req.json();
-  const {
-    logo_url,
-    brand_colors,
-    custom_domain,
-    sender_name,
-    sender_email,
-    email_provider,
-    ses_access_key,
-    ses_secret_key,
-    ses_region,
-    ses_from_email,
-  } = body;
-
-  const supabase = getSupabaseClient();
-
+  const updateData: Record<string, unknown> = {};
+  const fields = ["logo_url","brand_colors","custom_domain","sender_name","sender_email","email_provider","ses_access_key","ses_secret_key","ses_region","ses_from_email"];
+  for (const f of fields) {
+    if (body[f] !== undefined) updateData[f] = body[f];
+  }
+  const supabaseUrl = process.env.SUPABASE_URL!;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  const auth = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json", Prefer: "return=representation" };
   try {
-    // Prepare update data
-    const updateData: Record<string, unknown> = {};
-    if (logo_url !== undefined) updateData.logo_url = logo_url;
-    if (brand_colors !== undefined) updateData.brand_colors = brand_colors;
-    if (custom_domain !== undefined) updateData.custom_domain = custom_domain;
-    if (sender_name !== undefined) updateData.sender_name = sender_name;
-    if (sender_email !== undefined) updateData.sender_email = sender_email;
-    if (email_provider !== undefined) updateData.email_provider = email_provider;
-    if (ses_access_key !== undefined) updateData.ses_access_key = ses_access_key;
-    if (ses_secret_key !== undefined) updateData.ses_secret_key = ses_secret_key;
-    if (ses_region !== undefined) updateData.ses_region = ses_region;
-    if (ses_from_email !== undefined) updateData.ses_from_email = ses_from_email;
-
-    const { data, error } = await supabase
-      .from("clients")
-      .update(updateData)
-      .eq("id", workspaceId)
-      .select(
-        "id, logo_url, brand_colors, custom_domain, sender_name, sender_email, email_provider, ses_region, ses_from_email"
-      )
-      .single();
-
-    if (error) {
-      console.error("Branding update error:", error);
-      // Handle unique constraint on custom_domain
-      if (error.code === "23505") {
-        return NextResponse.json(
-          { error: "Custom domain already in use" },
-          { status: 409 }
-        );
+    const res = await fetch(`${supabaseUrl}/rest/v1/clients?id=eq.${encodeURIComponent(workspaceId)}`, {
+      method: "PATCH",
+      headers: auth,
+      body: JSON.stringify(updateData),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      if (errText.includes("23505")) {
+        return NextResponse.json({ error: "Custom domain already in use" }, { status: 409, headers: CORS });
       }
-      return NextResponse.json(
-        { error: "Failed to update branding" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Failed to update branding" }, { status: 500, headers: CORS });
     }
-
-    return NextResponse.json(data, { status: 200 });
-  } catch (error) {
-    console.error("Branding update endpoint error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    const data = await res.json();
+    return NextResponse.json(data?.[0] || data, { status: 200, headers: CORS });
+  } catch {
+    return NextResponse.json({ error: "Internal server error" }, { status: 500, headers: CORS });
   }
 }
