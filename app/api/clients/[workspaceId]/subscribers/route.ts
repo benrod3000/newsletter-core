@@ -43,6 +43,11 @@ export async function GET(
     else if (status === "unsubscribed") filters += `&unsubscribed=eq.true`;
     else if (status === "active" || status === "at_risk" || status === "cold") filters += `&health_score=eq.${status}`;
 
+    const joinedAfter = url.searchParams.get("joined_after");
+    const joinedBefore = url.searchParams.get("joined_before");
+    if (joinedAfter) filters += `&created_at=gte.${encodeURIComponent(joinedAfter)}`;
+    if (joinedBefore) filters += `&created_at=lte.${encodeURIComponent(joinedBefore + 'T23:59:59')}`;
+
     const countRes = await fetch(`${supabaseUrl}/rest/v1/subscribers?${filters}&select=count`, { headers: auth });
     const countResult = await countRes.json();
     const total = countResult?.[0]?.count ?? 0;
