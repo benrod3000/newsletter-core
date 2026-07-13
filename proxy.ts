@@ -65,17 +65,27 @@ async function authenticateFromSupabase(username: string, password: string) {
 }
 
 export async function proxy(request: NextRequest) {
-  // Handle CORS preflight for all routes
+  const { pathname } = new URL(request.url);
+
+  // Handle CORS preflight for ALL routes
   if (request.method === "OPTIONS") {
     return new NextResponse(null, {
       status: 204,
       headers: {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        "Access-Control-Allow-Headers": "Authorization, Content-Type, x-admin-role, x-admin-username, x-admin-client-id",
         "Access-Control-Max-Age": "86400",
       },
     });
+  }
+
+  // Only require Basic Auth for admin routes; let API routes pass through
+  const isAdminRoute = pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
+  if (!isAdminRoute) {
+    const response = NextResponse.next();
+    response.headers.set("Access-Control-Allow-Origin", "*");
+    return response;
   }
 
   const adminUser = process.env.ADMIN_USERNAME;
@@ -136,5 +146,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/api/admin/:path*"],
+  matcher: ["/:path*"],
 };
