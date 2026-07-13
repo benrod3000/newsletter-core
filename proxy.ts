@@ -66,6 +66,7 @@ async function authenticateFromSupabase(username: string, password: string) {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = new URL(request.url);
+  const requestId = crypto.randomUUID();
 
   // Handle CORS preflight for ALL routes
   if (request.method === "OPTIONS") {
@@ -76,6 +77,7 @@ export async function proxy(request: NextRequest) {
         "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
         "Access-Control-Allow-Headers": "Authorization, Content-Type, x-admin-role, x-admin-username, x-admin-client-id",
         "Access-Control-Max-Age": "86400",
+        "X-Request-Id": requestId,
       },
     });
   }
@@ -87,6 +89,7 @@ export async function proxy(request: NextRequest) {
   if (!isAdminRoute || isCronRoute) {
     const response = NextResponse.next();
     response.headers.set("Access-Control-Allow-Origin", "*");
+    response.headers.set("X-Request-Id", requestId);
     return response;
   }
 

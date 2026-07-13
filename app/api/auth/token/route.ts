@@ -18,11 +18,12 @@ export async function OPTIONS() {
 export async function POST(req: NextRequest) {
   // Rate limit: 5 attempts per minute per IP
   const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown";
-  const { allowed, retryAfter } = rateLimit(`login:${ip}`, 5, 5 / 60);
-  if (!allowed) {
+  const rl = rateLimit(`login:${ip}`, 5, 5 / 60);
+  const rateHeaders = { "X-RateLimit-Limit": String(rl.limit), "X-RateLimit-Remaining": String(rl.remaining), "Access-Control-Allow-Origin": "*" };
+  if (!rl.allowed) {
     return NextResponse.json(
-      { error: { code: "RATE_LIMITED", message: "Too many attempts", retryAfter } },
-      { status: 429, headers: { "Retry-After": String(retryAfter), "Access-Control-Allow-Origin": "*" } }
+      { error: { code: "RATE_LIMITED", message: "Too many attempts", retryAfter: rl.retryAfter } },
+      { status: 429, headers: { ...rateHeaders, "Retry-After": String(rl.retryAfter) } }
     );
   }
 
@@ -55,7 +56,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       token, workspaceId: user.workspace_id, email: user.email, role: user.role, expiresIn,
-    }, { status: 200, headers: { "Access-Control-Allow-Origin": "*" } });
+    }, { status: 200, headers: rateHeaders });
   } catch (e: any) {
     if (e instanceof ZodError) {
       return apiError(400, "VALIDATION_ERROR", "Invalid request", { fields: e.issues });
