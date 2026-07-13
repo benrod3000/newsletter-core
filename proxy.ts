@@ -81,8 +81,10 @@ export async function proxy(request: NextRequest) {
   }
 
   // Only require Basic Auth for admin routes; let API routes pass through
+  // Cron endpoints are exempt from auth (Vercel cron sends unauthenticated GETs)
   const isAdminRoute = pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
-  if (!isAdminRoute) {
+  const isCronRoute = pathname.includes("/admin/campaigns/process") || pathname.includes("/admin/health-scores/recalculate");
+  if (!isAdminRoute || isCronRoute) {
     const response = NextResponse.next();
     response.headers.set("Access-Control-Allow-Origin", "*");
     return response;
