@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClientJWT, verifyPassword } from "@/lib/jwt";
+import { rateLimit } from "@/lib/rate-limit";
+import { loginSchema } from "@/lib/validators";
+import { apiError } from "@/lib/api-error";
+import { ZodError } from "zod";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -12,12 +16,19 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: NextRequest) {
-  try {
-    const { email, password, workspaceId } = await req.json();
-    if (!email || !password) {
-      return NextResponse.json({ error: "Email and password required" }, { status: 400, headers: CORS_HEADERS });
-    }
+  // Rate limit: 5 attempts per minute per IP
+  const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown";
+  const { allowed, retryAfter } = rateLimit(`login:${ip}`, 5, 5 / 60);
+  if (!allowed) {
+    return NextResponse.json(
+      { error: { code: "RATE_LIMITED", message: "Too many attempts", retryAfter } },
+      { status: 429, headers: { "Retry-After": String(retryAfter), "Access-Control-Allow-Origin": "*" } }
+    );
+  }
 
+  try {
+    const body = loginSchema.parse(await req.json());
+    const { email, password, workspaceId } = body;
     const supabaseUrl = process.env.SUPABASE_URL!;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
     const userEmail = email.toLowerCase().trim();
@@ -30,13 +41,13 @@ export async function POST(req: NextRequest) {
     const users = await res.json();
 
     if (!users?.length) {
-      return NextResponse.json({ error: "Invalid email or password" }, { status: 401, headers: CORS_HEADERS });
+      return apiError(401, "INVALID_CREDENTIALS", "Invalid email or password");
     }
 
     const user = users[0];
     const valid = await verifyPassword(password, user.password_hash);
     if (!valid) {
-      return NextResponse.json({ error: "Invalid email or password" }, { status: 401, headers: CORS_HEADERS });
+      return apiError(401, "INVALID_CREDENTIALS", "Invalid email or password");
     }
 
     const expiresIn = 86400 * 30;
@@ -44,9 +55,12 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       token, workspaceId: user.workspace_id, email: user.email, role: user.role, expiresIn,
-    }, { status: 200, headers: CORS_HEADERS });
+    }, { status: 200, headers: { "Access-Control-Allow-Origin": "*" } });
   } catch (e: any) {
+    if (e instanceof ZodError) {
+      return apiError(400, "VALIDATION_ERROR", "Invalid request", { fields: e.errors });
+    }
     console.error("Login error:", e?.message);
-    return NextResponse.json({ error: "Login failed" }, { status: 500, headers: CORS_HEADERS });
+    return apiError(500, "INTERNAL_ERROR", "Login failed");
   }
 }
