@@ -77,8 +77,9 @@ export function verifyClientJWT(token: string): ClientJWTPayload | null {
 
     // Verify signature
     const expectedSignature = hmacDigestBase64Url(`${headerB64}.${payloadB64}`);
-
-    if (signatureB64 !== expectedSignature) return null;
+    const sigBuf = Buffer.from(signatureB64);
+    const expBuf = Buffer.from(expectedSignature);
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) return null;
 
     // Decode payload
     const payloadJson = fromBase64Url(payloadB64);
