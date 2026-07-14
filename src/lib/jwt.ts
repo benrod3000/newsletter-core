@@ -1,8 +1,9 @@
 import crypto from "crypto";
 
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  throw new Error("JWT_SECRET environment variable is required");
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error("JWT_SECRET environment variable is required");
+  return secret;
 }
 
 function toBase64Url(str: string): string {
@@ -15,7 +16,7 @@ function fromBase64Url(b64: string): string {
 }
 
 function hmacDigestBase64Url(data: string): string {
-  const hmac = crypto.createHmac("sha256", JWT_SECRET);
+  const hmac = crypto.createHmac("sha256", getJwtSecret());
   hmac.update(data);
   return hmac.digest("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
