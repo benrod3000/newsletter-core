@@ -30,7 +30,9 @@ export async function GET(
       .from("widgets")
       .select("headline, description, download_url, button_text, success_message, placeholder, is_active")
       .eq("slug", slug)
-      .maybeSingle();
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
 
     if (error) {
       console.error("Public form fetch error:", error);
