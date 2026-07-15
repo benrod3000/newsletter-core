@@ -17,7 +17,8 @@ export async function OPTIONS() {
 
 export async function POST(req: NextRequest) {
   // Rate limit: 5 attempts per minute per IP
-  const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown";
+  const forwarded = req.headers.get("x-forwarded-for");
+  const ip = forwarded ? forwarded.split(",")[0].trim() : req.headers.get("x-real-ip") || "unknown";
   const rl = rateLimit(`login:${ip}`, 5, 5 / 60);
   const rateHeaders = { "X-RateLimit-Limit": String(rl.limit), "X-RateLimit-Remaining": String(rl.remaining), "Access-Control-Allow-Origin": "*" };
   if (!rl.allowed) {
