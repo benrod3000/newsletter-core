@@ -33,7 +33,7 @@ export async function POST(
   const supabase = getSupabaseClient();
 
   // Parse body
-  let body: { email?: string; first_name?: string; last_name?: string; phone?: string; postal_code?: string; browser_latitude?: number; browser_longitude?: number };
+  let body: { email?: string; first_name?: string; last_name?: string; phone?: string; sms_consent?: boolean; postal_code?: string; browser_latitude?: number; browser_longitude?: number };
   try {
     body = await req.json();
   } catch {
@@ -125,8 +125,8 @@ export async function POST(
         first_name: finalFirstName,
         last_name: finalLastName,
         phone: finalPhone,
-        sms_consent: !!finalPhone,
-        sms_consented_at: finalPhone ? new Date().toISOString() : null,
+        sms_consent: body.sms_consent === true,
+        sms_consented_at: body.sms_consent ? new Date().toISOString() : null,
         postal_code: finalPostalCode || finalUserPostal,
         confirmed: true, // widget signups are single opt-in by default
         consent_email_marketing: true,
