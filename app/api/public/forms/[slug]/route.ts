@@ -28,7 +28,7 @@ export async function GET(
   try {
     const { data, error } = await supabase
       .from("widgets")
-      .select("headline, description, download_url, button_text, success_message, placeholder, is_active, type, fields, styles")
+      .select("id, workspace_id, headline, description, download_url, button_text, success_message, placeholder, is_active, type, fields, styles")
       .eq("slug", slug)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -56,8 +56,17 @@ export async function GET(
       );
     }
 
-    // Don't expose download_url to the client — it's sent via email only
-    const { download_url: _downloadUrl, ...safeWidget } = data;
+    // Don't expose download_url or internal IDs to the client
+    const { download_url: _downloadUrl, id: _wid, workspace_id: _wsid, ...safeWidget } = data;
+
+    // Track impression (fire-and-forget)
+    if (_wid && _wsid) {
+      fetch(`${process.env.SUPABASE_URL}/rest/v1/widget_events`, {
+        method: 'POST',
+        headers: { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({ widget_id: _wid, workspace_id: _wsid, event_type: 'impression', occurred_at: new Date().toISOString() }),
+      }).catch(() => {});
+    }
 
     return NextResponse.json(
       { widget: safeWidget },

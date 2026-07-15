@@ -189,6 +189,13 @@ export async function POST(
   // Fire subscriber_joined automation (send download email)
   await triggerSubscriberJoined(supabase, workspaceId, subscriberId, email, downloadUrl, slug);
 
+  // Track submission event
+  fetch(`${process.env.SUPABASE_URL}/rest/v1/widget_events`, {
+    method: 'POST',
+    headers: { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+    body: JSON.stringify({ widget_id: widget.id, workspace_id: workspaceId, event_type: 'submission', subscriber_id: subscriberId, occurred_at: new Date().toISOString() }),
+  }).catch(() => {});
+
   return NextResponse.json(
     { ok: true },
     { status: 200, headers: CORS_HEADERS }
