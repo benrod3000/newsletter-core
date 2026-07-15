@@ -7,6 +7,7 @@ import {
   renderTemplate,
   type MergeRecipient,
 } from "@/lib/campaign-personalization";
+import { checkSendingLimit } from "@/lib/sending-limits";
 
 export type Audience = "all" | "confirmed" | "pending" | "claimed_offer" | string;
 
@@ -283,6 +284,9 @@ export async function sendCampaignBlast(
   const baseHtml = messageHtml
     ? buildHtmlFromEditor(messageHtml, messageCss)
     : buildHtmlFromEditor(message.replace(/\n/g, "<br>"));
+
+  // Check sending limits before proceeding
+  await checkSendingLimit(supabase, workspaceId, geoRecipients.length);
 
   const BATCH = 20;
   for (let i = 0; i < geoRecipients.length; i += BATCH) {
