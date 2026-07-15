@@ -27,8 +27,8 @@ export async function GET(
       eventsRes.json(), tagsRes.json(), notesRes.json(), subRes.json(),
     ]);
 
-    const timeline = [];
-    const sub = Array.isArray(subData) ? subData[0] : null;
+    const timeline: Array<{ type: string; label: string; date: string; icon: string; detail?: string }> = [];
+    const sub: any = Array.isArray(subData) ? subData[0] : null;
 
     // Subscribed event
     if (sub?.created_at) {
@@ -42,13 +42,15 @@ export async function GET(
     }
 
     // Campaign events
+    const eventLabels: Record<string, string> = { open: 'Opened an email', click: 'Clicked a link', bounce: 'Email bounced', complaint: 'Marked as spam' };
+    const eventIcons: Record<string, string> = { open: '📖', click: '👆', bounce: '↩️' };
     for (const e of (Array.isArray(events) ? events : [])) {
-      const detail = { open: 'Opened an email', click: 'Clicked a link', bounce: 'Email bounced', complaint: 'Marked as spam' }[e.event_type] || e.event_type;
+      const et = e.event_type || 'unknown';
       timeline.push({
-        type: e.event_type,
-        label: detail,
+        type: et,
+        label: eventLabels[et] || et,
         date: e.occurred_at,
-        icon: e.event_type === 'open' ? '📖' : e.event_type === 'click' ? '👆' : e.event_type === 'bounce' ? '↩️' : '⚠️',
+        icon: eventIcons[et] || '⚠️',
       });
     }
 
