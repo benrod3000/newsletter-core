@@ -28,7 +28,7 @@ export async function GET(
   try {
     const { data, error } = await supabase
       .from("widgets")
-      .select("headline, description, download_url, button_text, success_message, placeholder, is_active")
+      .select("headline, description, download_url, button_text, success_message, placeholder, is_active, type, fields, styles")
       .eq("slug", slug)
       .order("created_at", { ascending: false })
       .limit(1)
