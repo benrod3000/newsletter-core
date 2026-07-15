@@ -1,13 +1,7 @@
-import sgMail from "@sendgrid/mail";
 import { getSupabaseClient } from "@/lib/supabase";
-import {
-  buildHtmlFromEditor,
-  buildWebVersionUrl,
-  mergeDataForRecipient,
-  renderTemplate,
-  type MergeRecipient,
-} from "@/lib/campaign-personalization";
+import { buildHtmlFromEditor, type MergeRecipient } from "@/lib/campaign-personalization";
 import { checkSendingLimit } from "@/lib/sending-limits";
+import { processSendQueue, type QueueRecipient } from "@/lib/send-queue";
 
 export type Audience = "all" | "confirmed" | "pending" | "claimed_offer" | string;
 
@@ -197,14 +191,11 @@ export async function sendCampaignBlast(
   params: SendCampaignBlastParams
 ): Promise<SendCampaignBlastResult> {
   const supabase = getSupabaseClient();
-  const { fromEmail, fromName, sgApiKey } = await getWorkspaceSender(supabase, params.workspaceId);
-  const from = `${fromName} <${fromEmail}>`;
+  const { sgApiKey, fromEmail, fromName } = await getWorkspaceSender(supabase, params.workspaceId);
 
   if (!sgApiKey) {
     throw new Error("Missing SENDGRID_API_KEY.");
   }
-
-  sgMail.setApiKey(sgApiKey);
 
   const { workspaceId, subject, message, messageHtml, messageCss, audience, geoFilter, campaignId, baseUrl } = params;
 
@@ -288,42 +279,33 @@ export async function sendCampaignBlast(
   // Check sending limits before proceeding
   await checkSendingLimit(supabase, workspaceId, geoRecipients.length);
 
-  const BATCH = 20;
-  for (let i = 0; i < geoRecipients.length; i += BATCH) {
-    const batch = geoRecipients.slice(i, i + BATCH);
-    await Promise.all(
-      batch.map(async (sub) => {
-        const unsubUrl = `${baseUrl}/unsubscribe?token=${sub.unsubscribe_token}`;
-        const unsubApiUrl = `${baseUrl}/api/unsubscribe?token=${sub.unsubscribe_token}`;
-        const webVersionUrl = campaignId ? buildWebVersionUrl(baseUrl, campaignId, sub.id) : "";
-        const mergeData = mergeDataForRecipient(sub, unsubUrl, webVersionUrl);
-        // Alias so {{unsubscribe}} still works in existing templates
-        mergeData.unsubscribe = mergeData.unsubscribe_url;
+  // Send via the queue system for reliability + audit trail
+  const recipients: QueueRecipient[] = geoRecipients.map((r) => ({
+    id: r.id,
+    email: r.email,
+    unsubscribe_token: r.unsubscribe_token,
+    country: r.country,
+    region: r.region,
+    city: r.city,
+    first_name: r.first_name,
+    last_name: r.last_name,
+    date_of_birth: r.date_of_birth,
+    phone_number: r.phone_number,
+  }));
 
-        const personalSubject = renderTemplate(subject, mergeData);
-        const personalText = renderTemplate(message, mergeData);
-        let personalHtml = renderTemplate(baseHtml, mergeData);
-        if (campaignId) {
-          personalHtml = injectTracking(personalHtml, campaignId, sub.id, baseUrl);
-        }
+  const { sentCount } = await processSendQueue({
+    workspaceId,
+    campaignId: campaignId || "",
+    subject,
+    message,
+    messageHtml,
+    messageCss,
+    baseUrl,
+    fromEmail,
+    fromName,
+    sgApiKey,
+    recipients,
+  });
 
-        await sgMail.send({
-          to: sub.email,
-          from,
-          subject: personalSubject,
-          text: personalText,
-          html: personalHtml,
-          headers: {
-            "List-Unsubscribe": `<${unsubApiUrl}>, <mailto:${fromEmail}?subject=unsubscribe>`,
-            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-          },
-          ...(campaignId && {
-            customArgs: { campaign_id: campaignId, subscriber_id: sub.id },
-          }),
-        });
-      })
-    );
-  }
-
-  return { sentCount: geoRecipients.length };
+  return { sentCount };
 }
