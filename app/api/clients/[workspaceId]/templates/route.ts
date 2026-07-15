@@ -1,51 +1,72 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getClientContextFromJWT, assertWorkspaceAccess } from "@/lib/client-context";
+import { getSupabaseClient } from "@/lib/supabase";
+import { getClientContextFromJWT, assertWorkspaceAccess, canEditAsClient } from "@/lib/client-context";
 
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const auth = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" };
-
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> }
-) {
+/**
+ * GET /api/clients/{workspaceId}/templates
+ */
+export async function GET(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await params;
-  const ctx = getClientContextFromJWT(req);
-  if (!ctx || !assertWorkspaceAccess(ctx, workspaceId))
+  const context = getClientContextFromJWT(request);
+  if (!context || !assertWorkspaceAccess(context, workspaceId)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
-  const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/campaign_templates?workspace_id=eq.${workspaceId}&order=updated_at.desc&limit=50`,
-    { headers: auth }
-  );
-  const templates = await res.json();
-  return NextResponse.json({ templates: templates || [] });
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("campaign_templates")
+    .select("*")
+    .eq("workspace_id", workspaceId)
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    return NextResponse.json({ error: `Failed to fetch templates: ${error.message}` }, { status: 500 });
+  }
+
+  return NextResponse.json({ templates: data || [] });
 }
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> }
-) {
+/**
+ * POST /api/clients/{workspaceId}/templates
+ */
+export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await params;
-  const ctx = getClientContextFromJWT(req);
-  if (!ctx || !assertWorkspaceAccess(ctx, workspaceId))
+  const context = getClientContextFromJWT(request);
+  if (!context || !assertWorkspaceAccess(context, workspaceId)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!canEditAsClient(context)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
-  const { name, subject, editor_html, audience, category } = await req.json();
-  if (!name?.trim()) return NextResponse.json({ error: "Template name is required" }, { status: 400 });
+  let body: { name?: string; subject?: string; editor_html?: string; audience?: string; category?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body." }, { status: 422 });
+  }
 
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/campaign_templates`, {
-    method: "POST",
-    headers: { ...auth, Prefer: "return=representation" },
-    body: JSON.stringify({
+  if (!body.name?.trim()) {
+    return NextResponse.json({ error: "Template name is required." }, { status: 422 });
+  }
+
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("campaign_templates")
+    .insert([{
       workspace_id: workspaceId,
-      name: name.trim(),
-      subject: subject?.trim() || null,
-      editor_html: editor_html || null,
-      audience: audience || "confirmed",
-      category: category?.trim() || null,
-    }),
-  });
-  const data = await res.json();
-  return NextResponse.json({ template: data?.[0] }, { status: 201 });
+      name: body.name.trim(),
+      subject: body.subject || null,
+      editor_html: body.editor_html || null,
+      audience: body.audience || "confirmed",
+      category: body.category || null,
+    }])
+    .select("*")
+    .single();
+
+  if (error) {
+    return NextResponse.json({ error: `Failed to save template: ${error.message}` }, { status: 500 });
+  }
+
+  return NextResponse.json({ template: data }, { status: 201 });
 }
