@@ -32,7 +32,7 @@ export async function geolocateIP(ip: string): Promise<GeoResult | null> {
 
   try {
     const res = await fetch(
-      `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,lat,lon,zip,country,regionName,city`,
+      `https://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,lat,lon,zip,country,regionName,city`,
       { signal: AbortSignal.timeout(3000) }
     );
     const data = await res.json();

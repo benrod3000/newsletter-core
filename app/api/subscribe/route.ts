@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import sgMail from "@sendgrid/mail";
 import { getSupabaseClient } from "@/lib/supabase";
+import { geolocateIP } from "@/lib/geo";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -328,11 +329,16 @@ export async function POST(req: NextRequest) {
     // 5. User-Agent (raw)
     const user_agent = req.headers.get("user-agent") ?? null;
 
-    // 6. Geo lookup (Vercel headers + browser geolocation override)
+    // 6. Geo lookup (ip-api.com + Vercel headers + browser geolocation override)
+    const ipGeo = await geolocateIP(ip);
     const geo = getGeoData(req);
-    // Prefer browser geolocation if provided (more accurate), otherwise use server-side IP geolocation
-    const finalLatitude = browser_latitude ?? geo.latitude;
-    const finalLongitude = browser_longitude ?? geo.longitude;
+    // Priority: browser GPS > ip-api.com postal/lat/lng > Vercel headers region/city
+    const finalLatitude = browser_latitude ?? ipGeo?.latitude ?? geo.latitude;
+    const finalLongitude = browser_longitude ?? ipGeo?.longitude ?? geo.longitude;
+    const finalPostalCode = ipGeo?.postal_code ?? null;
+    const geoCountry = ipGeo?.country ?? geo.country;
+    const geoRegion = ipGeo?.region ?? geo.region;
+    const geoCity = ipGeo?.city ?? geo.city;
 
     const snapshot: SignupSnapshot = {
       firstName: first_name,
@@ -369,11 +375,12 @@ export async function POST(req: NextRequest) {
           client_id,
           email,
           ip,
-          country: geo.country,
-          region: geo.region,
-          city: geo.city,
+          country: geoCountry,
+          region: geoRegion,
+          city: geoCity,
           latitude: finalLatitude,
           longitude: finalLongitude,
+          postal_code: finalPostalCode,
           user_agent,
           timezone,
           locale,
