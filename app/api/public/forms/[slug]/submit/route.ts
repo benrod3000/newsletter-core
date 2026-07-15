@@ -138,7 +138,6 @@ export async function POST(
         city: geoCity,
         latitude: finalLatitude,
         longitude: finalLongitude,
-        postal_code: finalPostalCode,
         consent_source: `widget:${slug}`,
       })
       .select("id")
