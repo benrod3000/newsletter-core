@@ -33,7 +33,7 @@ export async function POST(
   const supabase = getSupabaseClient();
 
   // Parse body
-  let body: { email?: string; first_name?: string; browser_latitude?: number; browser_longitude?: number };
+  let body: { email?: string; first_name?: string; last_name?: string; phone?: string; postal_code?: string; browser_latitude?: number; browser_longitude?: number };
   try {
     body = await req.json();
   } catch {
@@ -86,6 +86,9 @@ export async function POST(
   const finalLongitude = body.browser_longitude ?? ipGeo?.longitude ?? null;
   const finalPostalCode = ipGeo?.postal_code ?? null;
   const finalFirstName = body.first_name?.trim().slice(0, 80) || null;
+  const finalLastName = body.last_name?.trim().slice(0, 80) || null;
+  const finalPhone = body.phone?.trim().slice(0, 20) || null;
+  const finalUserPostal = body.postal_code?.trim().slice(0, 20) || null;
 
   // Check if subscriber already exists for this workspace
   const { data: existingSub } = await supabase
@@ -120,6 +123,11 @@ export async function POST(
         client_id: workspaceId,
         email,
         first_name: finalFirstName,
+        last_name: finalLastName,
+        phone: finalPhone,
+        sms_consent: !!finalPhone,
+        sms_consented_at: finalPhone ? new Date().toISOString() : null,
+        postal_code: finalPostalCode || finalUserPostal,
         confirmed: true, // widget signups are single opt-in by default
         consent_email_marketing: true,
         consent_version: "widget-2026",
