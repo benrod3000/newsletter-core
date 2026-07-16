@@ -61,7 +61,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       {
         to: context.email,
         from: fromEmail,
-        subject: "Veloce — Provider Test",
+        subject: "Veloce: Provider Test",
         html: `
           <div style="font-family:system-ui,sans-serif;max-width:480px;margin:40px auto;border:3px solid #0a0a0a;padding:24px">
             <h1 style="font-size:20px;text-transform:uppercase;letter-spacing:0.05em">✅ Provider Test Passed</h1>

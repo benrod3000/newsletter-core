@@ -53,6 +53,6 @@ export async function POST(
   // Integration point: Google RCS Business Messaging API or Twilio
   return NextResponse.json({
     scheduled: subscribers.length,
-    message: `SMS campaign queued for ${subscribers.length} phone numbers. RCS integration pending — SMS only for now.`,
+    message: `SMS campaign queued for ${subscribers.length} phone numbers. RCS integration pending; SMS only for now.`,
   }, { status: 202 });
 }

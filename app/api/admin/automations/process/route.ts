@@ -1,20 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
-import { canSendCampaigns, getAdminContextFromHeaders } from "@/lib/admin-context";
+import { requireCronSecret } from "@/lib/cron-auth";
 import { sendEmail } from "@/lib/email-sender";
 import { buildHtmlFromEditor } from "@/lib/campaign-personalization";
 
 /**
  * POST /api/admin/automations/process
  * Process pending automation triggers (designed to be called by a cron job).
- *
- * Handles "subscriber_joined" triggers with configurable delays
- * and "on_schedule" triggers that fire at a specific time.
  */
 export async function POST(req: NextRequest) {
-  const admin = getAdminContextFromHeaders(req.headers);
-  if (!admin) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
-  if (!canSendCampaigns(admin)) return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+  const auth = requireCronSecret(req);
+  if (auth) return auth;
 
   const supabase = getSupabaseClient();
   const now = new Date();

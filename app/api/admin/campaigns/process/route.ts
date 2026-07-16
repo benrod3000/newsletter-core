@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
 import { sendCampaignBlast, getBaseUrl, parseGeoFilter } from "@/lib/send-campaign";
+import { requireCronSecret } from "@/lib/cron-auth";
 
 export async function POST(req: NextRequest) {
-  const cronSecret = req.headers.get("x-cron-secret");
-  if (!cronSecret || cronSecret !== process.env.CRON_SECRET) {
-    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
-  }
+  const auth = requireCronSecret(req);
+  if (auth) return auth;
   const supabase = getSupabaseClient();
   const nowIso = new Date().toISOString();
   const baseUrl = getBaseUrl(req);

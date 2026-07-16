@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
+import crypto from "crypto";
 
 interface SendGridEvent {
   email: string;
@@ -14,13 +15,21 @@ interface SendGridEvent {
 }
 
 export async function POST(req: NextRequest) {
-  // Auth via secret query param — set SENDGRID_WEBHOOK_SECRET in your env vars
-  // and configure the webhook URL as: https://yourdomain.com/api/webhooks/sendgrid?secret=YOUR_SECRET
-  const { searchParams } = new URL(req.url);
-  const secret = searchParams.get("secret");
+  // Auth via header (preferred) or query param (legacy).
+  // Configure SendGrid webhook to send header: x-webhook-secret: YOUR_SECRET
   const expectedSecret = process.env.SENDGRID_WEBHOOK_SECRET;
+  if (!expectedSecret) {
+    return NextResponse.json({ error: "Webhook not configured." }, { status: 500 });
+  }
 
-  if (!expectedSecret || secret !== expectedSecret) {
+  const headerSecret = req.headers.get("x-webhook-secret");
+  const { searchParams } = new URL(req.url);
+  const querySecret = searchParams.get("secret");
+  const providedSecret = headerSecret || querySecret;
+
+  if (!providedSecret ||
+      providedSecret.length !== expectedSecret.length ||
+      !crypto.timingSafeEqual(Buffer.from(providedSecret), Buffer.from(expectedSecret))) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 

@@ -42,7 +42,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${escapeHtml(campaign.title || campaign.subject || "Newsletter")} — ${escapeHtml(senderName)}</title>
+  <title>${escapeHtml(campaign.title || campaign.subject || "Newsletter")}: ${escapeHtml(senderName)}</title>
   <meta name="description" content="${escapeHtml(campaign.subject || "")}" />
   <meta property="og:title" content="${escapeHtml(campaign.title || campaign.subject || "Newsletter")}" />
   <meta property="og:description" content="${escapeHtml(campaign.subject || "")}" />

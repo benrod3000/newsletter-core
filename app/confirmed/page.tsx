@@ -40,7 +40,7 @@ export default async function ConfirmedPage({ searchParams }: Props) {
               You&apos;re confirmed.
             </h1>
             <p className="mt-5 text-lg leading-relaxed text-zinc-400">
-              Your subscription is active. First issue drops weekly — keep an eye on your inbox.
+              Your subscription is active. First issue drops weekly. Keep an eye on your inbox.
             </p>
             {safeLeadUrl && (
               <div className="mt-6 rounded-lg border border-emerald-700/60 bg-emerald-950/30 px-4 py-4">

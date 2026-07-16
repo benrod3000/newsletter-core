@@ -4,6 +4,7 @@ export const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
   password: z.string().min(1, "Password is required"),
   workspaceId: z.string().uuid().optional(),
+  turnstile_token: z.string().optional(),
 });
 
 export const signupSchema = z.object({

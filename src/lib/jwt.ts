@@ -106,25 +106,56 @@ export function extractJWTFromHeader(authHeader: string | null): string | null {
 }
 
 /**
- * Hash password with bcrypt-style (simple PBKDF2 for now, can upgrade to bcrypt later)
+ * Hash password with PBKDF2 (600,000 iterations, 32-byte key, SHA-256)
+ * Salt is stored as hex:hash, prefixed with iteration count for auto-upgrade
  */
 export async function hashPassword(password: string): Promise<string> {
-  // Simple PBKDF2 implementation
-  // For production, use bcrypt package
   const salt = crypto.randomBytes(16).toString("hex");
   const hash = crypto
-    .pbkdf2Sync(password, salt, 10000, 32, "sha256")
+    .pbkdf2Sync(password, salt, 600_000, 32, "sha256")
     .toString("hex");
-  return `${salt}:${hash}`;
+  return `600000:${salt}:${hash}`;
 }
 
 /**
- * Verify password against hash
+ * Verify password against stored hash
+ * Supports legacy 10000-iteration hashes and auto-upgrades
  */
-export async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  const [salt, storedHash] = hash.split(":");
-  const testHash = crypto
-    .pbkdf2Sync(password, salt, 10000, 32, "sha256")
-    .toString("hex");
-  return testHash === storedHash;
+export async function verifyPassword(password: string, hash: string): Promise<{ valid: boolean; rehash?: string }> {
+  const parts = hash.split(":");
+  let iterations: number;
+  let salt: string;
+  let storedHash: string;
+
+  if (parts.length === 2) {
+    // Legacy format: salt:hash (10000 iterations)
+    iterations = 10_000;
+    [salt, storedHash] = parts;
+  } else if (parts.length === 3) {
+    // Current format: iterations:salt:hash
+    iterations = parseInt(parts[0], 10);
+    salt = parts[1];
+    storedHash = parts[2];
+  } else {
+    return { valid: false };
+  }
+
+  const testBuf = crypto
+    .pbkdf2Sync(password, salt, iterations, 32, "sha256");
+
+  const expectedBuf = Buffer.from(storedHash, "hex");
+  if (testBuf.length !== expectedBuf.length) return { valid: false };
+
+  const valid = crypto.timingSafeEqual(testBuf, expectedBuf);
+
+  if (valid && iterations < 600_000) {
+    // Auto-upgrade: rehash with current iteration count
+    const newSalt = crypto.randomBytes(16).toString("hex");
+    const newHash = crypto
+      .pbkdf2Sync(password, newSalt, 600_000, 32, "sha256")
+      .toString("hex");
+    return { valid: true, rehash: `600000:${newSalt}:${newHash}` };
+  }
+
+  return { valid };
 }

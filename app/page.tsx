@@ -137,7 +137,7 @@ export default function Home() {
         <p className="mt-5 text-lg leading-relaxed text-zinc-400">
           Most newsletters rent their audience. This one is built to own it.
           <br />
-          Strategy, systems, and signals — delivered weekly.
+          Strategy, systems, and signals. Delivered weekly.
         </p>
 
         {/* Divider */}

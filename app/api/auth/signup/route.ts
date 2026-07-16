@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClientJWT, hashPassword } from "@/lib/jwt";
 import { rateLimit } from "@/lib/rate-limit";
+import { isDisposableEmail } from "@/lib/disposable-emails";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -47,7 +49,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { email, password, workspace_name } = body;
+    const { email, password, workspace_name, turnstile_token } = body;
 
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json({ error: "Valid email required" }, { status: 400, headers: CORS_HEADERS });
@@ -56,7 +58,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400, headers: CORS_HEADERS });
     }
 
+    if (!turnstile_token || !(await verifyTurnstileToken(turnstile_token))) {
+      return NextResponse.json({ error: "Security check failed. Please try again." }, { status: 400, headers: CORS_HEADERS });
+    }
+
     const userEmail = email.toLowerCase().trim();
+
+    if (isDisposableEmail(userEmail)) {
+      return NextResponse.json({ error: "Disposable email addresses are not allowed. Please use a permanent email." }, { status: 400, headers: CORS_HEADERS });
+    }
+
     const workspaceName = (workspace_name || "My Workspace").trim();
     const passwordHash = await hashPassword(password);
     const baseSlug = userEmail.split("@")[0]
