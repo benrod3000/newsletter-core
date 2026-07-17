@@ -36,23 +36,79 @@ export async function POST(
   if (!ctx || !assertWorkspaceAccess(ctx, workspaceId))
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { message, image_url, cta_label, cta_url } = await req.json();
+  const { message } = await req.json();
   if (!message?.trim()) return NextResponse.json({ error: "Message body is required" }, { status: 400 });
+
+  // Load Twilio credentials
+  const credsRes = await fetch(
+    `${SUPABASE_URL}/rest/v1/clients?select=twilio_account_sid,twilio_auth_token,twilio_phone_number&id=eq.${encodeURIComponent(workspaceId)}&limit=1`,
+    { headers: auth }
+  );
+  const creds = await credsRes.json();
+  if (!Array.isArray(creds) || creds.length === 0) {
+    return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+  }
+  const { twilio_account_sid, twilio_auth_token, twilio_phone_number } = creds[0];
+  if (!twilio_account_sid || !twilio_auth_token || !twilio_phone_number) {
+    return NextResponse.json({ error: "SMS not configured. Add your Twilio credentials in Settings → SMS." }, { status: 400 });
+  }
 
   // Fetch subscribers with phone + SMS consent
   const subsRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/subscribers?select=id,phone,first_name&client_id=eq.${workspaceId}&sms_consent=is.true&limit=500`,
+    `${SUPABASE_URL}/rest/v1/subscribers?select=id,phone,first_name&client_id=eq.${workspaceId}&sms_consent=is.true&not.phone=is.null&limit=500`,
     { headers: auth }
   );
   const subscribers = await subsRes.json();
   if (!Array.isArray(subscribers) || subscribers.length === 0) {
-    return NextResponse.json({ error: "No subscribers with SMS consent" }, { status: 400 });
+    return NextResponse.json({ error: "No subscribers with phone number and SMS consent" }, { status: 400 });
   }
 
-  // RCS/SMS sending would go here — stub for now
-  // Integration point: Google RCS Business Messaging API or Twilio
+  const basicAuth = Buffer.from(`${twilio_account_sid}:${twilio_auth_token}`).toString("base64");
+  let sent = 0;
+  let failed = 0;
+
+  // Send via Twilio in batches (rate limit: 1 msg/sec per phone number)
+  for (const sub of subscribers) {
+    const phone = sub.phone?.trim();
+    if (!phone) continue;
+
+    const cleanPhone = phone.startsWith("+") ? phone : `+1${phone.replace(/[\s\-()]/g, "")}`;
+    if (cleanPhone.length < 10) { failed++; continue; }
+
+    const personalMsg = message
+      .replace(/\{\{first_name\}\}/g, sub.first_name || "there")
+      .replace(/\{\{name\}\}/g, sub.first_name || "there");
+
+    try {
+      const twilioRes = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${twilio_account_sid}/Messages.json`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Basic ${basicAuth}`,
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: new URLSearchParams({
+            To: cleanPhone,
+            From: twilio_phone_number,
+            Body: personalMsg.slice(0, 1600),
+          }),
+        }
+      );
+      if (twilioRes.ok) sent++;
+      else failed++;
+    } catch {
+      failed++;
+    }
+
+    // Throttle to avoid rate limits
+    if (subscribers.length > 10) await new Promise(r => setTimeout(r, 200));
+  }
+
   return NextResponse.json({
-    scheduled: subscribers.length,
-    message: `SMS campaign queued for ${subscribers.length} phone numbers. RCS integration pending; SMS only for now.`,
-  }, { status: 202 });
+    sent,
+    failed,
+    total: subscribers.length,
+    message: `SMS sent to ${sent} recipients${failed > 0 ? `, ${failed} failed` : ""}.`,
+  }, { status: 200 });
 }
