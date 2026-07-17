@@ -44,12 +44,12 @@ export async function POST(req: NextRequest) {
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
     const auth = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` };
 
-    let url = `${supabaseUrl}/rest/v1/workspace_users?select=id,workspace_id,email,password_hash,role,totp_enabled&email=eq.${encodeURIComponent(userEmail)}&is_active=eq.true&limit=1`;
+    let url = `${supabaseUrl}/rest/v1/workspace_users?select=id,workspace_id,email,password_hash,role,totp_enabled&email=eq.${encodeURIComponent(userEmail)}&limit=1`;
     if (workspaceId) url += `&workspace_id=eq.${encodeURIComponent(workspaceId)}`;
 
     const res = await fetch(url, { headers: auth });
     const users = await res.json();
-    console.log("Login debug: users found", users?.length || 0, "for email", userEmail);
+    console.log("Login debug: users found", users?.length || 0, "for email", userEmail, "users:", JSON.stringify(users?.map(u => ({id: u.id, email: u.email, active: u.is_active})) || []));
 
     if (!users?.length) {
       logAudit({ workspace_id: "unknown", action: AUDIT_ACTIONS.LOGIN_FAILED, details: { email: userEmail, reason: "user_not_found" }, ip_address: ip, user_agent: ua });
