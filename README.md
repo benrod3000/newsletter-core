@@ -1,153 +1,75 @@
 # Veloce Core API
 
-The backend that powers Veloce — a multi-tenant newsletter platform. Raw `fetch()` to Supabase REST API. JWT auth. Brutalist in spirit, practical in execution.
+The backend for Veloce. Raw `fetch()` to Supabase REST API. JWT auth. Scheduled automations. No ORM, no magic.
 
 [https://newsletter-core.vercel.app](https://newsletter-core.vercel.app)
 
 ---
 
-## What this does
+## What it does
 
-This is the API layer for Veloce. It handles:
+This is the API layer. It handles:
 
-- **Auth** — login, signup, password reset, JWT issuance. Rate-limited (5/min login, 3/min signup). Zod-validated inputs.
-- **Subscribers** — CRUD, bulk import/delete/export, search, filtering by status/health/date range
-- **Campaigns** — draft creation, editing, test sends, scheduling, sending via SendGrid or SES
-- **Automations** — pre-built automations that run on cron: confirm-remind, auto-clean cold subs, smart auto-tagging
-- **Health scores** — daily recalculation classifies every subscriber as 🟢 active / 🟡 at risk / 🔴 cold
-- **Analytics** — subscriber growth, campaign performance, open/click rates
-- **Activity feed** — chronological events across campaigns, subscribers, widgets
-- **Branding** — per-workspace configuration for sender identity, email provider, colors
-- **Widgets** — embeddable signup form CRUD + public submission endpoint
-- **Admin** — Basic Auth-protected admin dashboard at `/admin`
-- **Webhooks** — SendGrid event processing (bounces, opens, clicks, spam reports)
-- **Export** — dump entire workspace as JSON
+- **Auth** — login, signup, password reset, JWT tokens. Rate-limited everywhere (5/min login, 3/min signup, 3/min forgot-password).
+- **Subscribers** — create, read, update, delete. Bulk import/export. Search and filter by status, health, date range.
+- **Campaigns** — drafts, test sends, scheduling, actual sending via SendGrid or SES. Open and click tracking built in.
+- **Automations** — cron-triggered jobs: confirm-remind for unconfirmed subs, auto-clean for cold ones, smart auto-tagging.
+- **Health scores** — daily job that classifies every subscriber as active, at risk, or cold based on engagement.
+- **Analytics** — growth tracking, campaign performance, open/click rates.
+- **Branding** — per-workspace sender identity, email provider config (SendGrid or SES), colors, custom domains.
+- **Widgets** — embeddable signup forms. Create, render, and process submissions.
+- **SMS/RCS** — Twilio integration for SMS campaigns and RCS rich messaging. Test sends, cost estimates, geo-filtering.
+- **Webhooks** — SendGrid event processing for bounces, opens, clicks, spam reports.
+- **Admin** — Basic Auth-protected dashboard at `/admin`.
 
-Everything is multi-tenant. Every query filters by `client_id` or `workspace_id`. No data leaks between workspaces.
+Everything is multi-tenant. Every query filters by workspace. No data leaks.
 
 ---
 
-## API Design
+## Why raw fetch instead of Supabase JS client
 
-All client-facing routes are JWT-authenticated via `Authorization: Bearer <token>`. The token encodes `workspaceId`, `userId`, `email`, and `role` — no database lookup needed per request.
-
-### Auth
-
-```
-POST /api/auth/token           — login (rate-limited, Zod-validated)
-POST /api/auth/signup          — registration (rate-limited)
-POST /api/auth/forgot-password — sends reset link (rate-limited)
-POST /api/auth/reset-password  — sets new password
-```
-
-### Subscribers
-
-```
-GET    /api/clients/:wid/subscribers        — list (filterable by status, health, date range, search)
-POST   /api/clients/:wid/subscribers        — add single
-DELETE /api/clients/:wid/subscribers        — bulk delete
-GET    /api/clients/:wid/subscribers/export — CSV export
-POST   /api/clients/:wid/subscribers/import — CSV import
-```
-
-### Campaigns
-
-```
-GET    /api/clients/:wid/campaigns          — list
-POST   /api/clients/:wid/campaigns          — create draft
-PATCH  /api/clients/:wid/campaigns/:id      — update draft or schedule
-DELETE /api/clients/:wid/campaigns/:id      — delete draft
-POST   /api/clients/:wid/campaigns/:id/test — send test email
-```
-
-### Automation Endpoints (cron-triggered, daily)
-
-```
-GET /api/admin/automations/confirm-remind/run — follow up on unconfirmed subs
-GET /api/admin/automations/auto-clean/run     — remove cold subscribers
-GET /api/admin/automations/smart-tags/run     — apply engagement tags
-```
-
-### Analytics + Activity
-
-```
-GET /api/clients/:wid/analytics             — overview, growth, top campaigns
-GET /api/clients/:wid/activity              — recent events feed
-GET /api/admin/health-scores/recalculate    — daily health score job
-```
-
-### Branding, Widgets, Export
-
-```
-GET/PUT /api/clients/:wid/branding          — workspace branding
-GET/POST /api/clients/:wid/widgets          — widget CRUD
-PATCH/DELETE /api/clients/:wid/widgets/:id  — widget update/delete
-GET /api/clients/:wid/export                — full workspace data dump
-```
-
-### Public
-
-```
-GET  /api/public/forms/:slug        — load widget form data
-POST /api/public/forms/:slug/submit — submit widget form
-```
+Started with `@supabase/supabase-js`. Kept running into connectivity issues. Rewrote everything with direct `fetch()` calls to the Supabase REST API. More verbose. More reliable. A few legacy routes still use the client and they work fine now.
 
 ---
 
 ## Tech
 
 - Next.js 16 (App Router, Turbopack)
-- Supabase (Postgres) — accessed via raw `fetch()` to REST API, not the JS client
-- JWT auth — PBKDF2 password hashing, 30-day tokens
-- SendGrid + Amazon SES via `email-sender.ts` abstraction
+- Supabase Postgres via raw `fetch()` to REST API
+- JWT auth with PBKDF2 password hashing, 30-day tokens
+- SendGrid + Amazon SES
 - Zod for request validation
 - In-memory token bucket rate limiter
-- Vercel deployment with 5 cron jobs
+- Vercel deployment with 5 daily cron jobs
 
 ---
 
-## Why raw fetch instead of Supabase JS client?
+## Running locally
 
-I started with `@supabase/supabase-js` but kept hitting connectivity issues. Rewrote every core route to use direct `fetch()` calls to the Supabase REST API. It's more verbose but more reliable — no client library between the code and the database. A few legacy routes still use the client (lists, widgets, track) and they work fine now that env vars are correct.
-
----
-
-## Cron Jobs
-
-All run daily (Vercel Hobby tier limit):
-
-| Time | Job |
-|------|-----|
-| Midnight | Campaign processing (send scheduled) |
-| 2am | Auto-clean cold subscribers |
-| 3am | Health score recalculation |
-| 4am | Smart auto-tagging |
-| 6am | Confirm-remind (unconfirmed follow-up) |
-
----
-
-## Security
-
-- JWT with PBKDF2-hashed passwords
-- Rate limiting on login (5/min), signup (3/min), forgot-password (3/min)
-- CORS handled globally via proxy middleware
-- Request IDs on every response for debugging
-- Rate limit headers on auth responses
-- Admin routes behind Basic Auth (cron endpoints excluded)
-- Workspace isolation enforced at API level in every route
-- SES/SendGrid keys stored in database (encryption layer planned)
-
----
-
-## Project structure
-
+```bash
+npm install
+npm run dev
 ```
-app/api/
-├── auth/
-│   ├── token/          # Login with JWT + rate limiting + Zod
-│   ├── signup/         # Registration + workspace creation
-│   ├── forgot-password/# Reset token generation
-│   └── reset-password/ # Token verification + password update
+
+You'll need a `.env.local` with at minimum `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `APP_URL`. See `.env.local.example`.
+
+---
+
+## Deploy
+
+```bash
+npx next build
+npx vercel --prod
+```
+
+Environment variables must be set in the Vercel dashboard.
+
+---
+
+## Related
+
+- **Frontend:** [newsletter](../newsletter)
+- **Live site:** [newsletter.brod3000.com](https://newsletter.brod3000.com)
 ├── clients/[workspaceId]/
 │   ├── subscribers/    # CRUD + export + import + notes
 │   ├── campaigns/      # CRUD + test send + schedule
