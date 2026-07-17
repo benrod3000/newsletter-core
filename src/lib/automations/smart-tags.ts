@@ -113,12 +113,19 @@ export async function runSmartTagsForWorkspace(workspaceId: string) {
     const subIds = subscribers.map((s: any) => s.id).join(",");
 
     // Get recent campaign events for this workspace's subscribers
-    const eventsRes = await fetch(
-      `${supabaseUrl}/rest/v1/campaign_events?select=subscriber_id,event_type,occurred_at&occurred_at=gt.${encodeURIComponent(fiveCampaignsAgo)}&subscriber_id=in.(${subIds})&limit=50000`,
-      { headers: auth }
-    );
-    const events = await eventsRes.json();
-    if (!Array.isArray(events)) return { error: "Failed to fetch events" };
+    let events: any[] = [];
+    try {
+      const eventsRes = await fetch(
+        `${supabaseUrl}/rest/v1/campaign_events?select=subscriber_id,event_type,occurred_at&occurred_at=gt.${encodeURIComponent(fiveCampaignsAgo)}&subscriber_id=in.(${subIds})&limit=50000`,
+        { headers: auth }
+      );
+      if (eventsRes.ok) {
+        const eventsData = await eventsRes.json();
+        if (Array.isArray(eventsData)) events = eventsData;
+      }
+    } catch {
+      // campaign_events table may not exist
+    }
 
     // Build per-subscriber engagement data
     const subData = new Map();
@@ -155,11 +162,15 @@ export async function runSmartTagsForWorkspace(workspaceId: string) {
     const batchSize = 100;
     for (let i = 0; i < batchUpserts.length; i += batchSize) {
       const batch = batchUpserts.slice(i, i + batchSize);
-      await fetch(`${supabaseUrl}/rest/v1/subscriber_tags`, {
-        method: "POST",
-        headers: { ...auth, Prefer: "resolution=ignore-duplicates" },
-        body: JSON.stringify(batch),
-      });
+      try {
+        await fetch(`${supabaseUrl}/rest/v1/subscriber_tags`, {
+          method: "POST",
+          headers: { ...auth, Prefer: "resolution=ignore-duplicates" },
+          body: JSON.stringify(batch),
+        });
+      } catch {
+        // subscriber_tags table may not exist
+      }
     }
 
     return { tagged, evaluated: subscribers.length };

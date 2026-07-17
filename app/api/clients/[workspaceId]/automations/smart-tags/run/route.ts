@@ -23,10 +23,10 @@ export async function POST(
   try {
     const result = await runSmartTagsForWorkspace(workspaceId);
     return NextResponse.json(result, { status: 200 });
-  } catch (err) {
-    console.error("[smart-tags/run] Error:", err);
+  } catch (err: any) {
+    console.error("[smart-tags/run] Error:", err?.message || err);
     return NextResponse.json(
-      { error: "Failed to run smart tags." },
+      { error: err?.message || "Failed to run smart tags." },
       { status: 500 }
     );
   }
