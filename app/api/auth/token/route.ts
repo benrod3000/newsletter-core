@@ -32,13 +32,16 @@ export async function POST(req: NextRequest) {
   try {
     const body = loginSchema.parse(await req.json());
     const { email, password, workspaceId, turnstile_token } = body;
+    const userEmail = email.toLowerCase().trim();
 
-    if (!turnstile_token || !(await verifyTurnstileToken(turnstile_token))) {
-      return apiError(400, "SECURITY_CHECK_FAILED", "Security check failed. Please try again.");
+    // Skip Turnstile for demo account
+    if (userEmail !== 'demo@veloce.app') {
+      if (!turnstile_token || !(await verifyTurnstileToken(turnstile_token))) {
+        return apiError(400, "SECURITY_CHECK_FAILED", "Security check failed. Please try again.");
+      }
     }
     const supabaseUrl = process.env.SUPABASE_URL!;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-    const userEmail = email.toLowerCase().trim();
     const auth = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` };
 
     let url = `${supabaseUrl}/rest/v1/workspace_users?select=id,workspace_id,email,password_hash,role,totp_enabled&email=eq.${encodeURIComponent(userEmail)}&is_active=eq.true&limit=1`;
