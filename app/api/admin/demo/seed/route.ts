@@ -187,8 +187,6 @@ export async function POST(req: NextRequest) {
         const phone = `+1${randomInt(200, 999)}${randomInt(100, 999)}${randomInt(1000, 9999)}`;
         const daysAgo = randomInt(1, 90);
         const createdAt = new Date(Date.now() - daysAgo * 86400000).toISOString();
-        const healthScores: string[] = ['active', 'active', 'active', 'at_risk', 'cold'];
-        const health = pick(healthScores);
 
         try {
           const subRes = await supabaseFetch("/subscribers", {
@@ -207,7 +205,6 @@ export async function POST(req: NextRequest) {
               longitude: loc.lng,
               timezone: loc.tz,
               confirmed: true,
-              health_score: health,
               created_at: createdAt,
             }),
             headers: { Prefer: "return=representation" },
@@ -218,7 +215,7 @@ export async function POST(req: NextRequest) {
             subCount++;
           }
         } catch (err: any) {
-          // Skip duplicates
+          console.error("Subscriber insert failed:", err?.message || err);
         }
       }
     }
@@ -254,9 +251,9 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. Create campaign events for analytics (sample open/click on sent campaigns)
+    let eventsCreated = 0;
     for (const c of CAMPAIGNS) {
-      if (c.sent === 0) continue;
-      // Create a handful of sample events
+      if (c.sent === 0 || !campaignIds[CAMPAIGNS.indexOf(c)]) continue;
       for (let i = 0; i < Math.min(20, subscriberIds.length); i++) {
         const subId = subscriberIds[i];
         try {
@@ -269,6 +266,7 @@ export async function POST(req: NextRequest) {
               created_at: new Date(Date.now() - randomInt(1, c.days_ago || 1) * 86400000).toISOString(),
             }),
           });
+          eventsCreated++;
         } catch {}
       }
     }
@@ -278,7 +276,7 @@ export async function POST(req: NextRequest) {
       workspace_id: workspaceId,
       subscribers_created: subCount,
       campaigns_created: campaignIds.length,
-      campaign_events_created: "sample opens/clicks added",
+      campaign_events_created: eventsCreated,
     });
   } catch (error: any) {
     console.error("Demo seed error:", error?.message || error);
