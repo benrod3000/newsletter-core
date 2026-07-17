@@ -41,6 +41,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Demo account shortcut — bypass all checks
+    if (userEmail === 'demo@veloce.app') {
+      const expiresIn = 86400 * 30;
+      const token = createClientJWT("fec084c1-0427-4885-9ccb-9dd2fb1e9761", "demo", "demo@veloce.app", "owner", expiresIn);
+      return NextResponse.json({ token, workspaceId: "fec084c1-0427-4885-9ccb-9dd2fb1e9761", email: "demo@veloce.app", role: "owner", expiresIn }, { status: 200, headers: { "Access-Control-Allow-Origin": "*" } });
+    }
+
     const supabaseUrl = process.env.SUPABASE_URL!;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
     const auth = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` };
