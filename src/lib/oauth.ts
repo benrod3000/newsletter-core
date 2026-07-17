@@ -1,10 +1,22 @@
 import { createClientJWT } from "./jwt";
+import crypto from "crypto";
 
 const API_BASE = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}`
   : "http://localhost:3000";
 
 export const OAUTH_REDIRECT = `${API_BASE}/api/auth/oauth`;
+
+/** OAuth CSRF protection */
+export function generateOAuthState(): { value: string; cookie: string } {
+  const value = crypto.randomBytes(32).toString("hex");
+  return { value, cookie: `oauth_state=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600` };
+}
+
+export function verifyOAuthState(state: string | null, cookie: string | null): boolean {
+  if (!state || !cookie) return false;
+  return crypto.timingSafeEqual(Buffer.from(state), Buffer.from(cookie));
+}
 
 /**
  * Exchange Google authorization code for tokens
@@ -65,10 +77,12 @@ export async function getGitHubTokens(code: string): Promise<{ access_token: str
  * Returns { token, workspaceId, email, role }
  */
 export async function findOrCreateOAuthUser(email: string, name: string): Promise<{
-  token: string;
+  token?: string;
   workspaceId: string;
   email: string;
   role: string;
+  requires_totp?: boolean;
+  partial_token?: string;
 }> {
   const supabaseUrl = process.env.SUPABASE_URL!;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -76,13 +90,17 @@ export async function findOrCreateOAuthUser(email: string, name: string): Promis
 
   // Check if user exists
   const checkRes = await fetch(
-    `${supabaseUrl}/rest/v1/workspace_users?select=id,workspace_id,email,role&email=eq.${encodeURIComponent(email)}&limit=1`,
+    `${supabaseUrl}/rest/v1/workspace_users?select=id,workspace_id,email,role,totp_enabled&email=eq.${encodeURIComponent(email)}&limit=1`,
     { headers: auth }
   );
   const existing = await checkRes.json();
 
   if (existing && existing.length > 0) {
     const user = existing[0];
+    if (user.totp_enabled) {
+      const partialToken = createClientJWT(user.workspace_id, user.id, user.email, user.role, 300);
+      return { requires_totp: true, partial_token: partialToken, workspaceId: user.workspace_id, email: user.email, role: user.role, token: partialToken };
+    }
     const token = createClientJWT(user.workspace_id, user.id, user.email, user.role);
     return { token, workspaceId: user.workspace_id, email: user.email, role: user.role };
   }

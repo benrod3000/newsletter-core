@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { generateOAuthState } from "@/lib/oauth";
 
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
 const API_BASE = process.env.VERCEL_URL
@@ -14,11 +15,16 @@ export async function GET() {
     return NextResponse.json({ error: "GitHub OAuth not configured" }, { status: 500 });
   }
 
+  const state = generateOAuthState();
+
   const params = new URLSearchParams({
     client_id: GITHUB_CLIENT_ID,
     redirect_uri: `${API_BASE}/api/auth/oauth/github/callback`,
     scope: "read:user user:email",
+    state: state.value,
   });
 
-  return NextResponse.redirect(`https://github.com/login/oauth/authorize?${params}`);
+  const response = NextResponse.redirect(`https://github.com/login/oauth/authorize?${params}`);
+  response.headers.set("Set-Cookie", state.cookie);
+  return response;
 }

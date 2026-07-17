@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { generateOAuthState } from "@/lib/oauth";
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const API_BASE = process.env.VERCEL_URL
@@ -14,13 +15,18 @@ export async function GET() {
     return NextResponse.json({ error: "Google OAuth not configured" }, { status: 500 });
   }
 
+  const state = generateOAuthState();
+
   const params = new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
     redirect_uri: `${API_BASE}/api/auth/oauth/google/callback`,
     response_type: "code",
     scope: "openid email profile",
     access_type: "offline",
+    state: state.value,
   });
 
-  return NextResponse.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+  const response = NextResponse.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+  response.headers.set("Set-Cookie", state.cookie);
+  return response;
 }
