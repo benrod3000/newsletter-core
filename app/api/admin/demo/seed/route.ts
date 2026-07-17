@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireCronSecret } from "@/lib/cron-auth";
 import crypto from "crypto";
 
 /**
  * POST /api/admin/demo/seed
  * Seeds the demo workspace (demo@veloce.app) with realistic data.
  * Idempotent — deletes existing demo data before reseeding.
- * Protected by CRON_SECRET.
+ * Protected by admin Basic Auth (handled by proxy.ts middleware).
  */
 
 const US_CITIES = [
@@ -159,9 +158,6 @@ function randomInt(min: number, max: number): number {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = requireCronSecret(req);
-  if (auth) return auth;
-
   try {
     // Find the demo user
     const userRes = await supabaseFetch(
