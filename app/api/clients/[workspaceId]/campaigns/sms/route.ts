@@ -37,8 +37,10 @@ export async function POST(
   if (!ctx || !assertWorkspaceAccess(ctx, workspaceId))
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { message } = await req.json();
+  const { message, image_urls } = await req.json();
   if (!message?.trim()) return NextResponse.json({ error: "Message body is required" }, { status: 400 });
+
+  const rcsImages = Array.isArray(image_urls) ? image_urls.filter((u: string) => u.startsWith('http')).slice(0, 10) : [];
 
   // Load Twilio credentials
   const credsRes = await fetch(
@@ -81,7 +83,14 @@ export async function POST(
       .replace(/\{\{name\}\}/g, sub.first_name || "there");
 
     try {
-      const twilioRes = await fetch(
+          const twilioBody = new URLSearchParams({
+            To: cleanPhone,
+            From: twilio_phone_number,
+            Body: personalMsg.slice(0, 1600),
+          })
+          rcsImages.forEach((url: string) => twilioBody.append('MediaUrl', url))
+
+          const twilioRes = await fetch(
         `https://api.twilio.com/2010-04-01/Accounts/${twilio_account_sid}/Messages.json`,
         {
           method: "POST",
@@ -89,11 +98,7 @@ export async function POST(
             Authorization: `Basic ${basicAuth}`,
             "Content-Type": "application/x-www-form-urlencoded",
           },
-          body: new URLSearchParams({
-            To: cleanPhone,
-            From: twilio_phone_number,
-            Body: personalMsg.slice(0, 1600),
-          }),
+          body: twilioBody,
         }
       );
       if (twilioRes.ok) sent++;
