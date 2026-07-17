@@ -19,8 +19,16 @@ This is the API layer. It handles:
 - **Branding** — per-workspace sender identity, email provider config (SendGrid or SES), colors, custom domains.
 - **Widgets** — embeddable signup forms. Create, render, and process submissions.
 - **SMS/RCS** — Twilio integration for SMS campaigns and RCS rich messaging. Test sends, cost estimates, geo-filtering.
-- **Webhooks** — SendGrid event processing for bounces, opens, clicks, spam reports.
-- **Admin** — Basic Auth-protected dashboard at `/admin`.
+- **Webhooks** — SendGrid event processing for bounces, opens, clicks, spam reports.- **Auth** // login, signup, password reset, JWT tokens. Rate-limited everywhere (5/min login, 3/min signup, 3/min forgot-password).
+- **Subscribers** // create, read, update, delete. Bulk import/export. Search and filter by status, health, date range.
+- **Campaigns** // drafts, test sends, scheduling, actual sending via SendGrid or SES. Open and click tracking built in.
+- **Automations** // cron-triggered jobs: confirm-remind for unconfirmed subs, auto-clean for cold ones, smart auto-tagging.
+- **Health scores** // daily job that classifies every subscriber as active, at risk, or cold based on engagement.
+- **Analytics** // growth tracking, campaign performance, open/click rates.
+- **Branding** // per-workspace sender identity, email provider config (SendGrid or SES), colors, custom domains.
+- **Widgets** // embeddable signup forms. Create, render, and process submissions.
+- **SMS/RCS** // Twilio integration for SMS campaigns and RCS rich messaging. Test sends, cost estimates, geo-filtering.
+- **Webhooks** // SendGrid event processing for bounces, opens, clicks, spam reports.- **Admin** — Basic Auth-protected dashboard at `/admin`.
 
 Everything is multi-tenant. Every query filters by workspace. No data leaks.
 
