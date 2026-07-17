@@ -166,6 +166,7 @@ export async function POST(req: NextRequest) {
     );
     let users = await userRes.json();
     let workspaceId: string;
+    let demoUserId: string | null = null;
     const demoPasswordHash = await hashPassword("demo123456");
 
     if (!Array.isArray(users) || users.length === 0) {
@@ -193,16 +194,22 @@ export async function POST(req: NextRequest) {
       });
       const userData2 = await userRes2.json();
       if (!userData2?.[0]) throw new Error("Failed to create demo user");
+      demoUserId = userData2[0].id;
     } else {
       workspaceId = users[0].workspace_id;
+      demoUserId = users[0].id;
       // Reset password to ensure it works
       const pwUrl = `${process.env.SUPABASE_URL}/rest/v1/workspace_users?id=eq.${users[0].id}`;
       const pwKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-      await fetch(pwUrl, {
+      const pwRes = await fetch(pwUrl, {
         method: "PATCH",
         headers: { apikey: pwKey, Authorization: `Bearer ${pwKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({ password_hash: demoPasswordHash }),
-      }).catch(() => {});
+      });
+      if (!pwRes.ok) {
+        const pwErr = await pwRes.text();
+        console.error("Password reset failed:", pwErr);
+      }
     }
 
     // 1. Delete existing demo data
@@ -305,12 +312,26 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // 5. Verify the password hash was stored correctly
+    let pwValid = false;
+    if (demoUserId) {
+      try {
+        const verifyRes = await supabaseFetch(
+          `/workspace_users?select=password_hash&id=eq.${demoUserId}&limit=1`
+        );
+        const verifyData = await verifyRes.json();
+        const pwHash = verifyData?.[0]?.password_hash || "";
+        pwValid = pwHash.startsWith("600000:");
+      } catch {}
+    }
+
     return NextResponse.json({
       ok: true,
       workspace_id: workspaceId,
       subscribers_created: subCount,
       campaigns_created: campaignIds.length,
       campaign_events_created: eventsCreated,
+      password_reset: pwValid,
     });
   } catch (error: any) {
     console.error("Demo seed error:", error?.message || error);
