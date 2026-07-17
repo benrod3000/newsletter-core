@@ -138,3 +138,27 @@ export function providerLabel(provider: EmailProvider): string {
 export function providerCostEstimate(provider: EmailProvider): string {
   return provider === "ses" ? "$1.00" : "Free tier: 100/day, then plan-based";
 }
+
+/**
+ * Send a transactional email using the app's built-in SendGrid credentials.
+ * Reads SENDGRID_API_KEY and SENDGRID_FROM_EMAIL from environment variables.
+ * This is for system emails (welcome, password reset, etc.) sent before a
+ * workspace configures their own provider.
+ */
+export async function sendTransactionalEmail(params: {
+  to: string;
+  subject: string;
+  text?: string;
+  html?: string;
+}): Promise<boolean> {
+  const apiKey = process.env.SENDGRID_API_KEY;
+  const fromEmail = process.env.SENDGRID_FROM_EMAIL;
+  if (!apiKey || !fromEmail) {
+    console.error("sendTransactionalEmail: Missing SENDGRID_API_KEY or SENDGRID_FROM_EMAIL env vars");
+    throw new Error("Transactional email provider not configured. Set SENDGRID_API_KEY and SENDGRID_FROM_EMAIL.");
+  }
+  return sendEmail(
+    { to: params.to, from: fromEmail, subject: params.subject, text: params.text, html: params.html },
+    { provider: "sendgrid", sendgridApiKey: apiKey }
+  );
+}

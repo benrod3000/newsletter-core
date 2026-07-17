@@ -3,6 +3,7 @@ import { createClientJWT, hashPassword } from "@/lib/jwt";
 import { rateLimit } from "@/lib/rate-limit";
 import { isDisposableEmail } from "@/lib/disposable-emails";
 import { verifyTurnstileToken } from "@/lib/turnstile";
+import { sendTransactionalEmail } from "@/lib/email-sender";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -135,6 +136,28 @@ export async function POST(req: NextRequest) {
 
     const expiresIn = 86400 * 30;
     const token = createClientJWT(user.workspace_id, user.id, user.email, "owner", expiresIn);
+
+    // Send welcome email (non-blocking — don't fail signup if email fails)
+    sendTransactionalEmail({
+      to: userEmail,
+      subject: "Welcome to Veloce!",
+      html: `
+        <div style="font-family:system-ui,sans-serif;max-width:480px;margin:40px auto;border:3px solid #0a0a0a;padding:32px;background:#f5f5f0">
+          <h1 style="font-size:28px;text-transform:uppercase;letter-spacing:0.02em;margin:0 0 8px">Welcome to <span style="color:#2f7f5f">Veloce</span></h1>
+          <p style="font-size:14px;color:#555;margin:0 0 20px">Your workspace <strong>${workspaceName}</strong> is ready.</p>
+          <hr style="border:none;border-top:2px solid #0a0a0a;margin:16px 0" />
+          <p style="font-size:13px;color:#555">Start building your audience right away:</p>
+          <ul style="font-size:13px;color:#555;padding-left:20px">
+            <li><strong>Import subscribers</strong> from your Dashboard</li>
+            <li><strong>Create a newsletter</strong> with our drag-free editor</li>
+            <li><strong>Connect SendGrid or SES</strong> in Settings to start sending</li>
+          </ul>
+          <hr style="border:none;border-top:2px solid #0a0a0a;margin:16px 0" />
+          <a href="${process.env.APP_URL || "https://newsletter.brod3000.com"}/dashboard" style="display:inline-block;padding:12px 28px;background:#f5e642;color:#0a0a0a;font-weight:bold;font-size:13px;text-transform:uppercase;letter-spacing:0.05em;text-decoration:none;border:3px solid #0a0a0a">Go to Dashboard</a>
+          <p style="font-size:11px;color:#999;margin-top:20px">If you didn't sign up for Veloce, you can ignore this email.</p>
+        </div>
+      `,
+    }).catch(err => console.error("Welcome email failed:", err));
 
     return NextResponse.json({
       token,

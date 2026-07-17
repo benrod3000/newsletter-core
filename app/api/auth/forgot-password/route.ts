@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { rateLimit } from "@/lib/rate-limit";
+import { sendTransactionalEmail } from "@/lib/email-sender";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -51,6 +52,24 @@ export async function POST(req: NextRequest) {
       headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json", Prefer: "return=minimal" },
       body: JSON.stringify({ reset_token: resetToken, reset_token_expires_at: expiresAt }),
     });
+
+    // Send reset email (non-blocking)
+    const appUrl = process.env.APP_URL || "https://newsletter.brod3000.com";
+    const resetUrl = `${appUrl}/reset-password?token=${resetToken}`;
+    sendTransactionalEmail({
+      to: userEmail,
+      subject: "Reset your Veloce password",
+      html: `
+        <div style="font-family:system-ui,sans-serif;max-width:480px;margin:40px auto;border:3px solid #0a0a0a;padding:32px;background:#f5f5f0">
+          <h1 style="font-size:28px;text-transform:uppercase;letter-spacing:0.02em;margin:0 0 8px">Reset Your <span style="color:#2f7f5f">Password</span></h1>
+          <p style="font-size:14px;color:#555;margin:0 0 20px">Click the button below to reset your password. This link expires in <strong>1 hour</strong>.</p>
+          <a href="${resetUrl}" style="display:inline-block;padding:12px 28px;background:#f5e642;color:#0a0a0a;font-weight:bold;font-size:13px;text-transform:uppercase;letter-spacing:0.05em;text-decoration:none;border:3px solid #0a0a0a">Reset Password</a>
+          <hr style="border:none;border-top:2px solid #0a0a0a;margin:20px 0" />
+          <p style="font-size:11px;color:#999">If you didn't request a password reset, you can ignore this email.</p>
+          <p style="font-size:11px;color:#999;word-break:break-all">Or paste this link: <a href="${resetUrl}" style="color:#2f7f5f">${resetUrl}</a></p>
+        </div>
+      `,
+    }).catch(err => console.error("Password reset email failed:", err));
 
     return NextResponse.json({ ok: true }, { status: 200, headers: CORS_HEADERS });
   } catch (error: any) {
