@@ -15,10 +15,12 @@ export function requireCronSecret(req: NextRequest): NextResponse | null {
   if (!secret) {
     return NextResponse.json({ error: "Server misconfiguration." }, { status: 500 });
   }
-  const header = req.headers.get("x-cron-secret");
-  if (!header) {
+  // Vercel Cron sends: Authorization: Bearer <CRON_SECRET>
+  const authHeader = req.headers.get("authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
+  const header = authHeader.slice(7);
   // Constant-time comparison
   const headerBuf = Buffer.from(header);
   const secretBuf = Buffer.from(secret);

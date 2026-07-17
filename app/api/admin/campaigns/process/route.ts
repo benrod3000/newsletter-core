@@ -3,7 +3,7 @@ import { getSupabaseClient } from "@/lib/supabase";
 import { sendCampaignBlast, getBaseUrl, parseGeoFilter } from "@/lib/send-campaign";
 import { requireCronSecret } from "@/lib/cron-auth";
 
-export async function POST(req: NextRequest) {
+async function processScheduledCampaigns(req: NextRequest) {
   const auth = requireCronSecret(req);
   if (auth) return auth;
   const supabase = getSupabaseClient();
@@ -35,3 +35,6 @@ export async function POST(req: NextRequest) {
   }
   return NextResponse.json({ ok: true, processed: dueCampaigns.length, sent });
 }
+
+export const POST = processScheduledCampaigns;
+export const GET = processScheduledCampaigns;

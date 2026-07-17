@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
 import { geolocateIP } from "@/lib/geo";
+import { rateLimit } from "@/lib/rate-limit";
+import { isDisposableEmail } from "@/lib/disposable-emails";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -32,8 +35,19 @@ export async function POST(
   const { slug } = await params;
   const supabase = getSupabaseClient();
 
+  // Rate limit: 10 submissions per minute per IP
+  const forwarded = req.headers.get("x-forwarded-for");
+  const ip = forwarded ? forwarded.split(",")[0].trim() : req.headers.get("x-real-ip") || "unknown";
+  const { allowed, retryAfter } = rateLimit(`widget-submit:${ip}`, 10, 10 / 60);
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Too many submissions. Please try again later." },
+      { status: 429, headers: { "Retry-After": String(retryAfter), "Access-Control-Allow-Origin": "*" } }
+    );
+  }
+
   // Parse body
-  let body: { email?: string; first_name?: string; last_name?: string; phone?: string; sms_consent?: boolean; postal_code?: string; browser_latitude?: number; browser_longitude?: number };
+  let body: { email?: string; first_name?: string; last_name?: string; phone?: string; sms_consent?: boolean; postal_code?: string; browser_latitude?: number; browser_longitude?: number; turnstile_token?: string };
   try {
     body = await req.json();
   } catch {
@@ -47,6 +61,22 @@ export async function POST(
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json(
       { error: "Please enter a valid email address." },
+      { status: 400, headers: CORS_HEADERS }
+    );
+  }
+
+  // Bot protection: verify Turnstile token if provided (widget forms may embed it)
+  if (body.turnstile_token && !(await verifyTurnstileToken(body.turnstile_token))) {
+    return NextResponse.json(
+      { error: "Security check failed. Please try again." },
+      { status: 400, headers: CORS_HEADERS }
+    );
+  }
+
+  // Block disposable email addresses
+  if (isDisposableEmail(email)) {
+    return NextResponse.json(
+      { error: "Disposable email addresses are not allowed." },
       { status: 400, headers: CORS_HEADERS }
     );
   }
@@ -76,7 +106,6 @@ export async function POST(
   const { workspace_id: workspaceId, list_id: listId, download_url: downloadUrl } = widget;
 
   // Collect metadata
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   const userAgent = req.headers.get("user-agent") || null;
   const referrer = req.headers.get("referer") || null;
 
