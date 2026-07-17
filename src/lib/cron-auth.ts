@@ -14,6 +14,7 @@ import { logError } from "./logger";
 export function requireCronSecret(req: NextRequest): NextResponse | null {
   const secret = process.env.CRON_SECRET;
   if (!secret) {
+    logError(new Error("CRON_SECRET not configured — cron jobs will fail"));
     return NextResponse.json({ error: "Server misconfiguration." }, { status: 500 });
   }
   // Vercel Cron sends: Authorization: Bearer <CRON_SECRET>

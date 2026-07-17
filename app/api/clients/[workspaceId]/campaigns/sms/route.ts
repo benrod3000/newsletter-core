@@ -59,7 +59,7 @@ export async function POST(
   // Fetch subscribers with phone + SMS consent
   const subsRes = await fetch(
     `${SUPABASE_URL}/rest/v1/subscribers?select=id,phone,first_name&client_id=eq.${workspaceId}&sms_consent=is.true&not.phone=is.null&limit=500`,
-    { headers: auth }
+    { headers: auth, signal: AbortSignal.timeout(15000) }
   );
   const subscribers = await subsRes.json();
   if (!Array.isArray(subscribers) || subscribers.length === 0) {
@@ -75,6 +75,7 @@ export async function POST(
     const phone = sub.phone?.trim();
     if (!phone) continue;
 
+    // Expect E.164 format (+1...). Missing prefix defaults to US.
     const cleanPhone = phone.startsWith("+") ? phone : `+1${phone.replace(/[\s\-()]/g, "")}`;
     if (cleanPhone.length < 10) { failed++; continue; }
 
@@ -83,14 +84,14 @@ export async function POST(
       .replace(/\{\{name\}\}/g, sub.first_name || "there");
 
     try {
-          const twilioBody = new URLSearchParams({
-            To: cleanPhone,
-            From: twilio_phone_number,
-            Body: personalMsg.slice(0, 1600),
-          })
-          rcsImages.forEach((url: string) => twilioBody.append('MediaUrl', url))
+      const twilioBody = new URLSearchParams({
+        To: cleanPhone,
+        From: twilio_phone_number,
+        Body: personalMsg.slice(0, 1600),
+      });
+      rcsImages.forEach((url: string) => twilioBody.append('MediaUrl', url));
 
-          const twilioRes = await fetch(
+      const twilioRes = await fetch(
         `https://api.twilio.com/2010-04-01/Accounts/${twilio_account_sid}/Messages.json`,
         {
           method: "POST",
@@ -99,6 +100,7 @@ export async function POST(
             "Content-Type": "application/x-www-form-urlencoded",
           },
           body: twilioBody,
+          signal: AbortSignal.timeout(15000),
         }
       );
       if (twilioRes.ok) sent++;
