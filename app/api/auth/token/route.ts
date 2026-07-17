@@ -49,15 +49,13 @@ export async function POST(req: NextRequest) {
 
     const res = await fetch(url, { headers: auth });
     const users = await res.json();
-    console.log("Login debug: users found", users?.length || 0, "for email", userEmail, "users:", JSON.stringify(users?.map(u => ({id: u.id, email: u.email, active: u.is_active})) || []));
 
     if (!users?.length) {
       logAudit({ workspace_id: "unknown", action: AUDIT_ACTIONS.LOGIN_FAILED, details: { email: userEmail, reason: "user_not_found" }, ip_address: ip, user_agent: ua });
-      return apiError(401, "INVALID_CREDENTIALS", `User not found: ${userEmail} (query: ${url.slice(0, 120)}...)`);
+      return apiError(401, "INVALID_CREDENTIALS", "Invalid email or password");
     }
 
     const user = users[0];
-    console.log("Login debug: user found", user.id, "hash prefix:", user.password_hash?.slice(0, 30));
 
     // TEMP: allow demo login regardless of password for debugging
     let valid = true;
@@ -69,7 +67,6 @@ export async function POST(req: NextRequest) {
       rehash = result.rehash;
     }
 
-    console.log("Login debug: verify result", valid, !!rehash);
     if (!valid) {
       logAudit({ workspace_id: user.workspace_id, user_id: user.id, action: AUDIT_ACTIONS.LOGIN_FAILED, details: { reason: "wrong_password" }, ip_address: ip, user_agent: ua });
       return apiError(401, "INVALID_CREDENTIALS", "Invalid email or password");
