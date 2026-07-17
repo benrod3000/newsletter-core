@@ -11,12 +11,12 @@ function slugify(text: string): string {
 }
 
 /**
- * POST /api/clients/{workspaceId}/campaigns/{campaignId}/publish
+ * POST /api/clients/{workspaceId}/campaigns/{id}/publish
  * Toggles the public archive status for a sent campaign.
  * Auto-generates a slug from the campaign title on first publish.
  */
-export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string; campaignId: string }> }) {
-  const { workspaceId, campaignId } = await params;
+export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string; id: string }> }) {
+  const { workspaceId, id: campaignId } = await params;
   const context = getClientContextFromJWT(request);
   if (!context || !assertWorkspaceAccess(context, workspaceId)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

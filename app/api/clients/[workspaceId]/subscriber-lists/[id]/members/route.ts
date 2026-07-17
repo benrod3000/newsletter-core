@@ -7,9 +7,9 @@ const auth = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "C
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string; listId: string }> }
+  { params }: { params: Promise<{ workspaceId: string; id: string }> }
 ) {
-  const { workspaceId, listId } = await params;
+  const { workspaceId, id: listId } = await params;
   const ctx = getClientContextFromJWT(req);
   if (!ctx || !assertWorkspaceAccess(ctx, workspaceId))
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
