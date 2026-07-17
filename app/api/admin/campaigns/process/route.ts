@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
 import { sendCampaignBlast, getBaseUrl, parseGeoFilter } from "@/lib/send-campaign";
 import { requireCronSecret } from "@/lib/cron-auth";
+import { logError } from "@/lib/logger";
 
 async function processScheduledCampaigns(req: NextRequest) {
   const auth = requireCronSecret(req);
@@ -30,6 +31,7 @@ async function processScheduledCampaigns(req: NextRequest) {
       sent += result.sentCount;
       await supabase.from("campaigns").update({ status: "sent", sent_count: result.sentCount, last_sent_at: nowIso, last_error: null, updated_by: "cron" }).eq("id", campaign.id);
     } catch (err) {
+      logError(err, { campaignId: campaign.id, workspaceId: campaign.client_id })
       await supabase.from("campaigns").update({ last_error: err instanceof Error ? err.message : "Send failed", updated_by: "cron" }).eq("id", campaign.id);
     }
   }

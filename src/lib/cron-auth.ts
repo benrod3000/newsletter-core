@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
+import { logError } from "./logger";
 
 /**
  * Checks that the incoming request carries the correct CRON_SECRET

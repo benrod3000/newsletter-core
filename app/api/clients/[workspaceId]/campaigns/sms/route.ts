@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClientContextFromJWT, assertWorkspaceAccess } from "@/lib/client-context";
+import { logError } from "@/lib/logger";
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -96,7 +97,7 @@ export async function POST(
         }
       );
       if (twilioRes.ok) sent++;
-      else failed++;
+      else { failed++; logError(new Error(`Twilio send failed: ${twilioRes.status}`), { to: cleanPhone }) }
     } catch {
       failed++;
     }

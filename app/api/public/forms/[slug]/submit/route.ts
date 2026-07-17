@@ -4,6 +4,7 @@ import { geolocateIP } from "@/lib/geo";
 import { rateLimit } from "@/lib/rate-limit";
 import { isDisposableEmail } from "@/lib/disposable-emails";
 import { verifyTurnstileToken } from "@/lib/turnstile";
+import { logError } from "@/lib/logger";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -89,7 +90,7 @@ export async function POST(
     .maybeSingle();
 
   if (widgetError || !widget) {
-    console.error("Widget not found for slug:", slug, widgetError);
+    logError(new Error("Widget not found"), { slug, detail: widgetError });
     return NextResponse.json(
       { error: "Form not found" },
       { status: 404, headers: CORS_HEADERS }
@@ -173,7 +174,7 @@ export async function POST(
       .single();
 
     if (createError || !newSub) {
-      console.error("Subscriber create error:", createError);
+      logError(new Error("Subscriber create error"), { detail: createError });
       return NextResponse.json(
         { error: "Failed to register. Please try again." },
         { status: 500, headers: CORS_HEADERS }

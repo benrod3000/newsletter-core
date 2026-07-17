@@ -1,16 +1,7 @@
 /**
  * Smart Auto-Tagging Automation
- *
- * Applies tags based on subscriber behavior patterns.
- * Runs every 3 hours via cron.
- *
- * Rules:
- * - engaged: opened 3 of last 5 campaigns
- * - clicker: clicked any link ever
- * - slipping: no opens in 14+ days
- * - weekend-reader: last open was Sat/Sun
- * - mobile: last open user_agent contains "Mobile"
  */
+import { logError } from "@/lib/logger";
 
 export async function runSmartTags() {
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -85,6 +76,7 @@ export async function runSmartTags() {
 
     return { tagged, evaluated: subscribers.length };
   } catch (e: any) {
+    logError(e, { action: 'smart-tags-global' })
     return { error: e?.message };
   }
 }
@@ -172,6 +164,7 @@ export async function runSmartTagsForWorkspace(workspaceId: string) {
 
     return { tagged, evaluated: subscribers.length };
   } catch (e: any) {
+    logError(e, { action: 'smart-tags-workspace', workspaceId })
     return { error: e?.message };
   }
 }
