@@ -243,8 +243,7 @@ export async function POST(req: NextRequest) {
           subject: c.subject,
           status: c.draft ? "draft" : "sent",
           sent_count: c.sent,
-          open_count: c.opened,
-          click_count: c.clicked,
+          // open_count and click_count removed // columns not in schema
           editor_html: html,
           created_at: createdAt,
         }),

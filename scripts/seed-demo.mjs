@@ -177,8 +177,7 @@ for (const c of CAMPAIGNS) {
         subject: c.subject,
         status: c.draft ? 'draft' : 'sent',
         sent_count: c.sent,
-        open_count: c.opened,
-        click_count: c.clicked,
+        // open_count and click_count removed — columns don't exist in the schema
         editor_html: `<div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;padding:24px;border:3px solid #0a0a0a"><h1 style="font-size:24px;text-transform:uppercase">${c.title}</h1><p style="font-size:14px;color:#555">${c.subject}</p><hr style="border:none;border-top:2px solid #0a0a0a;margin:16px 0" /><p style="font-size:14px">This is a demo campaign.</p></div>`,
         created_at: createdAt,
       }),
