@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
+import { hashPassword } from "@/lib/jwt";
 
 /**
  * POST /api/admin/demo/seed
@@ -159,17 +160,42 @@ function randomInt(min: number, max: number): number {
 
 export async function POST(req: NextRequest) {
   try {
-    // Find the demo user
-    const userRes = await supabaseFetch(
+    // Find or create the demo user
+    let userRes = await supabaseFetch(
       `/workspace_users?select=id,workspace_id,email&email=eq.demo%40veloce.app&limit=1`
     );
-    const users = await userRes.json();
-    if (!Array.isArray(users) || users.length === 0) {
-      return NextResponse.json({ error: "Demo user not found. Create demo@veloce.app first." }, { status: 404 });
-    }
+    let users = await userRes.json();
+    let workspaceId: string;
 
-    const demoUser = users[0];
-    const workspaceId = demoUser.workspace_id;
+    if (!Array.isArray(users) || users.length === 0) {
+      // Create demo workspace
+      const wsRes = await supabaseFetch("/clients", {
+        method: "POST",
+        body: JSON.stringify({ name: "Demo Workspace", slug: `demo-${crypto.randomUUID().split("-")[0]}` }),
+        headers: { Prefer: "return=representation" },
+      });
+      const wsData = await wsRes.json();
+      workspaceId = wsData?.[0]?.id;
+      if (!workspaceId) throw new Error("Failed to create demo workspace");
+
+      // Create demo user with known password
+      const passwordHash = await hashPassword("demo123456");
+      const userRes2 = await supabaseFetch("/workspace_users", {
+        method: "POST",
+        body: JSON.stringify({
+          workspace_id: workspaceId,
+          email: "demo@veloce.app",
+          password_hash: passwordHash,
+          role: "owner",
+          is_active: true,
+        }),
+        headers: { Prefer: "return=representation" },
+      });
+      const userData2 = await userRes2.json();
+      if (!userData2?.[0]) throw new Error("Failed to create demo user");
+    } else {
+      workspaceId = users[0].workspace_id;
+    }
 
     // 1. Delete existing demo data
     await supabaseFetch(`/subscribers?client_id=eq.${workspaceId}`, { method: "DELETE" });
