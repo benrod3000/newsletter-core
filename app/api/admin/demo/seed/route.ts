@@ -166,6 +166,7 @@ export async function POST(req: NextRequest) {
     );
     let users = await userRes.json();
     let workspaceId: string;
+    const demoPasswordHash = await hashPassword("demo123456");
 
     if (!Array.isArray(users) || users.length === 0) {
       // Create demo workspace
@@ -179,13 +180,12 @@ export async function POST(req: NextRequest) {
       if (!workspaceId) throw new Error("Failed to create demo workspace");
 
       // Create demo user with known password
-      const passwordHash = await hashPassword("demo123456");
       const userRes2 = await supabaseFetch("/workspace_users", {
         method: "POST",
         body: JSON.stringify({
           workspace_id: workspaceId,
           email: "demo@veloce.app",
-          password_hash: passwordHash,
+          password_hash: demoPasswordHash,
           role: "owner",
           is_active: true,
         }),
@@ -195,6 +195,14 @@ export async function POST(req: NextRequest) {
       if (!userData2?.[0]) throw new Error("Failed to create demo user");
     } else {
       workspaceId = users[0].workspace_id;
+      // Reset password to ensure it works
+      const pwUrl = `${process.env.SUPABASE_URL}/rest/v1/workspace_users?id=eq.${users[0].id}`;
+      const pwKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+      await fetch(pwUrl, {
+        method: "PATCH",
+        headers: { apikey: pwKey, Authorization: `Bearer ${pwKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ password_hash: demoPasswordHash }),
+      }).catch(() => {});
     }
 
     // 1. Delete existing demo data
