@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
 
     if (!users?.length) {
       logAudit({ workspace_id: "unknown", action: AUDIT_ACTIONS.LOGIN_FAILED, details: { email: userEmail, reason: "user_not_found" }, ip_address: ip, user_agent: ua });
-      return apiError(401, "INVALID_CREDENTIALS", "Invalid email or password");
+      return apiError(401, "INVALID_CREDENTIALS", `User not found: ${userEmail} (query: ${url.slice(0, 120)}...)`);
     }
 
     const user = users[0];
