@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
 
     if (result.requires_totp) {
       return NextResponse.redirect(
-        `${FRONTEND_URL}/login?requires_totp=true&partial_token=${result.partial_token}`
+        `${FRONTEND_URL}/login#requires_totp=true&partial_token=${result.partial_token}`
       );
     }
 

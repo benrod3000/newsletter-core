@@ -15,7 +15,12 @@ export function generateOAuthState(): { value: string; cookie: string } {
 
 export function verifyOAuthState(state: string | null, cookie: string | null): boolean {
   if (!state || !cookie) return false;
-  return crypto.timingSafeEqual(Buffer.from(state), Buffer.from(cookie));
+  if (state.length !== cookie.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(state), Buffer.from(cookie));
+  } catch {
+    return false;
+  }
 }
 
 /**
