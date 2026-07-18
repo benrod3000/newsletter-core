@@ -1,9 +1,9 @@
 import { createClientJWT } from "./jwt";
 import crypto from "crypto";
 
-const API_BASE = process.env.VERCEL_URL
-  ? `https://${process.env.VERCEL_URL}`
-  : "http://localhost:3000";
+const API_BASE = process.env.API_URL
+  || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+  || "https://newsletter-core.vercel.app";
 
 export const OAUTH_REDIRECT = `${API_BASE}/api/auth/oauth`;
 

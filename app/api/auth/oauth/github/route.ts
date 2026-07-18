@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import { generateOAuthState } from "@/lib/oauth";
 
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
-const API_BASE = process.env.VERCEL_URL
-  ? `https://${process.env.VERCEL_URL}`
-  : "http://localhost:3000";
+const API_BASE = process.env.API_URL
+  || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+  || "https://newsletter-core.vercel.app";
 
 /**
  * GET /api/auth/oauth/github
