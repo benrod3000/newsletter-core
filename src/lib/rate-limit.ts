@@ -1,64 +1,91 @@
 /**
- * Simple in-memory rate limiter using token bucket algorithm.
- * Each IP gets `maxTokens` tokens that refill at `refillRate` tokens/second.
+ * Redis-backed rate limiter using a sliding-window token bucket.
+ * Works across all Vercel regions and serverless instances.
  *
- * ⚠️ In serverless (Vercel), this resets per-function-instance — every cold
- * start / new region gets a fresh bucket, making this a no-op under real
- * traffic. For production, migrate to Upstash Redis (or similar) before
- * launching to real users, especially for /api/auth/signup, /api/subscribe,
- * and /api/auth/totp/verify.
+ * Uses Upstash Redis REST API — no TCP, no persistent connection.
+ * Falls back to permissive mode if Redis is unavailable (no crash).
  */
 
-interface Bucket {
-  tokens: number;
-  lastRefill: number;
-}
+import { Redis } from "@upstash/redis";
 
-const buckets = new Map<string, Bucket>();
+const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
+  ? new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    })
+  : null;
 
-// Clean up stale entries every 5 minutes
-const CLEANUP_INTERVAL = 5 * 60 * 1000;
-let lastCleanup = Date.now();
+const TTL_SECONDS = 3600; // buckets expire after 1h of inactivity
 
-function cleanup() {
-  const now = Date.now();
-  if (now - lastCleanup < CLEANUP_INTERVAL) return;
-  lastCleanup = now;
-  for (const [key, bucket] of buckets) {
-    if (now - bucket.lastRefill > 60000) {
-      buckets.delete(key);
-    }
-  }
-}
-
-export function rateLimit(
+export async function rateLimit(
   ip: string,
   maxTokens: number,
   refillRate: number
-): { allowed: boolean; retryAfter?: number; remaining: number; limit: number } {
-  cleanup();
+): Promise<{ allowed: boolean; retryAfter?: number; remaining: number; limit: number }> {
+  // Fallback: allow if Redis isn't configured
+  if (!redis) {
+    return { allowed: true, remaining: maxTokens, limit: maxTokens };
+  }
 
+  const key = `rate-limit:${ip}:${maxTokens}`;
   const now = Date.now();
-  const key = ip;
-  let bucket = buckets.get(key);
 
-  if (!bucket) {
-    bucket = { tokens: maxTokens, lastRefill: now };
-    buckets.set(key, bucket);
+  try {
+    // Lua script does: get bucket → refill → deduct → return result — atomically
+    const raw = await redis.eval(
+      `
+      local key = KEYS[1]
+      local max = tonumber(ARGV[1])
+      local refill = tonumber(ARGV[2])
+      local now = tonumber(ARGV[3])
+      local ttl = tonumber(ARGV[4])
+
+      local data = redis.call("GET", key)
+      local tokens, lastRefill
+
+      if data then
+        local parsed = cjson.decode(data)
+        tokens = parsed[1]
+        lastRefill = parsed[2]
+      else
+        tokens = max
+        lastRefill = now
+      end
+
+      -- Refill
+      local elapsed = (now - lastRefill) / 1000
+      tokens = math.min(max, tokens + elapsed * refill)
+      lastRefill = now
+
+      local remaining = math.floor(tokens)
+      local allowed = 0
+      local retryAfter = 0
+
+      if tokens >= 1 then
+        tokens = tokens - 1
+        allowed = 1
+        remaining = math.floor(tokens)
+      else
+        retryAfter = math.ceil((1 - tokens) / refill)
+      end
+
+      redis.call("SET", key, cjson.encode({tokens, lastRefill}), "EX", ttl)
+      return {allowed, retryAfter, remaining, max}
+      `,
+      [key],
+      [maxTokens, refillRate, now, TTL_SECONDS]
+    );
+
+    const result = raw as unknown as { allowed: number; retryAfter: number; remaining: number; max: number };
+
+    return {
+      allowed: result.allowed === 1,
+      retryAfter: result.retryAfter > 0 ? result.retryAfter : undefined,
+      remaining: result.remaining,
+      limit: result.max,
+    };
+  } catch {
+    // Redis unavailable — allow through rather than block traffic
+    return { allowed: true, remaining: maxTokens, limit: maxTokens };
   }
-
-  // Refill tokens
-  const elapsed = (now - bucket.lastRefill) / 1000; // seconds
-  bucket.tokens = Math.min(maxTokens, bucket.tokens + elapsed * refillRate);
-  bucket.lastRefill = now;
-
-  const remaining = Math.floor(bucket.tokens);
-
-  if (bucket.tokens >= 1) {
-    bucket.tokens -= 1;
-    return { allowed: true, remaining: remaining - 1, limit: maxTokens };
-  }
-
-  const retryAfter = Math.ceil((1 - bucket.tokens) / refillRate);
-  return { allowed: false, retryAfter: Math.max(1, retryAfter), remaining: 0, limit: maxTokens };
 }

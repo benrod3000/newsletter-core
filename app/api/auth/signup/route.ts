@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
   // Rate limit: 3 signup attempts per minute per IP
   const forwarded = req.headers.get("x-forwarded-for");
   const ip = forwarded ? forwarded.split(",")[0].trim() : req.headers.get("x-real-ip") || "unknown";
-  const { allowed, retryAfter } = rateLimit(`signup:${ip}`, 3, 3 / 60);
+  const { allowed, retryAfter } = await rateLimit(`signup:${ip}`, 3, 3 / 60);
   if (!allowed) {
     return NextResponse.json(
       { error: "Too many signup attempts. Please try again later." },

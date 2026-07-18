@@ -39,7 +39,7 @@ export async function POST(
   // Rate limit: 10 submissions per minute per IP
   const forwarded = req.headers.get("x-forwarded-for");
   const ip = forwarded ? forwarded.split(",")[0].trim() : req.headers.get("x-real-ip") || "unknown";
-  const { allowed, retryAfter } = rateLimit(`widget-submit:${ip}`, 10, 10 / 60);
+  const { allowed, retryAfter } = await rateLimit(`widget-submit:${ip}`, 10, 10 / 60);
   if (!allowed) {
     return NextResponse.json(
       { error: "Too many submissions. Please try again later." },

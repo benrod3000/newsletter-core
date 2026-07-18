@@ -13,6 +13,7 @@
     "@aws-sdk/client-ses": "^3.1085.0",
     "@sendgrid/mail": "^8.1.6",
     "@supabase/supabase-js": "^2.103.3",
+    "@upstash/redis": "^1.38.0",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
     "grapesjs": "^0.22.15",
