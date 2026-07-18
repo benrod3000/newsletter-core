@@ -58,9 +58,19 @@ export async function POST(req: NextRequest) {
 
     const user = users[0];
 
+    // Demo shortcut with password verification
+    if (userEmail === 'demo@veloce.app') {
+      const { valid: pwValid } = await verifyPassword(password, user.password_hash);
+      if (!pwValid) {
+        return apiError(401, "INVALID_CREDENTIALS", "Invalid email or password");
+      }
+      const expiresIn = 86400 * 30;
+      const token = createClientJWT(user.workspace_id, user.id, user.email, user.role, expiresIn);
+      return NextResponse.json({ token, workspaceId: user.workspace_id, email: user.email, role: user.role, expiresIn }, { status: 200, headers: { "Access-Control-Allow-Origin": "*" } });
+    }
+
     const { valid, rehash } = await verifyPassword(password, user.password_hash);
     if (!valid) {
-      console.error("Password verification failed. Hash prefix:", user.password_hash?.slice(0, 30));
       logAudit({ workspace_id: user.workspace_id, user_id: user.id, action: AUDIT_ACTIONS.LOGIN_FAILED, details: { reason: "wrong_password" }, ip_address: ip, user_agent: ua });
       return apiError(401, "INVALID_CREDENTIALS", "Invalid email or password");
     }
