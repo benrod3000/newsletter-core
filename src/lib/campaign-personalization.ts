@@ -66,6 +66,15 @@ export function buildWebVersionUrl(baseUrl: string, campaignId: string, subscrib
   return `${baseUrl}/web/${encodeURIComponent(campaignId)}?s=${encodeURIComponent(subscriberId)}`;
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function maybeCapitalizeLowercaseName(value: string | null): string {
   const trimmed = (value ?? "").trim();
   if (!trimmed) return "";
@@ -78,11 +87,11 @@ export function mergeDataForRecipient(
   unsubUrl: string,
   webVersionUrl?: string
 ): Record<string, string> {
-  const firstName = maybeCapitalizeLowercaseName(sub.first_name);
-  const lastName = maybeCapitalizeLowercaseName(sub.last_name);
+  const firstName = escapeHtml(maybeCapitalizeLowercaseName(sub.first_name));
+  const lastName = escapeHtml(maybeCapitalizeLowercaseName(sub.last_name));
   const fullName = [firstName, lastName].filter(Boolean).join(" ");
   const dateOfBirth = sub.date_of_birth ?? "";
-  const location = [sub.city, sub.region, sub.country].filter(Boolean).join(", ");
+  const location = [escapeHtml(sub.city ?? ""), escapeHtml(sub.region ?? ""), escapeHtml(sub.country ?? "")].filter(Boolean).join(", ");
 
   return {
     first_name: firstName,
@@ -90,10 +99,10 @@ export function mergeDataForRecipient(
     full_name: fullName,
     date_of_birth: dateOfBirth,
     birthday_pretty: formatBirthdayPretty(dateOfBirth),
-    phone_number: (sub.phone_number ?? "").trim(),
-    city: (sub.city ?? "").trim(),
-    region: (sub.region ?? "").trim(),
-    country: (sub.country ?? "").trim(),
+    phone_number: escapeHtml((sub.phone_number ?? "").trim()),
+    city: escapeHtml((sub.city ?? "").trim()),
+    region: escapeHtml((sub.region ?? "").trim()),
+    country: escapeHtml((sub.country ?? "").trim()),
     location,
     email: sub.email,
     unsubscribe_url: unsubUrl,

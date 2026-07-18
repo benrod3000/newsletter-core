@@ -1,4 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
+import { signAdminHeaders } from "@/lib/admin-context";
+
+const ALLOWED_ORIGINS = [
+  "https://newsletter.brod3000.com",
+  "http://localhost:5173",
+  "http://localhost:4173",
+  "https://newsletter-core.vercel.app",
+];
+
+function getCorsOrigin(request: NextRequest): string {
+  const origin = request.headers.get("origin");
+  if (origin && ALLOWED_ORIGINS.includes(origin)) return origin;
+  return "https://newsletter.brod3000.com";
+}
 
 function unauthorizedResponse() {
   return new NextResponse("Authentication required.", {
@@ -70,13 +84,15 @@ export async function proxy(request: NextRequest) {
 
   // Handle CORS preflight for ALL routes
   if (request.method === "OPTIONS") {
+    const origin = getCorsOrigin(request);
     return new NextResponse(null, {
       status: 204,
       headers: {
-        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Origin": origin,
         "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
         "Access-Control-Allow-Headers": "Authorization, Content-Type, x-admin-role, x-admin-username, x-admin-client-id",
         "Access-Control-Max-Age": "86400",
+        "Vary": "Origin",
         "X-Request-Id": requestId,
       },
     });
@@ -91,7 +107,8 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/api/admin/automations/");
   if (!isAdminRoute || isCronRoute) {
     const response = NextResponse.next();
-    response.headers.set("Access-Control-Allow-Origin", "*");
+    response.headers.set("Access-Control-Allow-Origin", getCorsOrigin(request));
+    response.headers.set("Vary", "Origin");
     response.headers.set("X-Request-Id", requestId);
     return response;
   }
@@ -125,6 +142,7 @@ export async function proxy(request: NextRequest) {
     requestHeaders.set("x-admin-username", username);
     requestHeaders.set("x-admin-role", "owner");
     requestHeaders.delete("x-admin-client-id");
+    requestHeaders.set("x-admin-signature", signAdminHeaders(`${username}:owner:`));
     return NextResponse.next({
       request: {
         headers: requestHeaders,
@@ -145,6 +163,7 @@ export async function proxy(request: NextRequest) {
   } else {
     requestHeaders.delete("x-admin-client-id");
   }
+  requestHeaders.set("x-admin-signature", signAdminHeaders(`${authenticated.username}:${authenticated.role}:${authenticated.clientId || ""}`));
 
   return NextResponse.next({
     request: {

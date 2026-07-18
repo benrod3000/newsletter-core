@@ -2,8 +2,11 @@
  * Simple in-memory rate limiter using token bucket algorithm.
  * Each IP gets `maxTokens` tokens that refill at `refillRate` tokens/second.
  *
- * In serverless (Vercel), this resets per-function-instance — acceptable
- * for basic protection. For production, use Upstash Redis.
+ * ⚠️ In serverless (Vercel), this resets per-function-instance — every cold
+ * start / new region gets a fresh bucket, making this a no-op under real
+ * traffic. For production, migrate to Upstash Redis (or similar) before
+ * launching to real users, especially for /api/auth/signup, /api/subscribe,
+ * and /api/auth/totp/verify.
  */
 
 interface Bucket {
