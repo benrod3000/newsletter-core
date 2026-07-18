@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
 
     const { valid, rehash } = await verifyPassword(password, user.password_hash);
     if (!valid) {
+      console.error("Password verification failed. Hash prefix:", user.password_hash?.slice(0, 30));
       logAudit({ workspace_id: user.workspace_id, user_id: user.id, action: AUDIT_ACTIONS.LOGIN_FAILED, details: { reason: "wrong_password" }, ip_address: ip, user_agent: ua });
       return apiError(401, "INVALID_CREDENTIALS", "Invalid email or password");
     }
