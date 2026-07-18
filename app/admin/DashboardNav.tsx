@@ -20,7 +20,7 @@ export default function DashboardNav({
 
   useEffect(() => {
     const handleScroll = () => {
-      const sections = ["campaigns", "workspaces", "subscribers", "lists", "import", "embed"].filter(
+          const sections = ["campaigns", "workspaces", "subscribers", "lists", "import"].filter(
         (section) => {
           if (section === "workspaces" && role !== "owner") return false;
           return true;

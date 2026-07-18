@@ -6,7 +6,6 @@ import SubscriberTable from "./SubscriberTable";
 import DashboardNav from "./DashboardNav";
 import ImportSubscribers from "./ImportSubscribers";
 import HousekeepingPanel from "./HousekeepingPanel";
-import EmbedCodePanel from "./EmbedCodePanel";
 import SubscriberListsPanel from "./SubscriberListsPanel";
 
 export const dynamic = "force-dynamic";
@@ -175,10 +174,7 @@ export default async function AdminPage() {
                 <SubscriberListsPanel />
               </div>
 
-              {/* Embed Section */}
-              <div id="embed" className="scroll-mt-40">
-                <EmbedCodePanel />
-              </div>
+
 
               {/* Housekeeping Section */}
               {role === "owner" && (
