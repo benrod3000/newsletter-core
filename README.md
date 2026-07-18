@@ -10,9 +10,9 @@ The backend for Veloce. Raw `fetch()` to Supabase REST API. JWT auth. Scheduled 
 
 This is the API layer. It handles:
 
-- **Auth** — login, signup, password reset, JWT tokens. Rate-limited everywhere (5/min login, 3/min signup, 3/min forgot-password).
+- **Auth** — login, signup, password reset, JWT tokens, Google/GitHub OAuth. Rate-limited everywhere (5/min login, 3/min signup, 3/min forgot-password). Dedicated demo-login endpoint with proper password verification.
 - **Subscribers** — create, read, update, delete. Bulk import/export. Search and filter by status, health, date range.
-- **Campaigns** — drafts, test sends, scheduling, actual sending via SendGrid or SES. Open and click tracking built in.
+- **Campaigns** — drafts, test sends, scheduling, actual sending via SendGrid or SES. Open and click tracking built in. Web version pages with per-subscriber merge tag rendering. HTML-escaping on all subscriber-controlled merge fields (security).
 - **Automations** — cron-triggered jobs: confirm-remind for unconfirmed subs, auto-clean for cold ones, smart auto-tagging.
 - **Health scores** — daily job that classifies every subscriber as active, at risk, or cold based on engagement.
 - **Analytics** — growth tracking, campaign performance, open/click rates.
@@ -107,8 +107,17 @@ src/lib/
 ├── automations/        # confirm-remind, auto-clean, smart-tags
 └── supabase.ts         # Legacy Supabase JS client (being phased out)
 
-proxy.ts                # CORS + admin Basic Auth middleware
+proxy.ts                # CORS (scoped to allowed origins) + admin Basic Auth middleware + HMAC header signing
 vercel.json             # Cron job schedules
+
+## Security features
+
+- **HTML escaping** on all subscriber-controlled merge fields in campaign web version pages (prevents stored XSS)
+- **HMAC-signed admin headers** — proxy stamps a SHA-256 HMAC over admin context headers; route handlers verify the signature (defense-in-depth against middleware bypass)
+- **CORS scoped** to known frontend origins (no wildcard for API routes)
+- **Rate limiting** via in-memory token bucket (note: resets per serverless instance — consider Upstash Redis for production)
+- **PBKDF2 password hashing** at 600,000 iterations with timing-safe comparison
+- **Admin Basic Auth** on all /admin and /api/admin routes via proxy middleware
 ```
 
 ---
