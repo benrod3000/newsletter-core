@@ -280,7 +280,7 @@ export async function POST(req: NextRequest) {
           title: c.title,
           subject: c.subject,
           status: c.draft ? "draft" : "sent",
-          sent_count: c.sent,
+          sent_count: subscriberIds.length,
           // open_count and click_count removed // columns not in schema
           editor_html: html,
           created_at: createdAt,
@@ -291,23 +291,70 @@ export async function POST(req: NextRequest) {
       if (cData?.[0]?.id) campaignIds.push(cData[0].id);
     }
 
-    // 4. Create campaign events for analytics (sample open/click on sent campaigns)
+    // 4. Create campaign events for analytics — realistic open/click rates across ALL subscribers
     let eventsCreated = 0;
     for (const c of CAMPAIGNS) {
-      if (c.sent === 0 || !campaignIds[CAMPAIGNS.indexOf(c)]) continue;
-      for (let i = 0; i < Math.min(20, subscriberIds.length); i++) {
+      if (c.draft || !campaignIds[CAMPAIGNS.indexOf(c)]) continue;
+      const campaignIdx = CAMPAIGNS.indexOf(c);
+      const campaignId = campaignIds[campaignIdx];
+      const subBatchSize = Math.min(subscriberIds.length, 200);
+
+      for (let i = 0; i < subBatchSize; i++) {
         const subId = subscriberIds[i];
+        // Realistic behavior: ~35-55% open rate, ~20-30% of openers click
+        const baseOpenRate = 0.35 + Math.random() * 0.20;
+        if (Math.random() > baseOpenRate) continue; // didn't open
+
         try {
           await supabaseFetch("/campaign_events", {
             method: "POST",
             body: JSON.stringify({
-              campaign_id: campaignIds[CAMPAIGNS.indexOf(c)],
+              campaign_id: campaignId,
               subscriber_id: subId,
-              event: i % 3 === 0 ? "click" : "open",
+              event: "open",
               created_at: new Date(Date.now() - randomInt(1, c.days_ago || 1) * 86400000).toISOString(),
             }),
           });
           eventsCreated++;
+
+          // ~20% of openers also click
+          if (Math.random() < 0.20) {
+            await supabaseFetch("/campaign_events", {
+              method: "POST",
+              body: JSON.stringify({
+                campaign_id: campaignId,
+                subscriber_id: subId,
+                event: "click",
+                created_at: new Date(Date.now() - randomInt(1, Math.max(1, (c.days_ago || 1) - 1)) * 86400000).toISOString(),
+              }),
+            });
+            eventsCreated++;
+          }
+        } catch {}
+      }
+    }
+
+    // 5. Seed subscriber tags for smart tags demo
+    let tagsCreated = 0;
+    for (let i = 0; i < subscriberIds.length; i++) {
+      const subId = subscriberIds[i];
+      const tags: string[] = [];
+      // Recent subscribers get "engaged" tag
+      if (i > subscriberIds.length * 0.6) tags.push("engaged");
+      // Subscribers past first 30 days without events get "at_risk"
+      if (i < subscriberIds.length * 0.3 && i > subscriberIds.length * 0.1) tags.push("at_risk");
+      // First few subscribers get "loyal"
+      if (i < subscriberIds.length * 0.1) tags.push("loyal");
+      // Some subscribers get "new"
+      if (i > subscriberIds.length * 0.8) tags.push("new");
+
+      for (const tag of tags) {
+        try {
+          await supabaseFetch("/subscriber_tags", {
+            method: "POST",
+            body: JSON.stringify({ subscriber_id: subId, tag }),
+          });
+          tagsCreated++;
         } catch {}
       }
     }
@@ -331,6 +378,7 @@ export async function POST(req: NextRequest) {
       subscribers_created: subCount,
       campaigns_created: campaignIds.length,
       campaign_events_created: eventsCreated,
+      tags_created: tagsCreated,
       password_reset: pwValid,
     });
   } catch (error: any) {
