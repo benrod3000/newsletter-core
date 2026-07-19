@@ -50,7 +50,7 @@ export async function GET(
 
     // Recent widget submissions
     const widgetRes = await fetch(
-      `${supabaseUrl}/rest/v1/widget_submissions?select=email,created_at&limit=5`,
+      `${supabaseUrl}/rest/v1/widget_submissions?select=email,created_at&client_id=eq.${workspaceId}&limit=5`,
       { headers: auth }
     );
     const submissions = await widgetRes.json();

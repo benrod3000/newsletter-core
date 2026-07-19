@@ -15,20 +15,41 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    // Get campaign open events for this workspace
-    const subsRes = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?select=id&client_id=eq.${workspaceId}&limit=5000`, { headers: auth });
-    const subs = await subsRes.json();
-    if (!Array.isArray(subs) || subs.length === 0) {
-      return NextResponse.json({ hours: [], days: [] });
-    }
-
-    const subIds = subs.map((s: any) => `subscriber_id=eq.${s.id}`).join(",");
-    const eventsRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/campaign_events?select=occurred_at&event_type=eq.open&or=(${subIds})&limit=10000`,
+    // Get campaign IDs for this workspace, then query events by campaign_id
+    // (avoids URL overflow from 5,000 subscriber_id=eq.UUID conditions)
+    const campaignsRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/campaigns?select=id&client_id=eq.${workspaceId}&limit=100`,
       { headers: auth }
     );
-    const events = await eventsRes.json();
-    if (!Array.isArray(events)) return NextResponse.json({ hours: [], days: [] });
+    if (!campaignsRes.ok) {
+      return NextResponse.json({ hours: [], days: [], totalOpens: 0, bestHour: -1, bestDay: -1 }, { status: 200 });
+    }
+    const campaigns = await campaignsRes.json();
+    if (!Array.isArray(campaigns) || campaigns.length === 0) {
+      return NextResponse.json({ hours: [], days: [], totalOpens: 0, bestHour: -1, bestDay: -1 });
+    }
+
+    const campaignIds = campaigns.map((c: any) => c.id);
+    const BATCH_SIZE = 50;
+    let allEvents: { occurred_at: string }[] = [];
+
+    for (let i = 0; i < campaignIds.length; i += BATCH_SIZE) {
+      const batch = campaignIds.slice(i, i + BATCH_SIZE);
+      const idFilters = batch.map((id: string) => `campaign_id=eq.${id}`).join(",");
+      const eventsRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/campaign_events?select=occurred_at&event_type=eq.open&or=(${idFilters})&limit=10000`,
+        { headers: auth }
+      );
+      if (!eventsRes.ok) {
+        continue;
+      }
+      const batchEvents = await eventsRes.json();
+      if (Array.isArray(batchEvents)) {
+        allEvents = allEvents.concat(batchEvents);
+      }
+    }
+
+    const events = allEvents;
 
     // Build hour-of-day counts (24 hours) and day-of-week counts (7 days)
     const hours = new Array(24).fill(0);
