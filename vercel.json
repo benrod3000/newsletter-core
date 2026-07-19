@@ -20,5 +20,10 @@
       "path": "/api/admin/automations/smart-tags/run",
       "schedule": "0 4 * * *"
     }
-  ]
+  ],
+  "functions": {
+    "api/admin/demo/seed/route.ts": {
+      "maxDuration": 120
+    }
+  }
 }
