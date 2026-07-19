@@ -10,7 +10,7 @@
  *   campaign_jobs(id, campaign_id, batch, total, sent_so_far, status, started_at, completed_at)
  */
 
-import sgMail from "@sendgrid/mail";
+import type { EmailTransport } from "@/lib/email/transport";
 import { getSupabaseClient } from "@/lib/supabase";
 import {
   buildHtmlFromEditor,
@@ -32,7 +32,7 @@ export interface QueueJobParams {
   baseUrl: string;
   fromEmail: string;
   fromName: string;
-  sgApiKey: string;
+  transport: EmailTransport;
   recipients: QueueRecipient[];
 }
 
@@ -54,11 +54,10 @@ export interface QueueRecipient {
  * Returns the total number of successfully sent emails.
  */
 export async function processSendQueue(params: QueueJobParams): Promise<{ sentCount: number; failedCount: number }> {
-  const { workspaceId, campaignId, recipients, baseUrl, fromEmail, fromName, sgApiKey, subject, message, messageHtml, messageCss } = params;
+  const { workspaceId, campaignId, recipients, baseUrl, fromEmail, fromName, transport, subject, message, messageHtml, messageCss } = params;
 
   if (recipients.length === 0) return { sentCount: 0, failedCount: 0 };
 
-  sgMail.setApiKey(sgApiKey);
   const supabase = getSupabaseClient();
   const from = `${fromName} <${fromEmail}>`;
   const baseHtml = messageHtml
@@ -101,16 +100,13 @@ export async function processSendQueue(params: QueueJobParams): Promise<{ sentCo
         const personalText = renderTemplate(message, mergeData);
         const personalHtml = renderTemplate(baseHtml, mergeData);
 
-        await sgMail.send({
+        await transport.send({
           to: sub.email,
           from,
           subject: personalSubject,
           text: personalText,
           html: personalHtml,
-          headers: {
-            "List-Unsubscribe": `<${unsubApiUrl}>`,
-            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-          },
+          listUnsubscribe: unsubApiUrl,
         });
       })
     );

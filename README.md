@@ -12,23 +12,15 @@ This is the API layer. It handles:
 
 - **Auth** — login, signup, password reset, JWT tokens, Google/GitHub OAuth. Rate-limited everywhere (5/min login, 3/min signup, 3/min forgot-password). Dedicated demo-login endpoint with proper password verification.
 - **Subscribers** — create, read, update, delete. Bulk import/export. Search and filter by status, health, date range.
-- **Campaigns** — drafts, test sends, scheduling, actual sending via SendGrid or SES. Open and click tracking built in. Web version pages with per-subscriber merge tag rendering. HTML-escaping on all subscriber-controlled merge fields (security).
+- **Broadcasts** — drafts, test sends, scheduling, sending via SendGrid or Resend (provider-agnostic EmailTransport interface). Open and click tracking built in. Web version pages with per-subscriber merge tag rendering. HTML-escaping on all subscriber-controlled merge fields.
 - **Automations** — cron-triggered jobs: confirm-remind for unconfirmed subs, auto-clean for cold ones, smart auto-tagging.
 - **Health scores** — daily job that classifies every subscriber as active, at risk, or cold based on engagement.
-- **Analytics** — growth tracking, campaign performance, open/click rates.
-- **Branding** — per-workspace sender identity, email provider config (SendGrid or SES), colors, custom domains.
-- **Widgets** — embeddable signup forms. Create, render, and process submissions.
+- **Analytics** — growth tracking, campaign performance, open/click rates, heatmap data, live pulse.
+- **Branding** — per-workspace sender identity, email provider config (SendGrid or Resend), colors, custom domains.
+- **Capture Forms** — embeddable signup widgets. Create, render, and process submissions.
 - **SMS/RCS** — Twilio integration for SMS campaigns and RCS rich messaging. Test sends, cost estimates, geo-filtering.
-- **Webhooks** — SendGrid event processing for bounces, opens, clicks, spam reports.- **Auth** // login, signup, password reset, JWT tokens. Rate-limited everywhere (5/min login, 3/min signup, 3/min forgot-password).
-- **Subscribers** // create, read, update, delete. Bulk import/export. Search and filter by status, health, date range.
-- **Campaigns** // drafts, test sends, scheduling, actual sending via SendGrid or SES. Open and click tracking built in.
-- **Automations** // cron-triggered jobs: confirm-remind for unconfirmed subs, auto-clean for cold ones, smart auto-tagging.
-- **Health scores** // daily job that classifies every subscriber as active, at risk, or cold based on engagement.
-- **Analytics** // growth tracking, campaign performance, open/click rates.
-- **Branding** // per-workspace sender identity, email provider config (SendGrid or SES), colors, custom domains.
-- **Widgets** // embeddable signup forms. Create, render, and process submissions.
-- **SMS/RCS** // Twilio integration for SMS campaigns and RCS rich messaging. Test sends, cost estimates, geo-filtering.
-- **Webhooks** // SendGrid event processing for bounces, opens, clicks, spam reports.- **Admin** — Basic Auth-protected dashboard at `/admin`.
+- **Webhooks** — SendGrid event processing for bounces, opens, clicks, spam reports.
+- **Admin** — Basic Auth-protected dashboard at `/admin`.
 
 Everything is multi-tenant. Every query filters by workspace. No data leaks.
 
@@ -45,9 +37,10 @@ Started with `@supabase/supabase-js`. Kept running into connectivity issues. Rew
 - Next.js 16 (App Router, Turbopack)
 - Supabase Postgres via raw `fetch()` to REST API
 - JWT auth with PBKDF2 password hashing, 30-day tokens
-- SendGrid + Amazon SES
+- Email provider abstraction: SendGrid + Resend via shared EmailTransport interface
+- Upstash Redis for rate limiting
+- Sentry for error monitoring (OTEL instrumentation, Vercel cron monitoring)
 - Zod for request validation
-- In-memory token bucket rate limiter
 - Vercel deployment with 5 daily cron jobs
 
 ---
