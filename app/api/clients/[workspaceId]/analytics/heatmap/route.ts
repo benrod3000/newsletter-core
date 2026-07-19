@@ -46,6 +46,7 @@ export async function GET(
       const batchEvents = await eventsRes.json();
       if (Array.isArray(batchEvents)) {
         allEvents = allEvents.concat(batchEvents);
+        if (allEvents.length >= 20000) { allEvents = allEvents.slice(0, 20000); break; }
       }
     }
 
