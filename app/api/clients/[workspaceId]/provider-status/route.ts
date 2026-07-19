@@ -30,7 +30,7 @@ export async function GET(
   const supabase = getSupabaseClient();
   const { data: client, error: fetchError } = await supabase
     .from("clients")
-    .select("email_provider, sendgrid_api_key, ses_access_key, ses_secret_key, ses_region, ses_from_email, sender_email, from_email")
+    .select("email_provider, sendgrid_api_key, ses_access_key, ses_secret_key, ses_region, ses_from_email, resend_api_key, sender_email, from_email")
     .eq("id", workspaceId)
     .single();
 
@@ -48,7 +48,36 @@ export async function GET(
     details: "",
   };
 
-  if (provider === "ses") {
+  if (provider === "resend") {
+    if (!client.resend_api_key) {
+      status.missing_fields = ["Resend API Key"];
+      status.details = "Resend API key is not configured. Add it above and save.";
+      status.configured = false;
+      status.key_valid = false;
+      status.sender_verified = false;
+    } else {
+      // Validate by attempting to list audiences (lightweight Resend API call)
+      try {
+        const rRes = await fetch("https://api.resend.com/audiences", {
+          headers: { Authorization: `Bearer ${client.resend_api_key}` },
+        });
+        if (rRes.ok) {
+          status.key_valid = true;
+          status.configured = true;
+          status.details = "Resend key is valid. Use 'Test Provider' to verify sending.";
+          status.sender_verified = null;
+        } else {
+          status.key_valid = false;
+          status.configured = true;
+          status.details = `Resend key rejected: ${rRes.status}. Check your key.`;
+        }
+      } catch (err) {
+        status.key_valid = null;
+        status.configured = true;
+        status.details = `Could not validate key. Check your network.`;
+      }
+    }
+  } else if (provider === "ses") {
     const missing: string[] = [];
     if (!client.ses_access_key) missing.push("AWS Access Key");
     if (!client.ses_secret_key) missing.push("AWS Secret Key");

@@ -1,13 +1,14 @@
 /**
  * email-sender.ts
  * Abstract email sending behind a provider-agnostic interface.
- * Supports SendGrid and Amazon SES, selectable per workspace.
+ * Supports SendGrid, Amazon SES, and Resend, selectable per workspace.
  */
 
 import sgMail from "@sendgrid/mail";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
+import { Resend } from "resend";
 
-export type EmailProvider = "sendgrid" | "ses";
+export type EmailProvider = "sendgrid" | "ses" | "resend";
 
 export interface SendEmailParams {
   to: string;
@@ -30,6 +31,8 @@ export interface ProviderConfig {
   sesAccessKey?: string;
   sesSecretKey?: string;
   sesRegion?: string;
+  /** Resend API key */
+  resendApiKey?: string;
 }
 
 /**
@@ -40,6 +43,9 @@ export async function sendEmail(
   params: SendEmailParams,
   config: ProviderConfig
 ): Promise<boolean> {
+  if (config.provider === "resend" && config.resendApiKey) {
+    return sendWithResend(params, config);
+  }
   if (config.provider === "ses" && config.sesAccessKey && config.sesSecretKey) {
     return sendWithSes(params, config);
   }
@@ -125,18 +131,57 @@ async function sendWithSes(
   return true;
 }
 
+async function sendWithResend(
+  params: SendEmailParams,
+  config: ProviderConfig
+): Promise<boolean> {
+  if (!config.resendApiKey) {
+    throw new Error("Resend API key not configured");
+  }
+
+  const resend = new Resend(config.resendApiKey);
+
+  await resend.emails.send({
+    from: params.from,
+    to: params.to,
+    subject: params.subject,
+    text: params.text || "",
+    html: params.html || undefined,
+    replyTo: params.replyTo,
+    headers: params.listUnsubscribe
+      ? {
+          "List-Unsubscribe": `<${params.listUnsubscribe}>`,
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+          ...params.headers,
+        }
+      : params.headers,
+  });
+
+  return true;
+}
+
 /**
  * Returns a human-readable provider name for display.
  */
 export function providerLabel(provider: EmailProvider): string {
-  return provider === "ses" ? "Amazon SES" : "SendGrid";
+  const labels: Record<EmailProvider, string> = {
+    sendgrid: "SendGrid",
+    ses: "Amazon SES",
+    resend: "Resend",
+  };
+  return labels[provider] || "SendGrid";
 }
 
 /**
  * Returns cost estimate per 10,000 emails for the provider.
  */
 export function providerCostEstimate(provider: EmailProvider): string {
-  return provider === "ses" ? "$1.00" : "Free tier: 100/day, then plan-based";
+  const costs: Record<EmailProvider, string> = {
+    sendgrid: "Free tier: 100/day, then plan-based",
+    ses: "$1.00",
+    resend: "Free tier: 3,000/month, then $0.001/email",
+  };
+  return costs[provider] || "Varies";
 }
 
 /**

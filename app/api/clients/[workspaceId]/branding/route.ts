@@ -6,7 +6,7 @@ import {
 } from "@/lib/client-context";
 
 const CORS = { "Access-Control-Allow-Origin": "*" };
-const BRANDING_FIELDS = "id,logo_url,brand_colors,custom_domain,sender_name,sender_email,email_provider,ses_region,ses_from_email,twilio_account_sid,twilio_auth_token,twilio_phone_number";
+const BRANDING_FIELDS = "id,logo_url,brand_colors,custom_domain,sender_name,sender_email,email_provider,ses_region,ses_from_email,resend_api_key,twilio_account_sid,twilio_auth_token,twilio_phone_number";
 
 export async function GET(
   req: NextRequest,
@@ -49,7 +49,7 @@ export async function PUT(
   }
   const body = await req.json();
   const updateData: Record<string, unknown> = {};
-  const fields = ["logo_url","brand_colors","custom_domain","sender_name","sender_email","email_provider","sendgrid_api_key","ses_access_key","ses_secret_key","ses_region","ses_from_email","twilio_account_sid","twilio_auth_token","twilio_phone_number"];
+  const fields = ["logo_url","brand_colors","custom_domain","sender_name","sender_email","email_provider","sendgrid_api_key","ses_access_key","ses_secret_key","ses_region","ses_from_email","resend_api_key","twilio_account_sid","twilio_auth_token","twilio_phone_number"];
   for (const f of fields) {
     if (body[f] !== undefined) updateData[f] = body[f];
   }
