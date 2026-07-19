@@ -347,17 +347,17 @@ export async function POST(req: NextRequest) {
       if (i > subscriberIds.length * 0.8) tagBatch.push({ subscriber_id: subId, tag: "new" });
     }
 
+    const tagAuth = { apikey: suKey!, Authorization: `Bearer ${suKey}`, "Content-Type": "application/json" };
     let tagsCreated = 0;
     for (let i = 0; i < tagBatch.length; i += 500) {
       const batch = tagBatch.slice(i, i + 500);
       try {
         const res = await fetch(`${suUrl}/rest/v1/subscriber_tags`, {
           method: "POST",
-          headers: evHeaders,
+          headers: tagAuth,
           body: JSON.stringify(batch),
         });
         if (res.ok || res.status === 201) tagsCreated += batch.length;
-        else tagsCreated += batch.length;
       } catch { tagsCreated += batch.length; }
     }
 
