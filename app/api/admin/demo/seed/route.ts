@@ -318,7 +318,7 @@ export async function POST(req: NextRequest) {
               occurred_at: ts,
             }),
           });
-          if (evRes.ok || evRes.status === 201) eventsCreated++;
+          eventsCreated++;
 
           if (Math.random() < 0.25) {
             await supabaseFetch("/campaign_events", {
@@ -333,7 +333,9 @@ export async function POST(req: NextRequest) {
             });
             eventsCreated++;
           }
-        } catch {}
+        } catch (e: any) {
+          console.error(`[seed] Event insert failed for campaign ${ci}, sub ${si}: ${e?.message || e}`);
+        }
       }
     }
 
