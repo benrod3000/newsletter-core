@@ -22,7 +22,10 @@
     }
   ],
   "functions": {
-    "api/admin/demo/seed/route.ts": {
+    "api/auth/**/*.ts": {
+      "maxDuration": 120
+    },
+    "api/admin/**/*.ts": {
       "maxDuration": 120
     }
   }

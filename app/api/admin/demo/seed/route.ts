@@ -311,7 +311,7 @@ export async function POST(req: NextRequest) {
           subscriber_id: subId,
           email: subscriberIds.length > i ? `subscriber${i}@example.com` : "demo@veloce.app",
           event_type: "open",
-          created_at: new Date(Date.now() - randomInt(1, c.days_ago || 1) * 86400000).toISOString(),
+          occurred_at: new Date(Date.now() - randomInt(1, c.days_ago || 1) * 86400000).toISOString(),
         });
 
         if (Math.random() < 0.20) {
