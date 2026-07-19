@@ -293,6 +293,8 @@ export async function POST(req: NextRequest) {
 
     // 4. Create campaign events for analytics — realistic open/click rates across ALL subscribers
     let eventsCreated = 0;
+    const eventBatch: Record<string, unknown>[] = [];
+
     for (const c of CAMPAIGNS) {
       if (c.draft || !campaignIds[CAMPAIGNS.indexOf(c)]) continue;
       const campaignIdx = CAMPAIGNS.indexOf(c);
@@ -301,65 +303,66 @@ export async function POST(req: NextRequest) {
 
       for (let i = 0; i < subBatchSize; i++) {
         const subId = subscriberIds[i];
-        // Realistic behavior: ~35-55% open rate, ~20-30% of openers click
         const baseOpenRate = 0.35 + Math.random() * 0.20;
-        if (Math.random() > baseOpenRate) continue; // didn't open
+        if (Math.random() > baseOpenRate) continue;
 
-        try {
-          await supabaseFetch("/campaign_events", {
-            method: "POST",
-            body: JSON.stringify({
-              campaign_id: campaignId,
-              subscriber_id: subId,
-              event: "open",
-              created_at: new Date(Date.now() - randomInt(1, c.days_ago || 1) * 86400000).toISOString(),
-            }),
+        eventBatch.push({
+          campaign_id: campaignId,
+          subscriber_id: subId,
+          email: subscriberIds.length > i ? `subscriber${i}@example.com` : "demo@veloce.app",
+          event_type: "open",
+          created_at: new Date(Date.now() - randomInt(1, c.days_ago || 1) * 86400000).toISOString(),
+        });
+
+        if (Math.random() < 0.20) {
+          eventBatch.push({
+            campaign_id: campaignId,
+            subscriber_id: subId,
+            email: `subscriber${i}@example.com`,
+            event_type: "click",
+            created_at: new Date(Date.now() - randomInt(1, Math.max(1, (c.days_ago || 1) - 1)) * 86400000).toISOString(),
           });
-          eventsCreated++;
-
-          // ~20% of openers also click
-          if (Math.random() < 0.20) {
-            await supabaseFetch("/campaign_events", {
-              method: "POST",
-              body: JSON.stringify({
-                campaign_id: campaignId,
-                subscriber_id: subId,
-                event: "click",
-                created_at: new Date(Date.now() - randomInt(1, Math.max(1, (c.days_ago || 1) - 1)) * 86400000).toISOString(),
-              }),
-            });
-            eventsCreated++;
-          }
-        } catch {}
+        }
       }
     }
 
-    // 5. Seed subscriber tags for smart tags demo
-    let tagsCreated = 0;
+    // Batch insert events (500 at a time to avoid payload limits)
+    for (let i = 0; i < eventBatch.length; i += 500) {
+      const batch = eventBatch.slice(i, i + 500);
+      try {
+        const res = await supabaseFetch("/campaign_events", {
+          method: "POST",
+          headers: { Prefer: "return=minimal" },
+          body: JSON.stringify(batch),
+        });
+        if (res.ok) eventsCreated += batch.length;
+      } catch {}
+    }
+
+    // 5. Seed subscriber tags for smart tags demo (batch insert)
+    const tagBatch: Record<string, unknown>[] = [];
     for (let i = 0; i < subscriberIds.length; i++) {
       const subId = subscriberIds[i];
-      const tags: string[] = [];
-      // Recent subscribers get "engaged" tag
-      if (i > subscriberIds.length * 0.6) tags.push("engaged");
-      // Subscribers past first 30 days without events get "at_risk"
-      if (i < subscriberIds.length * 0.3 && i > subscriberIds.length * 0.1) tags.push("at_risk");
-      // First few subscribers get "loyal"
-      if (i < subscriberIds.length * 0.1) tags.push("loyal");
-      // Some subscribers get "new"
-      if (i > subscriberIds.length * 0.8) tags.push("new");
-
-      for (const tag of tags) {
-        try {
-          await supabaseFetch("/subscriber_tags", {
-            method: "POST",
-            body: JSON.stringify({ subscriber_id: subId, tag }),
-          });
-          tagsCreated++;
-        } catch {}
-      }
+      if (i > subscriberIds.length * 0.6) tagBatch.push({ subscriber_id: subId, tag: "engaged" });
+      if (i < subscriberIds.length * 0.3 && i > subscriberIds.length * 0.1) tagBatch.push({ subscriber_id: subId, tag: "at_risk" });
+      if (i < subscriberIds.length * 0.1) tagBatch.push({ subscriber_id: subId, tag: "loyal" });
+      if (i > subscriberIds.length * 0.8) tagBatch.push({ subscriber_id: subId, tag: "new" });
     }
 
-    // 5. Verify the password hash was stored correctly
+    let tagsCreated = 0;
+    for (let i = 0; i < tagBatch.length; i += 500) {
+      const batch = tagBatch.slice(i, i + 500);
+      try {
+        const res = await supabaseFetch("/subscriber_tags", {
+          method: "POST",
+          headers: { Prefer: "return=minimal" },
+          body: JSON.stringify(batch),
+        });
+        if (res.ok) tagsCreated += batch.length;
+      } catch {}
+    }
+
+    // 6. Verify the password hash was stored correctly
     let pwValid = false;
     if (demoUserId) {
       try {
