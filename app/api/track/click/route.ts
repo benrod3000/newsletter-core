@@ -87,8 +87,8 @@ export async function GET(req: NextRequest) {
           },
         });
       }
-    } catch {
-      // Tracking must never break the redirect
+    } catch (err) {
+      console.error('[track/click] Failed to record click:', err instanceof Error ? err.message : err);
     }
   }
 

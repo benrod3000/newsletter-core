@@ -1,72 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
 import { canEditCampaigns, getAdminContextFromHeaders } from "@/lib/admin-context";
+import { parseGeoFilter } from "@/lib/geo-utils";
 
 type CampaignStatus = "draft" | "scheduled" | "sent";
 type Audience = "all" | "confirmed" | "pending" | "claimed_offer";
-
-function parseGeoFilter(value: unknown) {
-  if (!value || typeof value !== "object") {
-    return {
-      country: null,
-      regions: [] as string[],
-      cities: [] as string[],
-      center_lat: null,
-      center_lng: null,
-      radius_km: null,
-      radius_value: null,
-      radius_unit: "mi" as "km" | "mi",
-    };
-  }
-
-  const input = value as Record<string, unknown>;
-
-  const clean = (v: unknown) => {
-    if (typeof v !== "string") return null;
-    const trimmed = v.trim();
-    return trimmed ? trimmed : null;
-  };
-
-  const cleanList = (v: unknown) => {
-    if (!Array.isArray(v)) return [] as string[];
-    const cleaned = v
-      .filter((item): item is string => typeof item === "string")
-      .map((item) => item.trim())
-      .filter(Boolean);
-    return Array.from(new Set(cleaned));
-  };
-
-  const legacyRegion = clean(input.region);
-  const legacyCity = clean(input.city);
-  const regions = cleanList(input.regions);
-  const cities = cleanList(input.cities);
-  const radiusUnit: "km" | "mi" = input.radius_unit === "km" ? "km" : "mi";
-  const radiusValue =
-    typeof input.radius_value === "number" && Number.isFinite(input.radius_value) && input.radius_value > 0
-      ? input.radius_value
-      : typeof input.radius_km === "number" && Number.isFinite(input.radius_km) && input.radius_km > 0
-        ? radiusUnit === "mi"
-          ? input.radius_km / 1.60934
-          : input.radius_km
-        : null;
-  const radiusKm =
-    radiusValue !== null
-      ? radiusUnit === "mi"
-        ? radiusValue * 1.60934
-        : radiusValue
-      : null;
-
-  return {
-    country: clean(input.country),
-    regions: regions.length ? regions : legacyRegion ? [legacyRegion] : [],
-    cities: cities.length ? cities : legacyCity ? [legacyCity] : [],
-    center_lat: typeof input.center_lat === "number" ? input.center_lat : null,
-    center_lng: typeof input.center_lng === "number" ? input.center_lng : null,
-    radius_km: radiusKm,
-    radius_value: radiusValue,
-    radius_unit: radiusUnit,
-  };
-}
 
 async function resolveGeoCenter(
   clientId: string,

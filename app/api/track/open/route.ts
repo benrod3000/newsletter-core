@@ -40,8 +40,8 @@ export async function GET(req: NextRequest) {
           });
         }
       }
-    } catch {
-      // Tracking must never break the email client
+    } catch (err) {
+      console.error('[track/open] Failed to record open:', err instanceof Error ? err.message : err);
     }
   }
 
