@@ -320,7 +320,7 @@ export async function POST(req: NextRequest) {
             subscriber_id: subId,
             email: `subscriber${i}@example.com`,
             event_type: "click",
-            created_at: new Date(Date.now() - randomInt(1, Math.max(1, (c.days_ago || 1) - 1)) * 86400000).toISOString(),
+          occurred_at: new Date(Date.now() - randomInt(1, Math.max(1, (c.days_ago || 1) - 1)) * 86400000).toISOString(),
           });
         }
       }
