@@ -17,7 +17,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const supabase = getSupabaseClient();
   const { data: client, error: fetchError } = await supabase
     .from("clients")
-    .select("email_provider, sendgrid_api_key, ses_access_key, ses_secret_key, ses_region, ses_from_email, sender_email, from_email")
+    .select("email_provider, sendgrid_api_key, ses_access_key, ses_secret_key, ses_region, ses_from_email, resend_api_key, sender_email, from_email")
     .eq("id", workspaceId)
     .single();
 
@@ -42,6 +42,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       sesAccessKey: client.ses_access_key,
       sesSecretKey: client.ses_secret_key,
       sesRegion: client.ses_region || "us-east-1",
+    };
+  } else if (provider === "resend") {
+    if (!client.resend_api_key) {
+      return NextResponse.json(
+        { error: "Resend API key not found. Set it in workspace settings." },
+        { status: 422 }
+      );
+    }
+    config = {
+      provider: "resend",
+      resendApiKey: client.resend_api_key,
     };
   } else {
     if (!client.sendgrid_api_key) {
@@ -76,7 +87,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     return NextResponse.json({
       success: true,
-      message: `Test email sent to ${context.email} via ${provider === "ses" ? "Amazon SES" : "SendGrid"}.`,
+      message: `Test email sent to ${context.email} via ${provider === "ses" ? "Amazon SES" : provider === "resend" ? "Resend" : "SendGrid"}.`,
       provider,
     });
   } catch (err: any) {
