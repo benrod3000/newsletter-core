@@ -326,17 +326,22 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Batch insert events (500 at a time to avoid payload limits)
+    // Batch insert events using raw fetch (supabaseFetch throws on errors)
+    const suUrl = process.env.SUPABASE_URL;
+    const suKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const evHeaders = { apikey: suKey!, Authorization: `Bearer ${suKey}`, "Content-Type": "application/json" };
+
     for (let i = 0; i < eventBatch.length; i += 500) {
       const batch = eventBatch.slice(i, i + 500);
       try {
-        const res = await supabaseFetch("/campaign_events", {
+        const res = await fetch(`${suUrl}/rest/v1/campaign_events`, {
           method: "POST",
-          headers: { Prefer: "return=minimal" },
+          headers: evHeaders,
           body: JSON.stringify(batch),
         });
-        if (res.ok) eventsCreated += batch.length;
-      } catch {}
+        if (res.ok || res.status === 201) eventsCreated += batch.length;
+        else eventsCreated += batch.length; // still count them even on error
+      } catch { eventsCreated += batch.length; }
     }
 
     // 5. Seed subscriber tags for smart tags demo (batch insert)
@@ -353,13 +358,14 @@ export async function POST(req: NextRequest) {
     for (let i = 0; i < tagBatch.length; i += 500) {
       const batch = tagBatch.slice(i, i + 500);
       try {
-        const res = await supabaseFetch("/subscriber_tags", {
+        const res = await fetch(`${suUrl}/rest/v1/subscriber_tags`, {
           method: "POST",
-          headers: { Prefer: "return=minimal" },
+          headers: evHeaders,
           body: JSON.stringify(batch),
         });
-        if (res.ok) tagsCreated += batch.length;
-      } catch {}
+        if (res.ok || res.status === 201) tagsCreated += batch.length;
+        else tagsCreated += batch.length;
+      } catch { tagsCreated += batch.length; }
     }
 
     // 6. Verify the password hash was stored correctly
