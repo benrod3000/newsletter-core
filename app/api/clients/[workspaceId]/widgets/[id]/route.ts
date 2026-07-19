@@ -59,6 +59,7 @@ export async function PATCH(
   const allowedFields = [
     "name", "headline", "description", "download_url",
     "button_text", "success_message", "placeholder", "list_id", "is_active",
+    "fields", "styles", "type", "size", "collect_location",
   ];
 
   for (const field of allowedFields) {

@@ -24,13 +24,24 @@ export async function runSmartTags() {
     const subscribers = await subsRes.json();
     if (!Array.isArray(subscribers)) return { error: "Failed to fetch subscribers" };
 
-    // Get recent campaign events for engagement analysis
-    const eventsRes = await fetch(
-      `${supabaseUrl}/rest/v1/campaign_events?select=subscriber_id,event_type,occurred_at&occurred_at=gt.${encodeURIComponent(fiveCampaignsAgo)}&limit=50000`,
-      { headers: auth }
-    );
-    const events = await eventsRes.json();
-    if (!Array.isArray(events)) return { error: "Failed to fetch events" };
+    // Get recent campaign events with batching
+    const events: any[] = [];
+    const EVENT_BATCH = 50;
+    try {
+      for (let i = 0; i < subscribers.length; i += EVENT_BATCH) {
+        const batchIds = subscribers.slice(i, i + EVENT_BATCH).map((s: any) => s.id).join(",");
+        const eventsRes = await fetch(
+          `${supabaseUrl}/rest/v1/campaign_events?select=subscriber_id,event_type,occurred_at&occurred_at=gt.${encodeURIComponent(fiveCampaignsAgo)}&subscriber_id=in.(${batchIds})&limit=50000`,
+          { headers: auth }
+        );
+        if (eventsRes.ok) {
+          const batchData = await eventsRes.json();
+          if (Array.isArray(batchData)) events.push(...batchData);
+        }
+      }
+    } catch {
+      // campaign_events table may not exist
+    }
 
     // Build per-subscriber engagement data
     const subData = new Map();
@@ -67,11 +78,18 @@ export async function runSmartTags() {
     const batchSize = 100;
     for (let i = 0; i < batchUpserts.length; i += batchSize) {
       const batch = batchUpserts.slice(i, i + batchSize);
-      await fetch(`${supabaseUrl}/rest/v1/subscriber_tags`, {
-        method: "POST",
-        headers: { ...auth, Prefer: "resolution=ignore-duplicates" },
-        body: JSON.stringify(batch),
-      });
+      try {
+        const res = await fetch(`${supabaseUrl}/rest/v1/subscriber_tags`, {
+          method: "POST",
+          headers: { ...auth, Prefer: "resolution=ignore-duplicates" },
+          body: JSON.stringify(batch),
+        });
+        if (!res.ok) {
+          console.error(`[smart-tags] Failed to upsert tags batch: ${res.status}`);
+        }
+      } catch (e: any) {
+        console.error(`[smart-tags] Tag upsert error: ${e?.message}`);
+      }
     }
 
     return { tagged, evaluated: subscribers.length };
@@ -109,22 +127,23 @@ export async function runSmartTagsForWorkspace(workspaceId: string) {
 
     if (subscribers.length === 0) return { tagged: 0, evaluated: 0 };
 
-    // Get IDs for the subscriber query
-    const subIds = subscribers.map((s: any) => s.id).join(",");
-
-    // Get recent campaign events for this workspace's subscribers
+    // Get recent campaign events with batching (avoid URL overflow with many subscriber IDs)
     let events: any[] = [];
+    const EVENT_BATCH = 50;
     try {
-      const eventsRes = await fetch(
-        `${supabaseUrl}/rest/v1/campaign_events?select=subscriber_id,event_type,occurred_at&occurred_at=gt.${encodeURIComponent(fiveCampaignsAgo)}&subscriber_id=in.(${subIds})&limit=50000`,
-        { headers: auth }
-      );
-      if (eventsRes.ok) {
-        const eventsData = await eventsRes.json();
-        if (Array.isArray(eventsData)) events = eventsData;
+      for (let i = 0; i < subscribers.length; i += EVENT_BATCH) {
+        const batchIds = subscribers.slice(i, i + EVENT_BATCH).map((s: any) => s.id).join(",");
+        const eventsRes = await fetch(
+          `${supabaseUrl}/rest/v1/campaign_events?select=subscriber_id,event_type,occurred_at&occurred_at=gt.${encodeURIComponent(fiveCampaignsAgo)}&subscriber_id=in.(${batchIds})&limit=50000`,
+          { headers: auth }
+        );
+        if (eventsRes.ok) {
+          const batchData = await eventsRes.json();
+          if (Array.isArray(batchData)) events = events.concat(batchData);
+        }
       }
     } catch {
-      // campaign_events table may not exist
+      // campaign_events table may not exist — continue without events
     }
 
     // Build per-subscriber engagement data
@@ -163,13 +182,16 @@ export async function runSmartTagsForWorkspace(workspaceId: string) {
     for (let i = 0; i < batchUpserts.length; i += batchSize) {
       const batch = batchUpserts.slice(i, i + batchSize);
       try {
-        await fetch(`${supabaseUrl}/rest/v1/subscriber_tags`, {
+        const res = await fetch(`${supabaseUrl}/rest/v1/subscriber_tags`, {
           method: "POST",
           headers: { ...auth, Prefer: "resolution=ignore-duplicates" },
           body: JSON.stringify(batch),
         });
-      } catch {
-        // subscriber_tags table may not exist
+        if (!res.ok) {
+          console.error(`[smart-tags] Failed to upsert tags batch: ${res.status}`);
+        }
+      } catch (e: any) {
+        console.error(`[smart-tags] Tag upsert error: ${e?.message}`);
       }
     }
 

@@ -114,7 +114,7 @@ export async function POST(
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { name, slug, list_id, headline, description, download_url, button_text, success_message, placeholder } = body;
+  const { name, slug, list_id, headline, description, download_url, button_text, success_message, placeholder, fields, styles, type, size, collect_location } = body;
 
   // Validate required fields
   if (!name || typeof name !== "string" || !name.trim()) {
@@ -166,6 +166,11 @@ export async function POST(
         button_text: (button_text as string)?.trim() || "Send Me the Link",
         success_message: (success_message as string)?.trim() || "Check your inbox! The download link is on its way.",
         placeholder: (placeholder as string)?.trim() || "you@example.com",
+        fields: fields || { email: { required: true } },
+        styles: styles || { primary_color: "#f5e642", bg_color: "#f5f5f0", text_color: "#0a0a0a", border_color: "#0a0a0a", button_text_color: "#0a0a0a" },
+        type: type || "lead_magnet",
+        size: size || "medium",
+        collect_location: collect_location !== false,
       })
       .select()
       .single();
