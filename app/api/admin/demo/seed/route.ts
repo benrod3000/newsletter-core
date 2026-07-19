@@ -291,57 +291,50 @@ export async function POST(req: NextRequest) {
       if (cData?.[0]?.id) campaignIds.push(cData[0].id);
     }
 
-    // 4. Create campaign events for analytics — realistic open/click rates across ALL subscribers
+    // 4. Create campaign events — one per open/click, ~50 subs per campaign
     let eventsCreated = 0;
-    const eventBatch: Record<string, unknown>[] = [];
-
-    for (const c of CAMPAIGNS) {
-      if (c.draft || !campaignIds[CAMPAIGNS.indexOf(c)]) continue;
-      const campaignIdx = CAMPAIGNS.indexOf(c);
-      const campaignId = campaignIds[campaignIdx];
-      const subBatchSize = Math.min(subscriberIds.length, 200);
-
-      for (let i = 0; i < subBatchSize; i++) {
-        const subId = subscriberIds[i];
-        const baseOpenRate = 0.35 + Math.random() * 0.20;
-        if (Math.random() > baseOpenRate) continue;
-
-        eventBatch.push({
-          campaign_id: campaignId,
-          subscriber_id: subId,
-          email: subscriberIds.length > i ? `subscriber${i}@example.com` : "demo@veloce.app",
-          event_type: "open",
-          occurred_at: new Date(Date.now() - randomInt(1, c.days_ago || 1) * 86400000).toISOString(),
-        });
-
-        if (Math.random() < 0.20) {
-          eventBatch.push({
-            campaign_id: campaignId,
-            subscriber_id: subId,
-            email: `subscriber${i}@example.com`,
-            event_type: "click",
-          occurred_at: new Date(Date.now() - randomInt(1, Math.max(1, (c.days_ago || 1) - 1)) * 86400000).toISOString(),
-          });
-        }
-      }
-    }
-
-    // Batch insert events using raw fetch (supabaseFetch throws on errors)
     const suUrl = process.env.SUPABASE_URL;
     const suKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const evHeaders = { apikey: suKey!, Authorization: `Bearer ${suKey}`, "Content-Type": "application/json" };
+    const auth = { apikey: suKey!, Authorization: `Bearer ${suKey}`, "Content-Type": "application/json" };
 
-    for (let i = 0; i < eventBatch.length; i += 500) {
-      const batch = eventBatch.slice(i, i + 500);
-      try {
-        const res = await fetch(`${suUrl}/rest/v1/campaign_events`, {
-          method: "POST",
-          headers: evHeaders,
-          body: JSON.stringify(batch),
-        });
-        if (res.ok || res.status === 201) eventsCreated += batch.length;
-        else eventsCreated += batch.length; // still count them even on error
-      } catch { eventsCreated += batch.length; }
+    for (let ci = 0; ci < CAMPAIGNS.length; ci++) {
+      const c = CAMPAIGNS[ci];
+      if (c.draft) continue;
+      const campaignId = campaignIds[ci];
+      if (!campaignId) continue;
+
+      for (let si = 0; si < Math.min(subscriberIds.length, 50); si++) {
+        if (Math.random() > 0.40) continue; // 40% open rate
+        const ts = new Date(Date.now() - randomInt(1, c.days_ago || 1) * 86400000).toISOString();
+
+        try {
+          const evRes = await supabaseFetch("/campaign_events", {
+            method: "POST",
+            body: JSON.stringify({
+              campaign_id: campaignId,
+              subscriber_id: subscriberIds[si],
+              email: `sub${si}@example.com`,
+              event_type: "open",
+              occurred_at: ts,
+            }),
+          });
+          if (evRes.ok || evRes.status === 201) eventsCreated++;
+
+          if (Math.random() < 0.25) {
+            await supabaseFetch("/campaign_events", {
+              method: "POST",
+              body: JSON.stringify({
+                campaign_id: campaignId,
+                subscriber_id: subscriberIds[si],
+                email: `sub${si}@example.com`,
+                event_type: "click",
+                occurred_at: ts,
+              }),
+            });
+            eventsCreated++;
+          }
+        } catch {}
+      }
     }
 
     // 5. Seed subscriber tags for smart tags demo (batch insert)
