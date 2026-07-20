@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
+import { rateLimit } from "@/lib/rate-limit";
 
 function parseCoordinate(value: string | null): number | null {
   if (!value) return null;
@@ -28,11 +29,21 @@ export async function GET(req: NextRequest) {
   const campaignId = searchParams.get("c");
   const subscriberId = searchParams.get("s");
   const rawUrl = searchParams.get("u");
+
+  // Rate limit: 50 clicks per IP per second
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const rl = await rateLimit(`track-click:${ip}`, 50, 50);
+  let destination = "/";
+  if (!rl.allowed) {
+    // Still redirect — just don't record the event
+    if (rawUrl) {
+      try { destination = decodeURIComponent(rawUrl); new URL(destination); } catch { destination = "/"; }
+    }
+    return NextResponse.redirect(destination, { status: 302 });
+  }
+
   const trackingKind = searchParams.get("kind") || null;
   const leadTitle = searchParams.get("title") || null;
-
-  // Validate destination URL — only allow http/https
-  let destination = "/";
   if (rawUrl) {
     try {
       const decoded = decodeURIComponent(rawUrl);

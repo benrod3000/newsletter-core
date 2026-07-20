@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
+import { rateLimit } from "@/lib/rate-limit";
 
 // Minimal 1×1 transparent GIF
 const TRANSPARENT_GIF = Buffer.from(
@@ -11,6 +12,13 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const campaignId = searchParams.get("c");
   const subscriberId = searchParams.get("s");
+
+  // Rate limit: 100 tracking pixels per IP per second (high volume, bursty)
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const rl = await rateLimit(`track-open:${ip}`, 100, 100);
+  if (!rl.allowed) {
+    return new NextResponse(TRANSPARENT_GIF, { status: 200, headers: { "Content-Type": "image/gif" } });
+  }
 
   if (campaignId && subscriberId) {
     try {
