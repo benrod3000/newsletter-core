@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClientJWT, verifyPassword } from "@/lib/jwt";
 import { rateLimit } from "@/lib/rate-limit";
 import { loginSchema } from "@/lib/validators";
-import { apiError } from "@/lib/api-error";
+import { apiError } from "@/lib/api-response";
 import { ZodError } from "zod";
 import { logAudit, AUDIT_ACTIONS, extractRequestMeta } from "@/lib/audit-log";
 import { verifyTurnstileToken } from "@/lib/turnstile";

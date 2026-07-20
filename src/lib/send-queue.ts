@@ -168,6 +168,8 @@ export async function processSendQueue(params: QueueJobParams): Promise<{ sentCo
           text: personalText,
           html: personalHtml,
           listUnsubscribe: unsubApiUrl,
+          campaignId,
+          subscriberId: sub.id,
         }, dispatchConfig);
       })
     );

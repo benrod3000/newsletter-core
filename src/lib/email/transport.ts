@@ -37,6 +37,9 @@ export interface SendParams {
   headers?: Record<string, string>;
   /** RFC 8058 one-click unsubscribe URL */
   listUnsubscribe?: string;
+  /** For sandbox mode: campaign and subscriber context for synthetic event generation */
+  campaignId?: string;
+  subscriberId?: string;
 }
 
 export interface SendResult {

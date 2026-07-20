@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
 import {
   getClientContextFromJWT,
   assertWorkspaceAccess,
 } from "@/lib/client-context";
+import { apiSuccess, apiUnauthorized, apiInternalError } from "@/lib/api-response";
 
 /**
  * GET /api/clients/[workspaceId]/analytics
@@ -29,9 +30,7 @@ export async function GET(
   const { workspaceId } = await params;
   const context = getClientContextFromJWT(req);
 
-  if (!context || !assertWorkspaceAccess(context, workspaceId)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!context || !assertWorkspaceAccess(context, workspaceId)) return apiUnauthorized();
 
   const url = new URL(req.url);
   const days = Math.min(parseInt(url.searchParams.get("days") || "14"), 90);
@@ -53,10 +52,7 @@ export async function GET(
 
     if (subCountError) {
       console.error("Analytics subscriber count error:", subCountError);
-      return NextResponse.json(
-        { error: "Failed to compute subscriber count" },
-        { status: 500 }
-      );
+      return apiInternalError("Failed to compute subscriber count");
     }
 
     // Subscriber growth: new subscribers per day over the requested window.
@@ -72,10 +68,7 @@ export async function GET(
 
     if (growthError) {
       console.error("Analytics growth error:", growthError);
-      return NextResponse.json(
-        { error: "Failed to compute subscriber growth" },
-        { status: 500 }
-      );
+      return apiInternalError("Failed to compute subscriber growth");
     }
 
     const growthBuckets: Record<string, number> = {};
@@ -101,10 +94,7 @@ export async function GET(
 
     if (campaignError) {
       console.error("Analytics campaigns error:", campaignError);
-      return NextResponse.json(
-        { error: "Failed to fetch campaigns" },
-        { status: 500 }
-      );
+      return apiInternalError("Failed to fetch campaigns");
     }
 
     const campaigns = sentCampaigns || [];
@@ -122,10 +112,7 @@ export async function GET(
 
       if (eventsError) {
         console.error("Analytics events error:", eventsError);
-        return NextResponse.json(
-          { error: "Failed to fetch campaign events" },
-          { status: 500 }
-        );
+        return apiInternalError("Failed to fetch campaign events");
       }
       events = eventRows || [];
     }
@@ -162,22 +149,16 @@ export async function GET(
       .sort((a, b) => b.open_rate - a.open_rate)
       .slice(0, topCampaignsLimit);
 
-    return NextResponse.json(
-      {
+    return apiSuccess({
         total_subscribers: totalSubscribers || 0,
         campaigns_sent: campaigns.length,
         avg_open_rate: totalSent > 0 ? (totalOpens / totalSent) * 100 : 0,
         avg_click_rate: totalSent > 0 ? (totalClicks / totalSent) * 100 : 0,
         subscriber_growth: subscriberGrowth,
         top_campaigns: topCampaigns,
-      },
-      { status: 200 }
-    );
+      });
   } catch (error) {
     console.error("Analytics endpoint error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return apiInternalError();
   }
 }

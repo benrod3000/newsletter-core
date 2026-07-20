@@ -28,10 +28,10 @@ export class SandboxTransport implements EmailTransport {
     this.campaignId = opts?.campaignId;
   }
 
-  async send(params: SendParams & { campaignId?: string; subscriberId?: string }): Promise<SendResult> {
+  async send(params: SendParams): Promise<SendResult> {
     const messageId = `sandbox_${crypto.randomUUID()}`;
 
-    // Optionally generate synthetic open/click events
+    // Generate synthetic open/click events for analytics
     if (params.campaignId && params.subscriberId) {
       await this.generateSyntheticEvents(params.campaignId, params.subscriberId, params.to);
     }
