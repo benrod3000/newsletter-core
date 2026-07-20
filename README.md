@@ -12,7 +12,7 @@ This is the API layer. It handles:
 
 - **Auth** — login, signup, password reset, JWT tokens, Google/GitHub OAuth. Rate-limited everywhere (5/min login, 3/min signup, 3/min forgot-password). Dedicated demo-login endpoint with proper password verification.
 - **Subscribers** — create, read, update, delete. Bulk import/export. Search and filter by status, health, date range.
-- **Broadcasts** — drafts, test sends, scheduling, sending via SendGrid or Resend (provider-agnostic EmailTransport interface). Open and click tracking built in. Web version pages with per-subscriber merge tag rendering. HTML-escaping on all subscriber-controlled merge fields.
+- **Broadcasts** — drafts, test sends, scheduling. Sending via provider-agnostic EmailTransport with automatic failover. Retries with exponential backoff (0s, 2s, 8s) for transient errors. Time-budget protection prevents Vercel timeout data loss. Campaign activity log tracks every lifecycle event. Open and click tracking built in. HTML-escaping on all subscriber-controlled merge fields.
 - **Automations** — cron-triggered jobs: confirm-remind for unconfirmed subs, auto-clean for cold ones, smart auto-tagging.
 - **Health scores** — daily job that classifies every subscriber as active, at risk, or cold based on engagement.
 - **Analytics** — growth tracking, campaign performance, open/click rates, heatmap data, live pulse.
@@ -37,10 +37,12 @@ Started with `@supabase/supabase-js`. Kept running into connectivity issues. Rew
 - Next.js 16 (App Router, Turbopack)
 - Supabase Postgres via raw `fetch()` to REST API
 - JWT auth with PBKDF2 password hashing, 30-day tokens
-- Email provider abstraction: SendGrid + Resend via shared EmailTransport interface
-- Upstash Redis for rate limiting
+- Provider-agnostic email dispatch: SendGrid, Resend, Sandbox via shared EmailTransport + ProviderRegistry
+- Event bus for domain events (campaign lifecycle, provider events)
+- Upstash Redis for rate limiting (atomic Lua scripts)
 - Sentry for error monitoring (OTEL instrumentation, Vercel cron monitoring)
 - Zod for request validation
+- PostgreSQL materialized views for analytics performance
 - Vercel deployment with 5 daily cron jobs
 
 ---
