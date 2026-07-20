@@ -10,6 +10,8 @@ import { applyRateLimit, rateLimitedResponse } from "@/lib/rate-limit-middleware
  * Seeds the demo workspace with realistic data.
  * Protected by admin auth + rate limiting.
  */
+export const maxDuration = 120;
+
 export async function POST(req: NextRequest) {
   const admin = getAdminContextFromHeaders(req.headers);
   if (!admin) return apiUnauthorized();

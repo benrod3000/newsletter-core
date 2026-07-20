@@ -20,13 +20,5 @@
       "path": "/api/admin/automations/smart-tags/run",
       "schedule": "0 4 * * *"
     }
-  ],
-  "functions": {
-    "api/auth/**/*.ts": {
-      "maxDuration": 120
-    },
-    "api/admin/**/*.ts": {
-      "maxDuration": 120
-    }
-  }
+  ]
 }

@@ -5,6 +5,8 @@ import { getBaseUrl, parseGeoFilter } from "@/lib/geo-utils";
 import { requireCronSecret } from "@/lib/cron-auth";
 import { logError } from "@/lib/logger";
 
+export const maxDuration = 120;
+
 async function processScheduledCampaigns(req: NextRequest) {
   const auth = requireCronSecret(req);
   if (auth) return auth;
