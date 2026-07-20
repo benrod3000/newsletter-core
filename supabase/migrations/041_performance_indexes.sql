@@ -20,11 +20,5 @@ CREATE INDEX IF NOT EXISTS idx_subscribers_email_client ON subscribers(email, cl
 CREATE INDEX IF NOT EXISTS idx_subscriber_tags_subscriber ON subscriber_tags(subscriber_id);
 CREATE INDEX IF NOT EXISTS idx_subscriber_tags_client_tag ON subscriber_tags(client_id, tag);
 
--- widget_submissions: activity feed queries
-CREATE INDEX IF NOT EXISTS idx_widget_submissions_client ON widget_submissions(client_id, created_at DESC);
-
--- campaign_jobs: queue status lookups
-CREATE INDEX IF NOT EXISTS idx_campaign_jobs_campaign ON campaign_jobs(campaign_id, created_at DESC);
-
 -- workspace_users: login lookups
 CREATE INDEX IF NOT EXISTS idx_workspace_users_email_workspace ON workspace_users(email, workspace_id);
