@@ -65,7 +65,7 @@ async function getWorkspaceSender(
 ): Promise<{ fromEmail: string; fromName: string; dispatchConfig: ReturnType<typeof import("./email/dispatcher").DispatchConfig> }> {
   const { data: client } = await supabase
     .from("clients")
-    .select("email_provider, fallback_provider, ses_access_key, ses_secret_key, ses_region, ses_from_email, sender_email, sender_name, sendgrid_api_key, resend_api_key")
+    .select("email_provider, fallback_provider, sandbox_mode, ses_access_key, ses_secret_key, ses_region, ses_from_email, sender_email, sender_name, sendgrid_api_key, resend_api_key")
     .eq("id", workspaceId)
     .maybeSingle();
 
@@ -75,6 +75,7 @@ async function getWorkspaceSender(
   const dispatchConfig = {
     provider: client?.email_provider || "sendgrid",
     fallbackProvider: client?.fallback_provider || undefined,
+    sandbox: client?.sandbox_mode === true,
     credentials: {
       sendgrid: client?.sendgrid_api_key || process.env.SENDGRID_API_KEY,
       resend: client?.resend_api_key || process.env.RESEND_API_KEY,

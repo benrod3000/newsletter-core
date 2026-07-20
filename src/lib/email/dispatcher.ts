@@ -24,6 +24,8 @@ export interface DispatchConfig {
   fallbackProvider?: string;
   /** Per-workspace credentials (matches client table columns) */
   credentials: Record<string, unknown>;
+  /** Enable sandbox mode — intercepts all sends, generates synthetic events */
+  sandbox?: boolean;
 }
 
 /**
@@ -35,6 +37,14 @@ export async function dispatchEmail(
   params: SendParams,
   config: DispatchConfig
 ): Promise<DispatchResult> {
+  // Sandbox mode — intercept and simulate
+  if (config.sandbox) {
+    const sandbox = registry.resolve("sandbox", {});
+    if (sandbox) {
+      const result = await sandbox.send(params);
+      return { ...result, provider: "sandbox", fallbackUsed: false };
+    }
+  }
   const tried: string[] = [];
   const chain = [config.provider];
   if (config.fallbackProvider && config.fallbackProvider !== config.provider) {

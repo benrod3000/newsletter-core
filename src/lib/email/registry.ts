@@ -48,6 +48,7 @@ export const registry = new ProviderRegistry();
 // ── Built-in provider registrations ──
 import { SendGridTransport } from "./sendgrid";
 import { ResendTransport } from "./resend";
+import { SandboxTransport } from "./sandbox";
 
 registry.register("sendgrid", (config) =>
   new SendGridTransport((config.apiKey as string) || process.env.SENDGRID_API_KEY || "")
@@ -55,4 +56,11 @@ registry.register("sendgrid", (config) =>
 
 registry.register("resend", (config) =>
   new ResendTransport((config.apiKey as string) || process.env.RESEND_API_KEY || "")
+);
+
+registry.register("sandbox", (config) =>
+  new SandboxTransport({
+    openRate: config.openRate as number | undefined,
+    clickRate: config.clickRate as number | undefined,
+  })
 );
