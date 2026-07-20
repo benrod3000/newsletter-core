@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
 import { getClientContextFromJWT } from "@/lib/client-context";
-import { logAudit, AUDIT_ACTIONS, extractRequestMeta } from "@/lib/audit-log";
+import { apiSuccess, apiUnauthorized, apiInternalError } from "@/lib/api-response";
 
 /**
  * GET /api/clients/[workspaceId]/audit-logs
@@ -15,9 +15,7 @@ export async function GET(
   const ctx = getClientContextFromJWT(req);
   const { workspaceId } = await params;
 
-  if (!ctx || ctx.workspaceId !== workspaceId) {
-    return NextResponse.json({ error: { code: "UNAUTHORIZED", message: "Access denied" } }, { status: 401 });
-  }
+  if (!ctx || ctx.workspaceId !== workspaceId) return apiUnauthorized();
 
   const { searchParams } = new URL(req.url);
   const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 100);
@@ -34,9 +32,9 @@ export async function GET(
 
     if (error) throw error;
 
-    return NextResponse.json({ logs: data, total: count, limit, offset }, { status: 200 });
+    return apiSuccess({ logs: data, total: count, limit, offset });
   } catch (e: any) {
     console.error("[audit-logs] Error:", e?.message);
-    return NextResponse.json({ error: { code: "INTERNAL_ERROR", message: "Failed to load audit logs" } }, { status: 500 });
+    return apiInternalError("Failed to load audit logs");
   }
 }

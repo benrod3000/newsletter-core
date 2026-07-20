@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import {
   getClientContextFromJWT,
   assertWorkspaceAccess,
 } from "@/lib/client-context";
+import { apiSuccess, apiUnauthorized, apiInternalError } from "@/lib/api-response";
 
 export async function GET(
   req: NextRequest,
@@ -11,7 +12,7 @@ export async function GET(
   const { workspaceId } = await params;
   const context = getClientContextFromJWT(req);
   if (!context || !assertWorkspaceAccess(context, workspaceId)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return apiUnauthorized();
   }
 
   const supabaseUrl = process.env.SUPABASE_URL!;
@@ -62,8 +63,8 @@ export async function GET(
 
     // Sort by timestamp DESC and take top 10
     events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    return NextResponse.json({ activity: events.slice(0, 10) }, { status: 200 });
+    return apiSuccess({ activity: events.slice(0, 10) });
   } catch (e: any) {
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return apiInternalError();
   }
 }
