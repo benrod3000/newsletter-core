@@ -139,8 +139,12 @@ export async function processSendQueue(params: QueueJobParams): Promise<{ sentCo
     data: { provider: dispatchConfig.provider, recipientCount: recipients.length },
   });
 
-  // Process in batches
+  // Process in batches — stop early if approaching Vercel timeout (50s budget of 60s max)
   for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
+    if (Date.now() - startTime > 50000) {
+      console.warn(`[queue] Approaching timeout at ${sentCount}/${recipients.length}, saving progress`);
+      break;
+    }
     const batch = recipients.slice(i, i + BATCH_SIZE);
     const batchNum = Math.floor(i / BATCH_SIZE) + 1;
     const totalBatches = Math.ceil(recipients.length / BATCH_SIZE);

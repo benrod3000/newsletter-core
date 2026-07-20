@@ -51,11 +51,15 @@ import { ResendTransport } from "./resend";
 import { SandboxTransport } from "./sandbox";
 
 registry.register("sendgrid", (config) =>
-  new SendGridTransport((config.apiKey as string) || process.env.SENDGRID_API_KEY || "")
+  new SendGridTransport(
+    (config.sendgrid as string) || (config.apiKey as string) || process.env.SENDGRID_API_KEY || ""
+  )
 );
 
 registry.register("resend", (config) =>
-  new ResendTransport((config.apiKey as string) || process.env.RESEND_API_KEY || "")
+  new ResendTransport(
+    (config.resend as string) || (config.apiKey as string) || process.env.RESEND_API_KEY || ""
+  )
 );
 
 registry.register("sandbox", (config) =>

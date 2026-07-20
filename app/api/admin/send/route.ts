@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => null);
     if (!body || typeof body.subject !== "string" || typeof body.message !== "string") {
-      return apiSuccess({ error: "Invalid request body" }, 400);
+      return apiError(400, "INVALID_REQUEST", "Invalid request body");
     }
 
     const subject = body.subject.trim();
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     const testEmail = typeof body.testEmail === "string" ? body.testEmail.trim().toLowerCase() : "";
     const campaignId = typeof body.campaignId === "string" ? body.campaignId : null;
 
-    if (!subject || !message) return apiSuccess({ error: "Subject and message required" }, 422);
+    if (!subject || !message) return apiError(422, "VALIDATION_ERROR", "Subject and message required");
 
     const supabase = getSupabaseClient();
     const baseUrl = getBaseUrl(req);
@@ -46,14 +46,14 @@ export async function POST(req: NextRequest) {
       let q = supabase.from("campaigns").select("id, client_id").eq("id", campaignId);
       if (admin.role !== "owner" && admin.clientId) q = q.eq("client_id", admin.clientId);
       const { data: camp } = await q.single();
-      if (!camp) return apiSuccess({ error: "Campaign not found" }, 404);
+      if (!camp) return apiNotFound("Campaign");
       workspaceId = camp.client_id;
     }
 
     // Test send
     if (testEmail) {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testEmail)) {
-        return apiSuccess({ error: "Invalid test email" }, 422);
+        return apiError(422, "VALIDATION_ERROR", "Invalid test email address");
       }
 
       const baseHtml = messageHtml

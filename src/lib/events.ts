@@ -37,7 +37,13 @@ class EventBus {
     if (!handlers?.size) return;
     for (const handler of handlers) {
       try {
-        handler(event);
+        const result = handler(event);
+        // Catch async rejections that the try/catch would miss
+        if (result instanceof Promise) {
+          result.catch((err) =>
+            console.error(`[events] Async handler for "${event.type}" rejected:`, err)
+          );
+        }
       } catch (err) {
         console.error(`[events] Handler for "${event.type}" threw:`, err);
       }

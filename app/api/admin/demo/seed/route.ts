@@ -1,15 +1,21 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import crypto from "crypto";
 import { hashPassword } from "@/lib/jwt";
+import { getAdminContextFromHeaders } from "@/lib/admin-context";
+import { apiSuccess, apiUnauthorized, apiInternalError } from "@/lib/api-response";
+import { applyRateLimit, rateLimitedResponse } from "@/lib/rate-limit-middleware";
 
 /**
  * POST /api/admin/demo/seed
  * Seeds the demo workspace with realistic data.
- * Delegates to a PostgreSQL function that runs everything in a single transaction.
- * No more hundreds of individual REST calls.
+ * Protected by admin auth + rate limiting.
  */
+export async function POST(req: NextRequest) {
+  const admin = getAdminContextFromHeaders(req.headers);
+  if (!admin) return apiUnauthorized();
 
-export async function POST(_req: NextRequest) {
+  const rl = await applyRateLimit(req, { max: 1, windowSec: 300 });
+  if (!rl.allowed) return rateLimitedResponse(rl);
   const suUrl = process.env.SUPABASE_URL;
   const suKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!suUrl || !suKey) {
@@ -85,7 +91,7 @@ export async function POST(_req: NextRequest) {
       pwValid = pwHash.startsWith("600000:");
     }
 
-    return NextResponse.json({
+    return apiSuccess({
       ok: true,
       workspace_id: workspaceId,
       ...(typeof result === "object" ? result : {}),
@@ -93,6 +99,6 @@ export async function POST(_req: NextRequest) {
     });
   } catch (error: any) {
     console.error("Demo seed error:", error?.message || error);
-    return NextResponse.json({ error: error?.message || "Seed failed" }, { status: 500 });
+    return apiInternalError(error?.message || "Seed failed");
   }
 }
