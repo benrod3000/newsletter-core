@@ -18,9 +18,7 @@ export async function POST(req: NextRequest) {
   if (!rl.allowed) return rateLimitedResponse(rl);
   const suUrl = process.env.SUPABASE_URL;
   const suKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!suUrl || !suKey) {
-    return NextResponse.json({ error: "Missing Supabase env vars" }, { status: 500 });
-  }
+  if (!suUrl || !suKey) return apiInternalError("Missing Supabase env vars");
 
   try {
     const auth = { apikey: suKey, Authorization: `Bearer ${suKey}`, "Content-Type": "application/json" };

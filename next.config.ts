@@ -24,7 +24,7 @@ export default withSentryConfig(nextConfig, {
   // Don't upload source maps for node_modules
   reactComponentAnnotation: { enabled: true },
   // Hide source maps in production
-  hideSourceMaps: true,
+  sourcemaps: { deleteSourcemapsAfterUpload: true },
   // Disable tunnel for now
   disableLogger: true,
   // Automatically tree-shake Sentry logger statements

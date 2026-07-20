@@ -4,7 +4,7 @@ import {
   assertWorkspaceAccess,
   isClientOwner,
 } from "@/lib/client-context";
-import { apiSuccess, apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api-response";
+import { apiSuccess, apiError, apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api-response";
 
 const BRANDING_FIELDS = "id,logo_url,brand_colors,custom_domain,sender_name,sender_email,email_provider,ses_region,ses_from_email,resend_api_key,sendgrid_api_key,fallback_provider,sandbox_mode,twilio_account_sid,twilio_auth_token,twilio_phone_number";
 

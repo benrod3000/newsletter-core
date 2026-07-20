@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
-import { sendCampaignBlast, getBaseUrl, parseGeoFilter } from "@/lib/send-campaign";
+import { sendCampaignBlast } from "@/lib/send-campaign";
+import { getBaseUrl, parseGeoFilter } from "@/lib/geo-utils";
 import { requireCronSecret } from "@/lib/cron-auth";
 import { logError } from "@/lib/logger";
 

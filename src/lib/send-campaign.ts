@@ -62,7 +62,7 @@ async function fetchClaimedLeadMagnetIds(
 async function getWorkspaceSender(
   supabase: ReturnType<typeof getSupabaseClient>,
   workspaceId: string
-): Promise<{ fromEmail: string; fromName: string; dispatchConfig: ReturnType<typeof import("./email/dispatcher").DispatchConfig> }> {
+): Promise<{ fromEmail: string; fromName: string; dispatchConfig: { provider: string; fallbackProvider?: string; sandbox?: boolean; credentials: Record<string, unknown> } }> {
   const { data: client } = await supabase
     .from("clients")
     .select("email_provider, fallback_provider, sandbox_mode, ses_access_key, ses_secret_key, ses_region, ses_from_email, sender_email, sender_name, sendgrid_api_key, resend_api_key")
@@ -109,9 +109,8 @@ export async function sendCampaignBlast(
   params: SendCampaignBlastParams
 ): Promise<SendCampaignBlastResult> {
   const supabase = getSupabaseClient();
-  const { fromEmail, fromName, dispatchConfig } = await getWorkspaceSender(supabase, workspaceId);
-
   const { workspaceId, subject, message, messageHtml, messageCss, audience, geoFilter, campaignId, baseUrl } = params;
+  const { fromEmail, fromName, dispatchConfig } = await getWorkspaceSender(supabase, workspaceId);
 
   // Build recipient query
   let query = supabase

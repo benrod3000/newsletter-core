@@ -16,12 +16,12 @@ export class ResendTransport implements EmailTransport {
     try {
       const result = await this.client.emails.send({
         from: params.fromName ? `${params.fromName} <${params.from}>` : params.from,
-        to: params.to,
+        to: [params.to],
         subject: params.subject,
         html: params.html || undefined,
         text: params.text,
         replyTo: params.replyTo,
-      });
+      } as any);
 
       if (result.error) {
         return {

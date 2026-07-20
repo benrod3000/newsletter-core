@@ -7,7 +7,7 @@ import { buildDispatcherConfig } from "@/lib/email/dispatcher";
 import { dispatchEmail } from "@/lib/email/dispatcher";
 import { getSupabaseClient } from "@/lib/supabase";
 import { renderTemplate, buildHtmlFromEditor } from "@/lib/campaign-personalization";
-import { apiSuccess, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api-response";
+import { apiSuccess, apiError, apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api-response";
 
 /** POST /api/admin/send — Send campaign or test. Delegates to sendCampaignBlast. */
 export async function POST(req: NextRequest) {
