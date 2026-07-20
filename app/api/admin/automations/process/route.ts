@@ -195,6 +195,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Refresh analytics materialized views
+    try {
+      const { error: refreshErr } = await supabase.rpc("refresh_analytics_views");
+      if (refreshErr) console.error("[automations] Analytics refresh failed:", refreshErr.message);
+    } catch { /* views may not exist yet */ }
+
     return NextResponse.json({
       processed,
       results,
