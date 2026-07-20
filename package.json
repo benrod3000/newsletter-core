@@ -17,6 +17,8 @@
     "@upstash/redis": "^1.38.0",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
+    "grapesjs": "^0.23.2",
+    "grapesjs-preset-newsletter": "^1.0.2",
     "next": "^16.2.9",
     "otplib": "^13.4.1",
     "react": "19.2.4",
