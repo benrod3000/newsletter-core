@@ -1,24 +1,30 @@
 /**
  * Email Transport abstraction.
  *
- * Every email provider implements this interface, so the send queue
- * never touches SendGrid/SES/Resend directly. Add a new provider
- * by implementing these methods and registering it in ProviderRegistry.
+ * Every email provider implements this interface. The send queue
+ * never knows which provider is handling the email.
+ *
+ * Adding a new provider means:
+ * 1. Implement EmailTransport
+ * 2. Register it in ProviderRegistry
+ * 3. Done. No other code changes needed.
  */
 
 export interface EmailTransport {
-  /** Provider identifier (sendgrid, ses, resend, etc.) */
+  /** Provider identifier (sendgrid, resend, ses, postmark, mailgun, etc.) */
   readonly id: string;
 
-  /** Send a single email. Returns true if accepted. */
-  send(params: SendParams): Promise<boolean>;
+  /** Maximum emails per single API call. Used for batching. */
+  readonly maxBatchSize: number;
 
-  /** Verify the credentials work. Returns { valid, message }. */
-  verify(): Promise<{ valid: boolean; message: string }>;
+  /** Send a single email. Never throws — always returns a SendResult. */
+  send(params: SendParams): Promise<SendResult>;
 
-  /** Whether this transport supports batch/bulk sending natively */
-  supportsBatch(): boolean;
+  /** Check if provider is reachable and credentials are valid. */
+  health(): Promise<ProviderHealth>;
 }
+
+// ── Types ──
 
 export interface SendParams {
   to: string;
@@ -29,10 +35,37 @@ export interface SendParams {
   text?: string;
   replyTo?: string;
   headers?: Record<string, string>;
-  /** RFC 8058 one-click unsubscribe */
+  /** RFC 8058 one-click unsubscribe URL */
   listUnsubscribe?: string;
-  /** Optional provider-specific metadata */
-  metadata?: Record<string, string>;
+}
+
+export interface SendResult {
+  success: boolean;
+  /** Provider-assigned message ID for webhook reconciliation */
+  messageId?: string;
+  /** HTTP status code from the provider's API */
+  statusCode?: number;
+  /** Only present when success is false */
+  error?: SendError;
+}
+
+export interface SendError {
+  /** Machine-readable: RATE_LIMITED, INVALID_ADDRESS, AUTH_FAILED, NETWORK_ERROR, PROVIDER_ERROR */
+  code: string;
+  /** Human-readable description for logging */
+  message: string;
+  /** If true, the caller may retry (transient). If false, retry won't help (permanent). */
+  retryable: boolean;
+}
+
+export interface ProviderHealth {
+  healthy: boolean;
+  /** Unix timestamp of last health check */
+  lastChecked: number;
+  /** Error message from the last failed check, if any */
+  lastError?: string;
+  /** Response time in milliseconds */
+  latencyMs?: number;
 }
 
 export interface ProviderCredentials {

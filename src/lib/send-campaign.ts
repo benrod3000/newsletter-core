@@ -2,7 +2,6 @@ import { getSupabaseClient } from "@/lib/supabase";
 import { buildHtmlFromEditor, type MergeRecipient } from "@/lib/campaign-personalization";
 import { checkSendingLimit } from "@/lib/sending-limits";
 import { processSendQueue, type QueueRecipient } from "@/lib/send-queue";
-import { createTransport } from "@/lib/email/registry";
 import { parseGeoFilter, haversineDistanceKm, getBaseUrl, type GeoFilter } from "@/lib/geo-utils";
 
 export type Audience = "all" | "confirmed" | "pending" | "claimed_offer" | string;
@@ -58,30 +57,31 @@ async function fetchClaimedLeadMagnetIds(
 }
 
 /**
- * Look up the workspace's configured sending provider and create a transport.
- * Falls back to the platform's shared SendGrid key if the workspace
- * hasn't configured their own credentials.
+ * Look up the workspace's configured sending provider and build dispatch config.
  */
 async function getWorkspaceSender(
   supabase: ReturnType<typeof getSupabaseClient>,
   workspaceId: string
-): Promise<{ fromEmail: string; fromName: string; transport: ReturnType<typeof createTransport> }> {
+): Promise<{ fromEmail: string; fromName: string; dispatchConfig: ReturnType<typeof import("./email/dispatcher").DispatchConfig> }> {
   const { data: client } = await supabase
     .from("clients")
-    .select("email_provider, ses_access_key, ses_secret_key, ses_region, ses_from_email, sender_email, sender_name, sendgrid_api_key, resend_api_key")
+    .select("email_provider, fallback_provider, ses_access_key, ses_secret_key, ses_region, ses_from_email, sender_email, sender_name, sendgrid_api_key, resend_api_key")
     .eq("id", workspaceId)
     .maybeSingle();
 
-  const provider = client?.email_provider || "sendgrid";
   const fromEmail = client?.sender_email || client?.ses_from_email || process.env.SENDGRID_FROM_EMAIL || "noreply@veloce.app";
   const fromName = client?.sender_name || "Veloce";
 
-  const transport = createTransport(provider, {
-    sendgridApiKey: client?.sendgrid_api_key || process.env.SENDGRID_API_KEY,
-    resendApiKey: client?.resend_api_key || process.env.RESEND_API_KEY,
-  });
+  const dispatchConfig = {
+    provider: client?.email_provider || "sendgrid",
+    fallbackProvider: client?.fallback_provider || undefined,
+    credentials: {
+      sendgrid: client?.sendgrid_api_key || process.env.SENDGRID_API_KEY,
+      resend: client?.resend_api_key || process.env.RESEND_API_KEY,
+    },
+  };
 
-  return { fromEmail, fromName, transport };
+  return { fromEmail, fromName, dispatchConfig };
 }
 
 export interface SendCampaignBlastParams {
@@ -108,7 +108,7 @@ export async function sendCampaignBlast(
   params: SendCampaignBlastParams
 ): Promise<SendCampaignBlastResult> {
   const supabase = getSupabaseClient();
-  const { fromEmail, fromName, transport } = await getWorkspaceSender(supabase, params.workspaceId);
+  const { fromEmail, fromName, dispatchConfig } = await getWorkspaceSender(supabase, workspaceId);
 
   const { workspaceId, subject, message, messageHtml, messageCss, audience, geoFilter, campaignId, baseUrl } = params;
 
@@ -216,7 +216,7 @@ export async function sendCampaignBlast(
     baseUrl,
     fromEmail,
     fromName,
-    transport,
+    dispatchConfig,
     recipients,
   });
 
