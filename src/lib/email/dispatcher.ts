@@ -90,3 +90,24 @@ export async function dispatchEmail(
     error: { code: "ALL_PROVIDERS_FAILED", message: `All ${tried.length} provider(s) failed`, retryable: true },
   };
 }
+
+/**
+ * Build a DispatchConfig from a workspace client row.
+ * Used by admin/send, test-provider, and anywhere that needs
+ * provider config from the clients table.
+ */
+export function buildDispatcherConfig(client: {
+  email_provider?: string | null;
+  fallback_provider?: string | null;
+  sendgrid_api_key?: string | null;
+  resend_api_key?: string | null;
+} | null | undefined): DispatchConfig {
+  return {
+    provider: client?.email_provider || "sendgrid",
+    fallbackProvider: client?.fallback_provider || undefined,
+    credentials: {
+      sendgrid: client?.sendgrid_api_key || process.env.SENDGRID_API_KEY,
+      resend: client?.resend_api_key || process.env.RESEND_API_KEY,
+    },
+  };
+}
