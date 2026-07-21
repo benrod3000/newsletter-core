@@ -23,11 +23,17 @@ const EVENT_LABELS: Record<string, string | ((data: Record<string, unknown>) => 
   "campaign:retrying":    ({ attempt, maxAttempts }) => `Retrying (attempt ${attempt}/${maxAttempts})`,
   "campaign:completed":   ({ sent, failed, durationMs }) =>
     `Send complete — ${sent} sent, ${failed} failed in ${Math.round((durationMs as number) / 1000)}s`,
-  "campaign:failed":      ({ error }) => `Send failed: ${(error as any)?.message || "unknown error"}`,
+  "campaign:failed":      ({ error }) => {
+    const err = error as { message?: string } | undefined;
+    return `Send failed: ${err?.message || "unknown error"}`;
+  },
   "campaign:paused":      "Sending paused",
   "campaign:cancelled":   "Campaign cancelled",
   "email:sent":           ({ provider }) => `Sent via ${provider}`,
-  "email:failed":         ({ provider, error }) => `Failed via ${provider}: ${(error as any)?.message || "unknown"}`,
+  "email:failed":         ({ provider, error }) => {
+    const err = error as { message?: string } | undefined;
+    return `Failed via ${provider}: ${err?.message || "unknown"}`;
+  },
   "provider:fallback":    ({ from, to, reason }) => `Fell back from ${from} to ${to} — ${reason || "primary failed"}`,
   "queue:batch_complete": ({ batch, sent, total }) => `Batch ${batch}/${total} complete: ${sent} sent`,
 };
