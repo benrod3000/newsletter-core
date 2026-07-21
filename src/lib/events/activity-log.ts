@@ -35,8 +35,7 @@ const EVENT_LABELS: Record<string, string | ((data: Record<string, unknown>) => 
     return `Failed via ${provider}: ${err?.message || "unknown"}`;
   },
   "provider:fallback":    ({ from, to, reason }) => `Fell back from ${from} to ${to} — ${reason || "primary failed"}`,
-  "queue:batch_complete": ({ batch, sent, total }) => `Batch ${batch}/${total} complete: ${sent} sent`,
-};
+  "queue:batch_complete": ({ batch, sent, total }) => `Batch ${batch}/${total} complete: ${sent} sent`,  "campaign:transition":  ({ from, to }) => `Status changed: ${from} → ${to}`,};
 
 function describe(event: DomainEvent): string {
   const label = EVENT_LABELS[event.type];
@@ -68,7 +67,8 @@ const CAMPAIGN_EVENTS = [
   "campaign:created", "campaign:scheduled", "campaign:queued",
   "campaign:preparing", "campaign:sending", "campaign:retrying",
   "campaign:completed", "campaign:failed", "campaign:paused",
-  "campaign:cancelled", "email:sent", "email:failed",
+  "campaign:cancelled", "campaign:transition",
+  "email:sent", "email:failed",
   "provider:fallback", "queue:batch_complete",
 ];
 
