@@ -55,103 +55,121 @@ export async function GET(
       return apiInternalError("Failed to compute subscriber count");
     }
 
-    // Subscriber growth: new subscribers per day over the requested window.
-    const since = new Date();
-    since.setDate(since.getDate() - (days - 1));
-    since.setHours(0, 0, 0, 0);
+    // Subscriber growth: try materialized view first, fall back to manual bucketing
+    let subscriberGrowth: { date: string; count: number }[] = [];
+    try {
+      const { data: mvGrowth, error: mvGrowthErr } = await supabase
+        .from("mv_subscriber_growth")
+        .select("day, count")
+        .eq("client_id", workspaceId)
+        .order("day", { ascending: true });
 
-    const { data: recentSubscribers, error: growthError } = await supabase
-      .from("subscribers")
-      .select("created_at")
-      .eq("client_id", workspaceId)
-      .gte("created_at", since.toISOString());
-
-    if (growthError) {
-      console.error("Analytics growth error:", growthError);
-      return apiInternalError("Failed to compute subscriber growth");
-    }
-
-    const growthBuckets: Record<string, number> = {};
-    for (let i = 0; i < days; i++) {
-      const d = new Date(since);
-      d.setDate(d.getDate() + i);
-      growthBuckets[d.toISOString().slice(0, 10)] = 0;
-    }
-    for (const row of recentSubscribers || []) {
-      const day = new Date(row.created_at).toISOString().slice(0, 10);
-      if (day in growthBuckets) growthBuckets[day] += 1;
-    }
-    const subscriberGrowth = Object.entries(growthBuckets).map(
-      ([date, count]) => ({ date, count })
-    );
-
-    // Campaigns that have actually gone out.
-    const { data: sentCampaigns, error: campaignError } = await supabase
-      .from("campaigns")
-      .select("id, title, sent_count")
-      .eq("client_id", workspaceId)
-      .eq("status", "sent");
-
-    if (campaignError) {
-      console.error("Analytics campaigns error:", campaignError);
-      return apiInternalError("Failed to fetch campaigns");
-    }
-
-    const campaigns = sentCampaigns || [];
-    const campaignIds = campaigns.map((c) => c.id);
-
-    // Pull open/click events for all sent campaigns in one query and bucket
-    // them in memory (same approach as the admin per-campaign report route).
-    let events: { campaign_id: string; event_type: string; email: string }[] = [];
-    if (campaignIds.length > 0) {
-      const { data: eventRows, error: eventsError } = await supabase
-        .from("campaign_events")
-        .select("campaign_id, event_type, email")
-        .in("campaign_id", campaignIds)
-        .in("event_type", ["open", "click"]);
-
-      if (eventsError) {
-        console.error("Analytics events error:", eventsError);
-        return apiInternalError("Failed to fetch campaign events");
+      if (!mvGrowthErr && mvGrowth) {
+        subscriberGrowth = mvGrowth.map((r: any) => ({ date: r.day, count: r.count }));
       }
-      events = eventRows || [];
+    } catch { /* view may not exist yet */ }
+
+    // Fallback: manual bucketing from subscribers table
+    if (subscriberGrowth.length === 0) {
+      const since = new Date();
+      since.setDate(since.getDate() - (days - 1));
+      since.setHours(0, 0, 0, 0);
+
+      const { data: recentSubscribers } = await supabase
+        .from("subscribers")
+        .select("created_at")
+        .eq("client_id", workspaceId)
+        .gte("created_at", since.toISOString());
+
+      const growthBuckets: Record<string, number> = {};
+      for (let i = 0; i < days; i++) {
+        const d = new Date(since);
+        d.setDate(d.getDate() + i);
+        growthBuckets[d.toISOString().slice(0, 10)] = 0;
+      }
+      for (const row of recentSubscribers || []) {
+        const day = new Date(row.created_at).toISOString().slice(0, 10);
+        if (day in growthBuckets) growthBuckets[day] += 1;
+      }
+      subscriberGrowth = Object.entries(growthBuckets).map(([date, count]) => ({ date, count }));
     }
 
-    function uniqueEmailCount(campaignId: string, type: string) {
-      return new Set(
-        events
-          .filter((e) => e.campaign_id === campaignId && e.event_type === type)
-          .map((e) => e.email)
-      ).size;
-    }
-
+    // Campaign performance: try materialized view first, fall back to raw events scan
+    let topCampaigns: { id: string; name: string; sent: number; open_rate: number; click_rate: number }[] = [];
     let totalSent = 0;
     let totalOpens = 0;
     let totalClicks = 0;
+    let campaignsSent = 0;
 
-    const campaignStats = campaigns.map((c) => {
-      const sent = c.sent_count ?? 0;
-      const opens = uniqueEmailCount(c.id, "open");
-      const clicks = uniqueEmailCount(c.id, "click");
-      totalSent += sent;
-      totalOpens += opens;
-      totalClicks += clicks;
-      return {
-        id: c.id,
-        name: c.title,
-        sent,
-        open_rate: sent > 0 ? (opens / sent) * 100 : 0,
-        click_rate: sent > 0 ? (clicks / sent) * 100 : 0,
-      };
-    });
+    try {
+      const { data: mvStats, error: mvStatsErr } = await supabase
+        .from("mv_campaign_stats")
+        .select("campaign_id, title, sent_count, opens, clicks, open_rate, click_rate")
+        .eq("client_id", workspaceId)
+        .order("created_at", { ascending: false })
+        .limit(topCampaignsLimit);
 
-    const topCampaigns = campaignStats
-      .sort((a, b) => b.open_rate - a.open_rate)
-      .slice(0, topCampaignsLimit);
+      if (!mvStatsErr && mvStats) {
+        for (const row of mvStats as any[]) {
+          totalSent += row.sent_count || 0;
+          totalOpens += row.opens || 0;
+          totalClicks += row.clicks || 0;
+        }
+        campaignsSent = (mvStats as any[]).length;
+        topCampaigns = (mvStats as any[]).map((r) => ({
+          id: r.campaign_id,
+          name: r.title,
+          sent: r.sent_count || 0,
+          open_rate: r.open_rate || 0,
+          click_rate: r.click_rate || 0,
+        }));
+      }
+    } catch { /* view may not exist yet */ }
+
+    // Fallback: raw campaign_events scan
+    if (topCampaigns.length === 0) {
+      const { data: sentCampaigns } = await supabase
+        .from("campaigns")
+        .select("id, title, sent_count")
+        .eq("client_id", workspaceId)
+        .eq("status", "sent");
+
+      const campaigns = sentCampaigns || [];
+      campaignsSent = campaigns.length;
+      const campaignIds = campaigns.map((c) => c.id);
+
+      let events: { campaign_id: string; event_type: string; email: string }[] = [];
+      if (campaignIds.length > 0) {
+        const { data: eventRows } = await supabase
+          .from("campaign_events")
+          .select("campaign_id, event_type, email")
+          .in("campaign_id", campaignIds)
+          .in("event_type", ["open", "click"]);
+        events = eventRows || [];
+      }
+
+      function uniqueEmailCount(campaignId: string, type: string) {
+        return new Set(
+          events.filter((e) => e.campaign_id === campaignId && e.event_type === type).map((e) => e.email)
+        ).size;
+      }
+
+      const campaignStats = campaigns.map((c) => {
+        const sent = c.sent_count ?? 0;
+        const opens = uniqueEmailCount(c.id, "open");
+        const clicks = uniqueEmailCount(c.id, "click");
+        totalSent += sent;
+        totalOpens += opens;
+        totalClicks += clicks;
+        return { id: c.id, name: c.title, sent, open_rate: sent > 0 ? (opens / sent) * 100 : 0, click_rate: sent > 0 ? (clicks / sent) * 100 : 0 };
+      });
+
+      topCampaigns = campaignStats.sort((a, b) => b.open_rate - a.open_rate).slice(0, topCampaignsLimit);
+    }
 
     return apiSuccess({
         total_subscribers: totalSubscribers || 0,
-        campaigns_sent: campaigns.length,
+        campaigns_sent: campaignsSent,
         avg_open_rate: totalSent > 0 ? (totalOpens / totalSent) * 100 : 0,
         avg_click_rate: totalSent > 0 ? (totalClicks / totalSent) * 100 : 0,
         subscriber_growth: subscriberGrowth,
