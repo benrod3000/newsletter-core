@@ -46,9 +46,14 @@ export async function rateLimit(
       ? { allowed: false, retryAfter: 5, remaining: 0, limit: maxTokens }
       : { allowed: true, remaining: maxTokens, limit: maxTokens };
 
+  // No Redis configured is a deployment state, not an attack condition: always
+  // allow, and rely on the startup warning in src/lib/env.ts to surface it.
+  // Failing closed here would reject every login on a deploy that simply has no
+  // Upstash credentials yet. `onFailure` governs the error path below, where the
+  // limiter was expected to work and did not.
   if (!redis) {
     logWarn("rate-limit: Redis not configured; limiter inactive", { onFailure });
-    return fallback;
+    return { allowed: true, remaining: maxTokens, limit: maxTokens };
   }
 
   const key = `rate-limit:${ip}:${maxTokens}`;

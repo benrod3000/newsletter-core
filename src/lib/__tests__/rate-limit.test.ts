@@ -99,7 +99,7 @@ describe("rateLimit — failure modes", () => {
 });
 
 describe("rateLimit — Redis not configured", () => {
-  it("fails closed when configured to, even with no Redis", async () => {
+  it("allows traffic even on fail-closed routes", async () => {
     vi.resetModules();
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -107,6 +107,8 @@ describe("rateLimit — Redis not configured", () => {
     const { rateLimit } = await import("../rate-limit");
     const result = await rateLimit("ip", 5, 5 / 60, "closed");
 
-    expect(result.allowed).toBe(false);
+    // An absent limiter is a deployment state, not an outage. Failing closed
+    // here would reject every login on a deploy with no Upstash credentials.
+    expect(result.allowed).toBe(true);
   });
 });

@@ -8,25 +8,39 @@ export interface AdminContext {
   clientId: string | null;
 }
 
-const HMAC_SECRET = process.env.ADMIN_HMAC_SECRET || "";
+/**
+ * Read at call time rather than module load so a missing secret surfaces as a
+ * failed request in every environment, instead of being latched at cold start.
+ */
+function getHmacSecret(): string {
+  const secret = process.env.ADMIN_HMAC_SECRET;
+  if (!secret) {
+    throw new Error(
+      "ADMIN_HMAC_SECRET is required — admin header signing cannot be disabled."
+    );
+  }
+  return secret;
+}
 
 /**
  * Sign admin context headers with an HMAC so route handlers can verify
  * the headers were set by the proxy (not injected externally).
- * This provides defense-in-depth against proxy middleware bypasses.
+ *
+ * This is the only thing binding x-admin-username / x-admin-role to an actual
+ * authentication having happened, so it must never be optional.
  */
 export function signAdminHeaders(payload: string): string {
-  if (!HMAC_SECRET) return "";
-  return crypto.createHmac("sha256", HMAC_SECRET).update(payload).digest("hex");
+  return crypto.createHmac("sha256", getHmacSecret()).update(payload).digest("hex");
 }
 
 function verifyAdminSignature(signature: string, username: string, role: string, clientId: string | null): boolean {
-  if (!HMAC_SECRET) return true; // not configured — fall back to header trust alone
   if (!signature) return false;
   const expected = signAdminHeaders(`${username}:${role}:${clientId || ""}`);
-  if (signature.length !== expected.length) return false;
+  const sigBuf = Buffer.from(signature);
+  const expBuf = Buffer.from(expected);
+  if (sigBuf.length !== expBuf.length) return false;
   try {
-    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+    return crypto.timingSafeEqual(sigBuf, expBuf);
   } catch {
     return false;
   }

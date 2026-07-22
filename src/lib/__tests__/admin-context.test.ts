@@ -41,4 +41,35 @@ describe("admin header signature verification", () => {
     const sig = signAdminHeaders("alice:owner:");
     expect(sig).toMatch(/^[a-f0-9]{64}$/); // SHA-256 produces 64 hex chars
   });
+
+  it("rejects context with no signature at all", async () => {
+    const { getAdminContextFromHeaders } = await import("../admin-context");
+
+    const headers = new Headers({
+      "x-admin-username": "mallory",
+      "x-admin-role": "owner",
+    });
+
+    expect(getAdminContextFromHeaders(headers)).toBeNull();
+  });
+});
+
+describe("admin auth with no HMAC secret configured", () => {
+  beforeEach(() => {
+    delete process.env.ADMIN_HMAC_SECRET;
+  });
+
+  it("does not accept forged headers", async () => {
+    const { getAdminContextFromHeaders } = await import("../admin-context");
+
+    const headers = new Headers({
+      "x-admin-username": "mallory",
+      "x-admin-role": "owner",
+      "x-admin-signature": "anything",
+    });
+
+    // Previously returned an owner context: verifyAdminSignature returned true
+    // when the secret was unset, making x-admin-role self-asserting.
+    expect(() => getAdminContextFromHeaders(headers)).toThrow(/ADMIN_HMAC_SECRET/);
+  });
 });

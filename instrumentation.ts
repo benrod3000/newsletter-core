@@ -4,6 +4,10 @@
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
+    // Fail fast on missing secrets rather than mid-request or, worse, silently.
+    const { assertRequiredEnv } = await import("@/lib/env");
+    assertRequiredEnv();
+
     await import("./sentry.server.config");
     // Activate campaign activity log event subscribers
     await import("@/lib/events/activity-log");
