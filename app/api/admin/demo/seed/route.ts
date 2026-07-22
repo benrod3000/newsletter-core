@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import crypto from "crypto";
 import { hashPassword } from "@/lib/jwt";
+import { DEMO_EMAIL, getDemoPassword } from "@/lib/demo";
 import { getAdminContextFromHeaders } from "@/lib/admin-context";
 import { apiSuccess, apiUnauthorized, apiInternalError } from "@/lib/api-response";
 import { applyRateLimit, rateLimitedResponse } from "@/lib/rate-limit-middleware";
@@ -27,20 +28,20 @@ export async function POST(req: NextRequest) {
 
     // 1. Find or create the demo user + workspace
     let wsRes = await fetch(
-      `${suUrl}/rest/v1/workspace_users?select=id,workspace_id,email&email=eq.demo%40veloce.app&limit=1`,
+      `${suUrl}/rest/v1/workspace_users?select=id,workspace_id,email&email=eq.${encodeURIComponent(DEMO_EMAIL)}&limit=1`,
       { headers: auth }
     );
     let users = await wsRes.json();
     let workspaceId: string;
     let demoUserId: string;
-    const demoPasswordHash = await hashPassword("demo123456");
+    const demoPasswordHash = await hashPassword(getDemoPassword());
 
     if (!Array.isArray(users) || users.length === 0) {
       // Create workspace
       const createWs = await fetch(`${suUrl}/rest/v1/clients`, {
         method: "POST",
         headers: { ...auth, Prefer: "return=representation" },
-        body: JSON.stringify({ name: "Demo Workspace", slug: `demo-${crypto.randomUUID().split("-")[0]}` }),
+        body: JSON.stringify({ name: "Demo Workspace", slug: `demo-${crypto.randomUUID().split("-")[0]}`, sandbox_mode: true }),
       });
       const wsData = await createWs.json();
       workspaceId = wsData?.[0]?.id;
@@ -50,7 +51,7 @@ export async function POST(req: NextRequest) {
       const createUser = await fetch(`${suUrl}/rest/v1/workspace_users`, {
         method: "POST",
         headers: { ...auth, Prefer: "return=representation" },
-        body: JSON.stringify({ workspace_id: workspaceId, email: "demo@veloce.app", password_hash: demoPasswordHash, role: "owner", is_active: true }),
+        body: JSON.stringify({ workspace_id: workspaceId, email: DEMO_EMAIL, password_hash: demoPasswordHash, role: "owner", is_active: true }),
       });
       const userData = await createUser.json();
       demoUserId = userData?.[0]?.id || "new";

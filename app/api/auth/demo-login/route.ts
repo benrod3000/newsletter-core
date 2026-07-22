@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClientJWT, verifyPassword } from "@/lib/jwt";
+import { DEMO_EMAIL } from "@/lib/demo";
 
 /**
  * POST /api/auth/demo-login
- * Login for demo@veloce.app only. Bypasses Turnstile.
+ * Login for the demo account only (see src/lib/demo.ts). Bypasses Turnstile.
  * Uses normal password verification.
  */
 export async function POST(req: NextRequest) {
@@ -18,7 +19,7 @@ export async function POST(req: NextRequest) {
     const auth = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" };
 
     const findRes = await fetch(
-      `${supabaseUrl}/rest/v1/workspace_users?select=id,workspace_id,email,password_hash,role&email=eq.demo%40veloce.app&limit=1`,
+      `${supabaseUrl}/rest/v1/workspace_users?select=id,workspace_id,email,password_hash,role&email=eq.${encodeURIComponent(DEMO_EMAIL)}&limit=1`,
       { headers: auth }
     );
     const users = await findRes.json();

@@ -6,6 +6,7 @@ import { apiError } from "@/lib/api-response";
 import { ZodError } from "zod";
 import { logAudit, AUDIT_ACTIONS, extractRequestMeta } from "@/lib/audit-log";
 import { verifyTurnstileToken } from "@/lib/turnstile";
+import { isDemoAccount } from "@/lib/demo";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -36,8 +37,8 @@ export async function POST(req: NextRequest) {
     const { email, password, workspaceId, turnstile_token } = body;
     const userEmail = email.toLowerCase().trim();
 
-    // Skip Turnstile for demo account (uses fixed test domain)
-    if (userEmail !== 'demo@veloce.app') {
+    // Skip Turnstile for the demo account (uses fixed test domain)
+    if (!isDemoAccount(userEmail)) {
       if (!turnstile_token || !(await verifyTurnstileToken(turnstile_token))) {
         return apiError(400, "SECURITY_CHECK_FAILED", "Security check failed. Please try again.");
       }
