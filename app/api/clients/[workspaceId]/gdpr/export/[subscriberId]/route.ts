@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClientContextFromJWT, assertWorkspaceAccess } from "@/lib/client-context";
-
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const auth = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` };
+import { getSupabaseClient } from "@/lib/supabase";
+import { isUuid } from "@/lib/route-params";
+import { logError } from "@/lib/logger";
 
 export async function GET(
   req: NextRequest,
@@ -14,32 +13,54 @@ export async function GET(
   if (!ctx || !assertWorkspaceAccess(ctx, workspaceId))
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  if (!isUuid(subscriberId)) {
+    return NextResponse.json({ error: "Invalid subscriber ID" }, { status: 422 });
+  }
+
   try {
-    // Fetch all subscriber data in parallel
-    const [subRes, eventsRes, tagsRes, notesRes, membershipsRes] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/subscribers?id=eq.${subscriberId}&client_id=eq.${workspaceId}&select=*&limit=1`, { headers: auth }),
-      fetch(`${SUPABASE_URL}/rest/v1/campaign_events?subscriber_id=eq.${subscriberId}&select=*&order=occurred_at.asc&limit=500`, { headers: auth }),
-      fetch(`${SUPABASE_URL}/rest/v1/subscriber_tags?subscriber_id=eq.${subscriberId}&select=tag,created_at&limit=100`, { headers: auth }),
-      fetch(`${SUPABASE_URL}/rest/v1/subscriber_notes?subscriber_id=eq.${subscriberId}&select=*&limit=100`, { headers: auth }),
-      fetch(`${SUPABASE_URL}/rest/v1/subscriber_list_memberships?subscriber_id=eq.${subscriberId}&select=list_id&limit=50`, { headers: auth }),
-    ]);
+    const supabase = getSupabaseClient();
 
-    const [subData, events, tags, notes, memberships] = await Promise.all([
-      subRes.json(), eventsRes.json(), tagsRes.json(), notesRes.json(), membershipsRes.json(),
-    ]);
+    // Establish ownership first. Previously the child queries ran in the same
+    // Promise.all as the ownership check — their results were gated by the 404
+    // below, so nothing leaked, but the queries executed regardless and the
+    // safety depended entirely on the ordering of a later branch.
+    const { data: subscriber, error: subError } = await supabase
+      .from("subscribers")
+      .select("*")
+      .eq("id", subscriberId)
+      .eq("client_id", workspaceId)
+      .maybeSingle();
 
-    const subscriber = Array.isArray(subData) ? subData[0] : null;
-    if (!subscriber) return NextResponse.json({ error: "Subscriber not found" }, { status: 404 });
+    if (subError) {
+      logError(subError, { route: "clients.gdpr.export", workspaceId, subscriberId });
+      return NextResponse.json({ error: "Export failed" }, { status: 500 });
+    }
+    if (!subscriber) {
+      return NextResponse.json({ error: "Subscriber not found" }, { status: 404 });
+    }
+
+    const [eventsRes, tagsRes, notesRes, membershipsRes] = await Promise.all([
+      supabase
+        .from("campaign_events")
+        .select("*")
+        .eq("subscriber_id", subscriberId)
+        .order("occurred_at", { ascending: true })
+        .limit(500),
+      supabase.from("subscriber_tags").select("tag, created_at").eq("subscriber_id", subscriberId).limit(100),
+      supabase.from("subscriber_notes").select("*").eq("subscriber_id", subscriberId).limit(100),
+      supabase.from("subscriber_list_memberships").select("list_id").eq("subscriber_id", subscriberId).limit(50),
+    ]);
 
     return NextResponse.json({
       exported_at: new Date().toISOString(),
       subscriber,
-      campaigns: Array.isArray(events) ? events : [],
-      tags: Array.isArray(tags) ? tags : [],
-      notes: Array.isArray(notes) ? notes : [],
-      list_memberships: Array.isArray(memberships) ? memberships : [],
+      campaigns: eventsRes.data ?? [],
+      tags: tagsRes.data ?? [],
+      notes: notesRes.data ?? [],
+      list_memberships: membershipsRes.data ?? [],
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message }, { status: 500 });
+  } catch (e) {
+    logError(e, { route: "clients.gdpr.export", workspaceId, subscriberId });
+    return NextResponse.json({ error: "Export failed" }, { status: 500 });
   }
 }

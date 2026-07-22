@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClientContextFromJWT, assertWorkspaceAccess, canEditAsClient } from "@/lib/client-context";
+import { getSupabaseClient } from "@/lib/supabase";
+import { isUuid } from "@/lib/route-params";
 import { logError } from "@/lib/logger";
-
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const auth = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" };
 
 /**
  * DELETE /api/clients/[workspaceId]/segments/[id]
@@ -18,11 +16,27 @@ export async function DELETE(
   if (!ctx || !assertWorkspaceAccess(ctx, workspaceId))
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  // canEditAsClient was imported but never enforced here — a viewer could
+  // delete saved segments.
+  if (!canEditAsClient(ctx)) {
+    return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+  }
+
+  if (!isUuid(id)) {
+    return NextResponse.json({ error: "Invalid segment ID" }, { status: 422 });
+  }
+
   try {
-    await fetch(
-      `${SUPABASE_URL}/rest/v1/saved_segments?id=eq.${id}&workspace_id=eq.${workspaceId}`,
-      { method: "DELETE", headers: auth }
-    );
+    const { error } = await getSupabaseClient()
+      .from("saved_segments")
+      .delete()
+      .eq("id", id)
+      .eq("workspace_id", workspaceId);
+
+    if (error) {
+      logError(error, { workspaceId, segmentId: id, action: "delete-segment" });
+      return NextResponse.json({ error: "Failed to delete segment" }, { status: 500 });
+    }
     return NextResponse.json({ ok: true });
   } catch (err) {
     logError(err, { workspaceId, segmentId: id, action: 'delete-segment' });

@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClientContextFromJWT, assertWorkspaceAccess } from "@/lib/client-context";
-
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const auth = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` };
+import { getSupabaseClient } from "@/lib/supabase";
+import { isUuid } from "@/lib/route-params";
+import { logError } from "@/lib/logger";
 
 export async function GET(
   req: NextRequest,
@@ -14,21 +13,58 @@ export async function GET(
   if (!ctx || !assertWorkspaceAccess(ctx, workspaceId))
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  if (!isUuid(id)) {
+    return NextResponse.json({ error: "Invalid subscriber ID" }, { status: 422 });
+  }
+
   try {
-    // Fetch event types in parallel
-    const [eventsRes, tagsRes, notesRes, subRes] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/campaign_events?select=event_type,occurred_at,campaign_id&subscriber_id=eq.${id}&order=occurred_at.asc&limit=200`, { headers: auth }),
-      fetch(`${SUPABASE_URL}/rest/v1/subscriber_tags?select=tag,created_at&subscriber_id=eq.${id}&order=created_at.asc&limit=100`, { headers: auth }),
-      fetch(`${SUPABASE_URL}/rest/v1/subscriber_notes?select=note,created_at&subscriber_id=eq.${id}&order=created_at.asc&limit=50`, { headers: auth }),
-      fetch(`${SUPABASE_URL}/rest/v1/subscribers?select=created_at,confirmed,health_score&id=eq.${id}&limit=1`, { headers: auth }),
+    const supabase = getSupabaseClient();
+
+    // Confirm the subscriber belongs to this workspace BEFORE reading anything
+    // about them. The child tables below are keyed only by subscriber_id, so
+    // without this gate any authenticated user could read another workspace's
+    // notes, tags and campaign events by guessing an id.
+    const { data: sub, error: subError } = await supabase
+      .from("subscribers")
+      .select("created_at, confirmed, health_score")
+      .eq("id", id)
+      .eq("client_id", workspaceId)
+      .maybeSingle();
+
+    if (subError) {
+      logError(subError, { route: "clients.subscribers.timeline", workspaceId, subscriberId: id });
+      return NextResponse.json({ error: "Internal error" }, { status: 500 });
+    }
+    if (!sub) {
+      return NextResponse.json({ error: "Subscriber not found" }, { status: 404 });
+    }
+
+    const [eventsRes, tagsRes, notesRes] = await Promise.all([
+      supabase
+        .from("campaign_events")
+        .select("event_type, occurred_at, campaign_id")
+        .eq("subscriber_id", id)
+        .order("occurred_at", { ascending: true })
+        .limit(200),
+      supabase
+        .from("subscriber_tags")
+        .select("tag, created_at")
+        .eq("subscriber_id", id)
+        .order("created_at", { ascending: true })
+        .limit(100),
+      supabase
+        .from("subscriber_notes")
+        .select("note, created_at")
+        .eq("subscriber_id", id)
+        .order("created_at", { ascending: true })
+        .limit(50),
     ]);
 
-    const [events, tags, notes, subData] = await Promise.all([
-      eventsRes.json(), tagsRes.json(), notesRes.json(), subRes.json(),
-    ]);
+    const events = eventsRes.data ?? [];
+    const tags = tagsRes.data ?? [];
+    const notes = notesRes.data ?? [];
 
     const timeline: Array<{ type: string; label: string; date: string; icon: string; detail?: string }> = [];
-    const sub: any = Array.isArray(subData) ? subData[0] : null;
 
     // Subscribed event
     if (sub?.created_at) {
@@ -89,7 +125,9 @@ export async function GET(
     timeline.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     return NextResponse.json({ timeline });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Internal error" }, { status: 500 });
+  } catch (e) {
+    // Don't return e.message: internal errors leak schema and query details.
+    logError(e, { route: "clients.subscribers.timeline", workspaceId, subscriberId: id });
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }

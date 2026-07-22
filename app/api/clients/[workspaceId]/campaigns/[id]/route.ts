@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isUuid } from "@/lib/route-params";
 import {
   getClientContextFromJWT,
   assertWorkspaceAccess,
@@ -6,10 +7,6 @@ import {
 } from "@/lib/client-context";
 
 const CORS = { "Access-Control-Allow-Origin": "*" };
-
-function isUuid(value: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-}
 
 export async function PATCH(
   req: NextRequest,
@@ -54,7 +51,10 @@ export async function PATCH(
     }
 
     const patchHeaders = { ...auth, "Content-Type": "application/json", Prefer: "return=representation" };
-    const res = await fetch(`${supabaseUrl}/rest/v1/campaigns?id=eq.${id}`, {
+    // Scope the write to the workspace as well. The existence check above
+    // already 404s for other workspaces, but that leaves correctness depending
+    // on two statements staying in sync across future edits.
+    const res = await fetch(`${supabaseUrl}/rest/v1/campaigns?id=eq.${id}&client_id=eq.${workspaceId}`, {
       method: "PATCH",
       headers: patchHeaders,
       body: JSON.stringify(updateData),
