@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { z } from "zod";
 
 function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET;
@@ -20,6 +21,27 @@ function hmacDigestBase64Url(data: string): string {
   hmac.update(data);
   return hmac.digest("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
+
+/**
+ * Runtime shape of a decoded JWT payload.
+ *
+ * A verified signature only proves *we* minted the token — it says nothing about
+ * the payload's shape. Validating here keeps `ClientContext` an enforced
+ * guarantee rather than an unchecked `as` cast, so every downstream
+ * authorization check can rely on `role` and `workspaceId` being present.
+ *
+ * Identifiers are validated as non-empty strings rather than UUIDs on purpose:
+ * tightening the format would invalidate live sessions for any workspace whose
+ * id isn't a UUID. Shape is the security property here; format is not.
+ */
+const clientJWTPayloadSchema = z.object({
+  workspaceId: z.string().min(1),
+  userId: z.string().min(1),
+  email: z.string().min(1),
+  role: z.enum(["owner", "editor", "viewer"]),
+  iat: z.number().int(),
+  exp: z.number().int(),
+});
 
 export interface ClientJWTPayload {
   workspaceId: string;
@@ -81,9 +103,10 @@ export function verifyClientJWT(token: string): ClientJWTPayload | null {
     const expBuf = Buffer.from(expectedSignature);
     if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) return null;
 
-    // Decode payload
-    const payloadJson = fromBase64Url(payloadB64);
-    const payload = JSON.parse(payloadJson) as ClientJWTPayload;
+    // Decode and validate payload shape — a valid signature is not a valid payload
+    const parsed = clientJWTPayloadSchema.safeParse(JSON.parse(fromBase64Url(payloadB64)));
+    if (!parsed.success) return null;
+    const payload = parsed.data;
 
     // Check expiration
     const now = Math.floor(Date.now() / 1000);
