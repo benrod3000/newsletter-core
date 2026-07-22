@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import sgMail from "@sendgrid/mail";
 import { getSupabaseClient } from "@/lib/supabase";
 import { geolocateIP } from "@/lib/geo";
+import { applyRateLimit, rateLimitedResponse } from "@/lib/rate-limit-middleware";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -269,6 +270,11 @@ async function sendConfirmationEmail({
 }
 
 export async function POST(req: NextRequest) {
+  // Public, unauthenticated, and writes rows — cap it before doing any work.
+  // 5/min per IP is well above human signup rate and far below scripted abuse.
+  const rl = await applyRateLimit(req, { max: 5, windowSec: 60, keyPrefix: "subscribe" });
+  if (!rl.allowed) return rateLimitedResponse(rl);
+
   try {
     // 1. Parse body
     const body = await req.json().catch(() => null);
