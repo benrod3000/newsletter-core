@@ -76,7 +76,10 @@ export async function POST(req: NextRequest) {
 
     // Check if TOTP is required — if so, return a partial token that needs verification
     if (user.totp_enabled) {
-      const partialToken = createClientJWT(user.workspace_id, user.id, user.email, user.role, 300); // 5 min partial token
+      // Audience "totp_pending": password verified, second factor still outstanding.
+      // This token is rejected by every workspace route until it is exchanged
+      // for a session token at /api/auth/totp/verify.
+      const partialToken = createClientJWT(user.workspace_id, user.id, user.email, user.role, 300, "totp_pending"); // 5 min partial token
       return NextResponse.json({
         requires_totp: true,
         partial_token: partialToken,

@@ -39,15 +39,27 @@ const clientJWTPayloadSchema = z.object({
   userId: z.string().min(1),
   email: z.string().min(1),
   role: z.enum(["owner", "editor", "viewer"]),
+  // Tokens minted before the `aud` claim existed default to a full session so
+  // live logins survive the rollout. See TOKEN_AUDIENCE_MIGRATION below.
+  aud: z.enum(["session", "totp_pending"]).default("session"),
   iat: z.number().int(),
   exp: z.number().int(),
 });
+
+/**
+ * What a token is allowed to do.
+ * - "session"      — fully authenticated; may access workspace APIs.
+ * - "totp_pending" — password verified, second factor NOT yet supplied.
+ *                    Only /api/auth/totp/verify may accept this.
+ */
+export type TokenAudience = "session" | "totp_pending";
 
 export interface ClientJWTPayload {
   workspaceId: string;
   userId: string;
   email: string;
   role: "owner" | "editor" | "viewer";
+  aud: TokenAudience;
   iat: number;
   exp: number;
 }
@@ -60,7 +72,8 @@ export function createClientJWT(
   userId: string,
   email: string,
   role: "owner" | "editor" | "viewer",
-  expiresInSeconds: number = 86400 * 30 // 30 days
+  expiresInSeconds: number = 86400 * 30, // 30 days
+  aud: TokenAudience = "session"
 ): string {
   const now = Math.floor(Date.now() / 1000);
   const payload: ClientJWTPayload = {
@@ -68,6 +81,7 @@ export function createClientJWT(
     userId,
     email,
     role,
+    aud,
     iat: now,
     exp: now + expiresInSeconds,
   };
@@ -87,10 +101,10 @@ export function createClientJWT(
 }
 
 /**
- * Verify and decode a JWT token
- * Returns payload if valid, null if invalid or expired
+ * Verify signature, shape and expiry. Does NOT check the audience claim —
+ * callers must use verifyClientJWT or verifyPendingTOTPJWT instead.
  */
-export function verifyClientJWT(token: string): ClientJWTPayload | null {
+function decodeVerifiedJWT(token: string): ClientJWTPayload | null {
   try {
     const parts = token.split(".");
     if (parts.length !== 3) return null;
@@ -116,6 +130,31 @@ export function verifyClientJWT(token: string): ClientJWTPayload | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Verify a full session token.
+ *
+ * Rejects "totp_pending" tokens: those are issued after the password step but
+ * before the second factor, and must never grant workspace access. This is the
+ * function every authenticated route reaches through getClientContextFromJWT.
+ */
+export function verifyClientJWT(token: string): ClientJWTPayload | null {
+  const payload = decodeVerifiedJWT(token);
+  if (!payload) return null;
+  if (payload.aud !== "session") return null;
+  return payload;
+}
+
+/**
+ * Verify a token from the password step of a 2FA login.
+ * Used only by /api/auth/totp/verify — never grants workspace access on its own.
+ */
+export function verifyPendingTOTPJWT(token: string): ClientJWTPayload | null {
+  const payload = decodeVerifiedJWT(token);
+  if (!payload) return null;
+  if (payload.aud !== "totp_pending") return null;
+  return payload;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClientJWT, verifyClientJWT } from "@/lib/jwt";
+import { createClientJWT, verifyPendingTOTPJWT } from "@/lib/jwt";
 import { verifyTOTP } from "@/lib/totp";
 import { getSupabaseClient } from "@/lib/supabase";
 import { logAudit, AUDIT_ACTIONS, extractRequestMeta } from "@/lib/audit-log";
@@ -19,8 +19,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: { code: "VALIDATION_ERROR", message: "Token and code are required" } }, { status: 400 });
     }
 
-    // Verify the partial token (issued during password step)
-    const payload = verifyClientJWT(partial_token);
+    // Verify the partial token (issued during password step).
+    // Only accepts audience "totp_pending" — a full session token cannot be
+    // replayed here, and a pending token cannot be used anywhere else.
+    const payload = verifyPendingTOTPJWT(partial_token);
     if (!payload) {
       return NextResponse.json({ error: { code: "INVALID_TOKEN", message: "Session expired. Please log in again." } }, { status: 401 });
     }

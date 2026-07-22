@@ -103,8 +103,11 @@ export async function findOrCreateOAuthUser(email: string, name: string): Promis
   if (existing && existing.length > 0) {
     const user = existing[0];
     if (user.totp_enabled) {
-      const partialToken = createClientJWT(user.workspace_id, user.id, user.email, user.role, 300);
-      return { requires_totp: true, partial_token: partialToken, workspaceId: user.workspace_id, email: user.email, role: user.role, token: partialToken };
+      // Audience "totp_pending" — no workspace access until the second factor
+      // is exchanged at /api/auth/totp/verify. Deliberately not returned as
+      // `token`: callers must not treat this as a session.
+      const partialToken = createClientJWT(user.workspace_id, user.id, user.email, user.role, 300, "totp_pending");
+      return { requires_totp: true, partial_token: partialToken, workspaceId: user.workspace_id, email: user.email, role: user.role };
     }
     const token = createClientJWT(user.workspace_id, user.id, user.email, user.role);
     return { token, workspaceId: user.workspace_id, email: user.email, role: user.role };
