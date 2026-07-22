@@ -159,3 +159,14 @@ If you're setting up from scratch, start at `001` and work forward. If you're ad
 
 - **Frontend:** [newsletter](../newsletter)
 - **Demo account:** demo@veloce.app / demo123456
+
+## Cron schedules and the Vercel plan
+
+`/api/admin/campaigns/recover` re-drives campaign sends that stalled mid-flight.
+It is scheduled daily (`0 1 * * *`) because Vercel Hobby rejects any cron that
+runs more than once per day — and it rejects the *whole deployment*, not just
+that cron.
+
+The intended schedule is `*/10 * * * *`. On Hobby, a stalled send can sit
+un-recovered for up to 24 hours instead of 10 minutes. Restore the 10-minute
+schedule in `vercel.json` if this account moves to Vercel Pro.

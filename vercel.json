@@ -22,7 +22,7 @@
     },
     {
       "path": "/api/admin/campaigns/recover",
-      "schedule": "*/10 * * * *"
+      "schedule": "0 1 * * *"
     }
   ]
 }
