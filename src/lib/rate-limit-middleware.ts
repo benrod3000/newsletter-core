@@ -8,13 +8,18 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { rateLimit } from "@/lib/rate-limit";
+import { rateLimit, type FailureMode } from "@/lib/rate-limit";
 
 interface RateLimitConfig {
   max: number;
   windowSec: number;
   /** Optional prefix for the rate limit key (defaults to the route path) */
   keyPrefix?: string;
+  /**
+   * Behaviour when the limiter cannot run. Defaults to "open".
+   * Use "closed" on authentication routes.
+   */
+  onFailure?: FailureMode;
 }
 
 interface RateLimitResult {
@@ -39,7 +44,7 @@ export async function applyRateLimit(
   const compositeKey = `${key}:${ip}`;
 
   const refillRate = config.max / config.windowSec; // tokens per second
-  const result = await rateLimit(compositeKey, config.max, refillRate);
+  const result = await rateLimit(compositeKey, config.max, refillRate, config.onFailure ?? "open");
 
   const headers: Record<string, string> = {
     "X-RateLimit-Limit": String(result.limit),

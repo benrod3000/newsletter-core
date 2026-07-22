@@ -18,9 +18,11 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: NextRequest) {
-  // Rate limit: 5 attempts per minute per IP
+  // Rate limit: 5 attempts per minute per IP.
+  // Fails closed: if Redis is down, reject rather than remove the brute-force
+  // ceiling on the login endpoint.
   const { ip, ua } = extractRequestMeta(req);
-  const rl = await rateLimit(`login:${ip}`, 5, 5 / 60);
+  const rl = await rateLimit(`login:${ip}`, 5, 5 / 60, "closed");
   const rateHeaders = { "X-RateLimit-Limit": String(rl.limit), "X-RateLimit-Remaining": String(rl.remaining), "Access-Control-Allow-Origin": "*" };
   if (!rl.allowed) {
     return NextResponse.json(

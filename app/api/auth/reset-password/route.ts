@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
   // Rate limit: 3 attempts per minute per IP
   const forwarded = req.headers.get("x-forwarded-for");
   const ip = forwarded ? forwarded.split(",")[0].trim() : req.headers.get("x-real-ip") || "unknown";
-  const { allowed, retryAfter } = await rateLimit(`reset-password:${ip}`, 3, 3 / 60);
+  const { allowed, retryAfter } = await rateLimit(`reset-password:${ip}`, 3, 3 / 60, "closed");
   if (!allowed) {
     return NextResponse.json(
       { error: "Too many attempts. Please try again later." },

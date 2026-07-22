@@ -7,6 +7,7 @@
  */
 
 import { Redis } from "@upstash/redis";
+import { logError, logWarn } from "./logger";
 
 const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
   ? new Redis({
@@ -17,14 +18,37 @@ const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_RE
 
 const TTL_SECONDS = 3600; // buckets expire after 1h of inactivity
 
+export interface RateLimitResult {
+  allowed: boolean;
+  retryAfter?: number;
+  remaining: number;
+  limit: number;
+}
+
+/**
+ * What to do when the limiter itself cannot run (Redis missing or erroring).
+ *
+ * - "open"   — allow the request. Correct for tracking pixels and other paths
+ *              where a dropped event costs more than an unmetered request.
+ * - "closed" — reject the request. Correct for authentication, where a Redis
+ *              outage would otherwise silently remove the brute-force ceiling.
+ */
+export type FailureMode = "open" | "closed";
+
 export async function rateLimit(
   ip: string,
   maxTokens: number,
-  refillRate: number
-): Promise<{ allowed: boolean; retryAfter?: number; remaining: number; limit: number }> {
-  // Fallback: allow if Redis isn't configured
+  refillRate: number,
+  onFailure: FailureMode = "open"
+): Promise<RateLimitResult> {
+  const fallback: RateLimitResult =
+    onFailure === "closed"
+      ? { allowed: false, retryAfter: 5, remaining: 0, limit: maxTokens }
+      : { allowed: true, remaining: maxTokens, limit: maxTokens };
+
   if (!redis) {
-    return { allowed: true, remaining: maxTokens, limit: maxTokens };
+    logWarn("rate-limit: Redis not configured; limiter inactive", { onFailure });
+    return fallback;
   }
 
   const key = `rate-limit:${ip}:${maxTokens}`;
@@ -76,16 +100,29 @@ export async function rateLimit(
       [maxTokens, refillRate, now, TTL_SECONDS]
     );
 
-    const result = raw as unknown as { allowed: number; retryAfter: number; remaining: number; max: number };
+    // A Lua table `{a, b, c, d}` comes back over RESP as an array, not an object.
+    // Reading `.allowed` off it yielded undefined, so `=== 1` was always false
+    // and every request was reported as blocked whenever Redis was reachable.
+    if (!Array.isArray(raw) || raw.length !== 4) {
+      logError(new Error("rate-limit: unexpected Lua reply shape"), { raw, onFailure });
+      return fallback;
+    }
+
+    const [allowed, retryAfter, remaining, limit] = raw.map(Number) as [
+      number,
+      number,
+      number,
+      number,
+    ];
 
     return {
-      allowed: result.allowed === 1,
-      retryAfter: result.retryAfter > 0 ? result.retryAfter : undefined,
-      remaining: result.remaining,
-      limit: result.max,
+      allowed: allowed === 1,
+      retryAfter: retryAfter > 0 ? retryAfter : undefined,
+      remaining,
+      limit,
     };
-  } catch {
-    // Redis unavailable — allow through rather than block traffic
-    return { allowed: true, remaining: maxTokens, limit: maxTokens };
+  } catch (err) {
+    logError(err, { scope: "rate-limit", onFailure });
+    return fallback;
   }
 }

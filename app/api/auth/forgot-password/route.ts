@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   // Rate limit: 3 requests per minute per IP
   const forwarded = req.headers.get("x-forwarded-for");
   const ip = forwarded ? forwarded.split(",")[0].trim() : req.headers.get("x-real-ip") || "unknown";
-  const { allowed, retryAfter } = await rateLimit(`forgot-password:${ip}`, 3, 3 / 60);
+  const { allowed, retryAfter } = await rateLimit(`forgot-password:${ip}`, 3, 3 / 60, "closed");
   if (!allowed) {
     return NextResponse.json(
       { error: "Too many requests. Please try again later." },
