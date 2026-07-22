@@ -11,6 +11,16 @@
 
 import type { DnsCheckResult, DnsHealthReport, Recommendation } from './types';
 
+// Scoring constants — multipliers convert decimal rates to [0,100] scale.
+// Bounce: 10% → 0 score.  Complaint: 0.5% → 0 score.
+const BOUNCE_SCALE_FACTOR = 1000;
+const COMPLAINT_SCALE_FACTOR = 2000;
+
+// Weight distribution for overall score
+const DNS_WEIGHT = 0.4;
+const BOUNCE_WEIGHT = 0.3;
+const COMPLAINT_WEIGHT = 0.3;
+
 // ── DNS scoring ──
 
 function dnsResultToScore(result: DnsCheckResult): number {
@@ -40,7 +50,7 @@ export function calculateDnsScore(report: DnsHealthReport): number {
  *  0% bounces = 100, 10%+ bounces = 0. Linear between. */
 export function calculateBounceScore(bounceRate: number): number {
   if (bounceRate < 0) bounceRate = 0;
-  const score = 100 - bounceRate * 1000; // 10% → 0
+  const score = 100 - bounceRate * BOUNCE_SCALE_FACTOR;
   return Math.round(Math.max(0, Math.min(100, score)));
 }
 
@@ -48,7 +58,7 @@ export function calculateBounceScore(bounceRate: number): number {
  *  0% complaints = 100, 0.5%+ complaints = 0. Linear between. */
 export function calculateComplaintScore(complaintRate: number): number {
   if (complaintRate < 0) complaintRate = 0;
-  const score = 100 - complaintRate * 2000; // 0.5% → 0
+  const score = 100 - complaintRate * COMPLAINT_SCALE_FACTOR;
   return Math.round(Math.max(0, Math.min(100, score)));
 }
 
@@ -60,13 +70,13 @@ export function calculateOverallScore(
   bounceScore: number,
   complaintScore: number,
 ): number {
-  return Math.round(dnsScore * 0.4 + bounceScore * 0.3 + complaintScore * 0.3);
+  return Math.round(dnsScore * DNS_WEIGHT + bounceScore * BOUNCE_WEIGHT + complaintScore * COMPLAINT_WEIGHT);
 }
 
 // ── Recommendations ──
 
-/** Score tier for display */
-export function scoreTier(score: number): 'good' | 'warning' | 'bad' {
+/** Score tier for display — internal helper, not exported. */
+function scoreTier(score: number): 'good' | 'warning' | 'bad' {
   if (score >= 80) return 'good';
   if (score >= 50) return 'warning';
   return 'bad';

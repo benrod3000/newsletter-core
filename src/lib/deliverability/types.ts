@@ -66,11 +66,6 @@ export interface DeliverabilityOverview {
   recommendations: Recommendation[];
 }
 
-/** DNS check request for a custom domain */
-export interface DnsCheckRequest {
-  domain: string;
-}
-
 /** DNS check response for a custom domain */
 export interface DnsCheckResponse {
   domain: string;

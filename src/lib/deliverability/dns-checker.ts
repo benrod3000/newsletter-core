@@ -45,19 +45,27 @@ function result(
   return { status, label, value, expected, message };
 }
 
-async function resolveTxtSafe(domain: string): Promise<string[][]> {
+async function resolveTxtSafe(domain: string, timeoutMs = 5000): Promise<string[][]> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await dns.resolveTxt(domain);
+    return await dns.resolveTxt(domain, { signal: controller.signal });
   } catch {
     return [];
+  } finally {
+    clearTimeout(timer);
   }
 }
 
-async function resolveMxSafe(domain: string): Promise<dns.MxRecord[]> {
+async function resolveMxSafe(domain: string, timeoutMs = 5000): Promise<dns.MxRecord[]> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await dns.resolveMx(domain);
+    return await dns.resolveMx(domain, { signal: controller.signal });
   } catch {
     return [];
+  } finally {
+    clearTimeout(timer);
   }
 }
 

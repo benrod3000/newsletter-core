@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
     // 1. Fetch workspace config (sender email domain + provider)
     const { data: client, error: clientErr } = await supabase
       .from("clients")
-      .select("email_provider, sender_email, sandbox_mode")
+      .select("email_provider, sender_email")
       .eq("id", workspaceId)
       .maybeSingle();
 
@@ -62,44 +62,28 @@ export async function GET(req: NextRequest) {
     // 3. Bounce & complaint rates (last 30 days)
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    const { data: eventsData, error: eventsErr } = await supabase
-      .from("campaign_events")
-      .select("event_type")
-      .in("event_type", ["bounce", "complaint"])
-      .gte("occurred_at", thirtyDaysAgo)
-      .in("campaign_id", supabase
-        .from("campaigns")
-        .select("id")
-        .eq("client_id", workspaceId)
-      );
+    // Fetch campaign IDs for this workspace
+    const { data: campaigns } = await supabase
+      .from("campaigns")
+      .select("id")
+      .eq("client_id", workspaceId);
 
-    // Fallback: query via raw approach if the nested query doesn't work
+    const campaignIds = (campaigns || []).map((c: { id: string }) => c.id);
+
     let bounceCount = 0;
     let complaintCount = 0;
 
-    if (!eventsErr && eventsData) {
-      bounceCount = eventsData.filter((e: { event_type: string }) => e.event_type === "bounce").length;
-      complaintCount = eventsData.filter((e: { event_type: string }) => e.event_type === "complaint").length;
-    } else {
-      // Fallback: query campaign IDs first, then events
-      const { data: campaigns } = await supabase
-        .from("campaigns")
-        .select("id")
-        .eq("client_id", workspaceId);
+    if (campaignIds.length > 0) {
+      const { data: events } = await supabase
+        .from("campaign_events")
+        .select("event_type")
+        .in("event_type", ["bounce", "complaint"])
+        .in("campaign_id", campaignIds)
+        .gte("occurred_at", thirtyDaysAgo);
 
-      if (campaigns && campaigns.length > 0) {
-        const campaignIds = campaigns.map((c: { id: string }) => c.id);
-        const { data: events } = await supabase
-          .from("campaign_events")
-          .select("event_type")
-          .in("event_type", ["bounce", "complaint"])
-          .in("campaign_id", campaignIds)
-          .gte("occurred_at", thirtyDaysAgo);
-
-        if (events) {
-          bounceCount = events.filter((e: { event_type: string }) => e.event_type === "bounce").length;
-          complaintCount = events.filter((e: { event_type: string }) => e.event_type === "complaint").length;
-        }
+      if (events) {
+        bounceCount = events.filter((e: { event_type: string }) => e.event_type === "bounce").length;
+        complaintCount = events.filter((e: { event_type: string }) => e.event_type === "complaint").length;
       }
     }
 
