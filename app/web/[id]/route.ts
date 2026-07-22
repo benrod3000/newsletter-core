@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
 import { buildHtmlFromEditor, buildWebVersionUrl, mergeDataForRecipient, renderTemplate, type MergeRecipient } from "@/lib/campaign-personalization";
+import { injectTracking } from "@/lib/campaign-tracking";
 
 type WebCampaign = {
   id: string;
@@ -10,17 +11,6 @@ type WebCampaign = {
   editor_css: string | null;
 };
 
-function injectTracking(
-  html: string,
-  campaignId: string,
-  subscriberId: string,
-  baseUrl: string
-): string {
-  return html.replace(/href="(https?:\/\/[^\"]+)"/gi, (_match, url: string) => {
-    if (url.includes("/api/track/")) return `href="${url}"`;
-    return `href="${baseUrl}/api/track/click?c=${encodeURIComponent(campaignId)}&s=${encodeURIComponent(subscriberId)}&u=${encodeURIComponent(url)}"`;
-  });
-}
 
 function getBaseUrl(req: NextRequest): string {
   if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
@@ -68,7 +58,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const unsubscribeUrl = `${baseUrl}/unsubscribe?token=${subscriber.unsubscribe_token}`;
   const webVersionUrl = buildWebVersionUrl(baseUrl, campaign.id, subscriber.id);
   const mergeData = mergeDataForRecipient(subscriber, unsubscribeUrl, webVersionUrl);
-  const renderedHtml = renderTemplate(baseHtml, mergeData);
+  const renderedHtml = renderTemplate(baseHtml, mergeData.html);
   const trackedHtml = injectTracking(renderedHtml, campaign.id, subscriber.id, baseUrl);
 
   return new NextResponse(trackedHtml, {

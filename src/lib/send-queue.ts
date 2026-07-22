@@ -1,14 +1,24 @@
 /**
- * Send queue for reliable batch email delivery.
+ * Campaign send queue.
  *
- * Writes progress to the `campaign_jobs` table so that:
- * - Large sends survive Vercel function timeouts (resumable)
- * - Partial failures are tracked per-batch
- * - Retries use exponential backoff for transient errors
- * - Permanent failures are recorded with full error details
+ * The recipient list lives in Postgres, not in this process. A send is two
+ * phases:
  *
- * The table schema (migration 031):
- *   campaign_jobs(id, campaign_id, batch, total, sent_so_far, status, started_at, completed_at)
+ *   enqueueCampaignJob()  creates a campaign_jobs row and writes one
+ *                         campaign_job_recipients row per recipient with a
+ *                         single INSERT ... SELECT. The list never enters Node.
+ *
+ *   drainCampaignJob()    claims pending recipients in batches, sends them, and
+ *                         records the outcome. Stops when its time budget is
+ *                         spent, leaving the remaining rows pending.
+ *
+ * Everything that used to be fragile falls out of that shape:
+ *   - Resume is "claim the pending rows again" — no separate resume path.
+ *   - Double-sending is prevented by the (job_id, subscriber_id) primary key
+ *     and by claiming rows with FOR UPDATE SKIP LOCKED.
+ *   - A job is only ever marked complete when zero pending rows remain, so a
+ *     timeout can no longer be reported as a successful send.
+ *   - Memory is bounded by BATCH_SIZE, not by list size.
  */
 
 import { getSupabaseClient } from "@/lib/supabase";
@@ -17,18 +27,43 @@ import {
   buildWebVersionUrl,
   mergeDataForRecipient,
   renderTemplate,
-  type MergeRecipient,
 } from "@/lib/campaign-personalization";
+import { injectTracking } from "@/lib/campaign-tracking";
 import { dispatchEmail, type DispatchConfig } from "@/lib/email/dispatcher";
 import { bus } from "@/lib/events";
+import { logError, logWarn } from "@/lib/logger";
 
-const BATCH_SIZE = 20;
+/** Recipients sent per claim. Bounds memory and the size of a lost batch. */
+const BATCH_SIZE = 100;
+/** Concurrent sends within a batch. */
+const CONCURRENCY = 20;
 const MAX_RETRIES = 3;
-const RETRY_DELAYS = [0, 2000, 8000]; // ms — 0s, 2s, 8s
+const RETRY_DELAYS = [0, 2000, 8000]; // ms
 
-export interface QueueJobParams {
+/**
+ * How long a single drain may run. Callers set maxDuration on the route; this
+ * leaves headroom to record results and hand off before the platform kills us.
+ */
+export const DEFAULT_TIME_BUDGET_MS = 100_000;
+
+export interface EnqueueParams {
   workspaceId: string;
-  campaignId: string;
+  campaignId: string | null;
+  audience: string;
+  geo: {
+    country: string | null;
+    regions: string[];
+    cities: string[];
+    center_lat: number | null;
+    center_lng: number | null;
+    radius_km: number | null;
+  };
+}
+
+export interface DrainParams {
+  jobId: string;
+  workspaceId: string;
+  campaignId: string | null;
   subject: string;
   message: string;
   messageHtml: string;
@@ -37,191 +72,328 @@ export interface QueueJobParams {
   fromEmail: string;
   fromName: string;
   dispatchConfig: DispatchConfig;
-  recipients: QueueRecipient[];
+  timeBudgetMs?: number;
 }
 
-export interface QueueRecipient {
-  id: string;
+export interface DrainResult {
+  sentCount: number;
+  failedCount: number;
+  /** Recipients still waiting. > 0 means the job is unfinished. */
+  remaining: number;
+  /** True when the drain stopped on its time budget rather than running dry. */
+  interrupted: boolean;
+}
+
+interface ClaimedRecipient {
+  subscriber_id: string;
   email: string;
   unsubscribe_token: string;
-  country: string | null;
-  region: string | null;
-  city: string | null;
   first_name: string | null;
   last_name: string | null;
   date_of_birth: string | null;
   phone_number: string | null;
+  country: string | null;
+  region: string | null;
+  city: string | null;
 }
 
-async function sleep(ms: number): Promise<void> {
+function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * Send a single email with retry + backoff.
- * Returns { success, provider } for tracking.
- */
-async function sendWithRetry(
-  sendParams: Parameters<typeof dispatchEmail>[0],
-  config: DispatchConfig
-): Promise<{ success: boolean; provider: string }> {
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const result = await dispatchEmail(sendParams, config);
-
-    if (result.success) return { success: true, provider: result.provider };
-
-    // Permanent failure — stop retrying
-    if (result.error && !result.error.retryable) {
-      return { success: false, provider: result.provider };
-    }
-
-    // Last attempt — give up
-    if (attempt === MAX_RETRIES) {
-      return { success: false, provider: result.provider };
-    }
-
-    // Transient — wait and retry
-    await sleep(RETRY_DELAYS[attempt] || 0);
+/** Audience strings of the form "list:<uuid>" select an explicit list. */
+function parseAudience(audience: string): { audience: string; listId: string | null } {
+  if (audience.startsWith("list:")) {
+    return { audience: "all", listId: audience.slice(5) || null };
   }
-  return { success: false, provider: "unknown" };
+  return { audience, listId: null };
 }
 
 /**
- * Creates a campaign_job row and processes all recipient batches.
- * Returns the total number of successfully sent emails.
+ * Create a job and queue its recipients. Returns the job id and how many
+ * recipients were queued (0 means there was nobody to send to).
  */
-export async function processSendQueue(params: QueueJobParams): Promise<{ sentCount: number; failedCount: number }> {
-  const { workspaceId, campaignId, recipients, baseUrl, fromEmail, fromName, dispatchConfig, subject, message, messageHtml, messageCss } = params;
-
-  if (recipients.length === 0) return { sentCount: 0, failedCount: 0 };
-
+export async function enqueueCampaignJob(
+  params: EnqueueParams
+): Promise<{ jobId: string; queued: number }> {
   const supabase = getSupabaseClient();
+  const { audience, listId } = parseAudience(params.audience);
+
+  const { data: job, error: jobError } = await supabase
+    .from("campaign_jobs")
+    .insert([
+      {
+        campaign_id: params.campaignId,
+        batch: 0,
+        total: 0,
+        status: "sending",
+        started_at: new Date().toISOString(),
+      },
+    ])
+    .select("id")
+    .single();
+
+  if (jobError || !job) {
+    throw new Error(`Failed to create campaign job: ${jobError?.message ?? "unknown"}`);
+  }
+
+  const { data: queued, error: enqueueError } = await supabase.rpc(
+    "enqueue_campaign_recipients",
+    {
+      p_job_id: job.id,
+      p_workspace: params.workspaceId,
+      p_audience: audience,
+      p_list_id: listId,
+      p_country: params.geo.country,
+      p_regions: params.geo.regions,
+      p_cities: params.geo.cities,
+      p_center_lat: params.geo.center_lat,
+      p_center_lng: params.geo.center_lng,
+      p_radius_km: params.geo.radius_km,
+    }
+  );
+
+  if (enqueueError) {
+    await supabase
+      .from("campaign_jobs")
+      .update({ status: "failed", completed_at: new Date().toISOString() })
+      .eq("id", job.id);
+    throw new Error(`Failed to queue recipients: ${enqueueError.message}`);
+  }
+
+  const total = typeof queued === "number" ? queued : 0;
+
+  await supabase
+    .from("campaign_jobs")
+    .update({ total, batch: Math.ceil(total / BATCH_SIZE) })
+    .eq("id", job.id);
+
+  bus.emit({
+    type: "campaign:queued",
+    timestamp: Date.now(),
+    campaignId: params.campaignId ?? "",
+    workspaceId: params.workspaceId,
+    data: { recipientCount: total },
+  });
+
+  return { jobId: job.id, queued: total };
+}
+
+/** Send one email, retrying only errors the transport says are retryable. */
+async function sendWithRetry(
+  sendParams: Parameters<typeof dispatchEmail>[0],
+  config: DispatchConfig
+): Promise<{ success: boolean; error?: string }> {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const result = await dispatchEmail(sendParams, config);
+    if (result.success) return { success: true };
+
+    if (result.error && !result.error.retryable) {
+      return { success: false, error: result.error.message };
+    }
+    if (attempt === MAX_RETRIES) {
+      return { success: false, error: result.error?.message ?? "send failed" };
+    }
+    await sleep(RETRY_DELAYS[attempt] ?? 0);
+  }
+  return { success: false, error: "send failed" };
+}
+
+/** Run `workers` promises at a time over `items`. */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  workers: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let cursor = 0;
+
+  async function worker() {
+    while (cursor < items.length) {
+      const index = cursor++;
+      results[index] = await fn(items[index]);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(workers, items.length) }, worker));
+  return results;
+}
+
+/**
+ * Send pending recipients for a job until they run out or the time budget does.
+ * Safe to call repeatedly and safe to call concurrently.
+ */
+export async function drainCampaignJob(params: DrainParams): Promise<DrainResult> {
+  const supabase = getSupabaseClient();
+  const {
+    jobId, workspaceId, campaignId, subject, message, messageHtml, messageCss,
+    baseUrl, fromEmail, fromName, dispatchConfig,
+  } = params;
+
+  const timeBudgetMs = params.timeBudgetMs ?? DEFAULT_TIME_BUDGET_MS;
+  const startedAt = Date.now();
   const from = `${fromName} <${fromEmail}>`;
   const baseHtml = messageHtml
     ? buildHtmlFromEditor(messageHtml, messageCss)
     : buildHtmlFromEditor(message.replace(/\n/g, "<br>"));
 
-  bus.emit({
-    type: "campaign:queued",
-    timestamp: Date.now(),
-    campaignId,
-    workspaceId,
-    data: { recipientCount: recipients.length, provider: dispatchConfig.provider },
-  });
-
-  // Create a job row
-  const { data: job, error: jobError } = await supabase
-    .from("campaign_jobs")
-    .insert([{
-      campaign_id: campaignId,
-      batch: Math.ceil(recipients.length / BATCH_SIZE),
-      total: recipients.length,
-      status: "sending",
-      started_at: new Date().toISOString(),
-    }])
-    .select("*")
-    .single();
-
-  if (jobError || !job) {
-    throw new Error(`Failed to create campaign job: ${jobError?.message || "Unknown"}`);
-  }
-
-  const jobId = job.id;
   let sentCount = 0;
   let failedCount = 0;
-  const startTime = Date.now();
+  let interrupted = false;
 
   bus.emit({
     type: "campaign:sending",
     timestamp: Date.now(),
-    campaignId,
+    campaignId: campaignId ?? "",
     workspaceId,
-    data: { provider: dispatchConfig.provider, recipientCount: recipients.length },
+    data: { provider: dispatchConfig.provider },
   });
 
-  // Process in batches — stop early if approaching Vercel timeout (50s budget of 60s max)
-  for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
-    if (Date.now() - startTime > 50000) {
-      console.warn(`[queue] Approaching timeout at ${sentCount}/${recipients.length}, saving progress`);
+  for (;;) {
+    // >= so an already-exhausted budget stops before claiming a batch it has
+    // no time to send.
+    if (Date.now() - startedAt >= timeBudgetMs) {
+      interrupted = true;
       break;
     }
-    const batch = recipients.slice(i, i + BATCH_SIZE);
-    const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-    const totalBatches = Math.ceil(recipients.length / BATCH_SIZE);
 
-    const results = await Promise.allSettled(
-      batch.map(async (sub) => {
-        const unsubUrl = `${baseUrl}/unsubscribe?token=${sub.unsubscribe_token}`;
-        const unsubApiUrl = `${baseUrl}/api/unsubscribe?token=${sub.unsubscribe_token}`;
-        const webVersionUrl = campaignId ? buildWebVersionUrl(baseUrl, campaignId, sub.id) : "";
-        const mergeData = mergeDataForRecipient(sub, unsubUrl, webVersionUrl);
-        mergeData.unsubscribe = mergeData.unsubscribe_url;
-
-        const personalSubject = renderTemplate(subject, mergeData);
-        const personalText = renderTemplate(message, mergeData);
-        const personalHtml = renderTemplate(baseHtml, mergeData);
-
-        return sendWithRetry({
-          to: sub.email,
-          from,
-          subject: personalSubject,
-          text: personalText,
-          html: personalHtml,
-          listUnsubscribe: unsubApiUrl,
-          campaignId,
-          subscriberId: sub.id,
-        }, dispatchConfig);
-      })
+    const { data: claimed, error: claimError } = await supabase.rpc(
+      "claim_campaign_recipients",
+      { p_job_id: jobId, p_limit: BATCH_SIZE }
     );
 
-    for (const result of results) {
-      if (result.status === "fulfilled" && result.value.success) {
+    if (claimError) {
+      logError(claimError, { scope: "send-queue.claim", jobId });
+      interrupted = true;
+      break;
+    }
+
+    const batch = (claimed ?? []) as ClaimedRecipient[];
+    if (batch.length === 0) break;
+
+    const sentIds: string[] = [];
+    const failedIds: string[] = [];
+    let lastError: string | undefined;
+
+    const outcomes = await mapWithConcurrency(batch, CONCURRENCY, async (sub) => {
+      const unsubUrl = `${baseUrl}/unsubscribe?token=${sub.unsubscribe_token}`;
+      const unsubApiUrl = `${baseUrl}/api/unsubscribe?token=${sub.unsubscribe_token}`;
+      const webVersionUrl = campaignId
+        ? buildWebVersionUrl(baseUrl, campaignId, sub.subscriber_id)
+        : "";
+
+      const mergeData = mergeDataForRecipient(
+        {
+          id: sub.subscriber_id,
+          email: sub.email,
+          unsubscribe_token: sub.unsubscribe_token,
+          country: sub.country,
+          region: sub.region,
+          city: sub.city,
+          first_name: sub.first_name,
+          last_name: sub.last_name,
+          date_of_birth: sub.date_of_birth,
+          phone_number: sub.phone_number,
+        },
+        unsubUrl,
+        webVersionUrl
+      );
+
+      const html = campaignId
+        ? injectTracking(
+            renderTemplate(baseHtml, mergeData.html),
+            campaignId,
+            sub.subscriber_id,
+            baseUrl
+          )
+        : renderTemplate(baseHtml, mergeData.html);
+
+      const result = await sendWithRetry(
+        {
+          to: sub.email,
+          from,
+          subject: renderTemplate(subject, mergeData.text),
+          text: renderTemplate(message, mergeData.text),
+          html,
+          listUnsubscribe: unsubApiUrl,
+          campaignId: campaignId ?? undefined,
+          subscriberId: sub.subscriber_id,
+        },
+        dispatchConfig
+      );
+
+      return { id: sub.subscriber_id, ...result };
+    });
+
+    for (const outcome of outcomes) {
+      if (outcome.success) {
+        sentIds.push(outcome.id);
         sentCount++;
       } else {
+        failedIds.push(outcome.id);
         failedCount++;
+        lastError = outcome.error;
       }
     }
 
-    bus.emit({
-      type: "queue:batch_complete",
-      timestamp: Date.now(),
-      campaignId,
-      workspaceId,
-      data: { batch: batchNum, total: totalBatches, sent: sentCount },
+    const { error: completeError } = await supabase.rpc("complete_campaign_recipients", {
+      p_job_id: jobId,
+      p_sent: sentIds,
+      p_failed: failedIds,
+      p_error: lastError ?? null,
     });
 
-    // Update progress
-    await supabase
-      .from("campaign_jobs")
-      .update({ sent_so_far: sentCount })
-      .eq("id", jobId);
+    if (completeError) {
+      // The rows stay claimed and become eligible again once claimed_at goes
+      // stale, so nothing is lost — but it will be retried, so say so.
+      logError(completeError, { scope: "send-queue.complete", jobId, batch: batch.length });
+    }
+
+    await supabase.from("campaign_jobs").update({ sent_so_far: sentCount }).eq("id", jobId);
   }
 
-  const finalStatus = failedCount === 0 ? "complete" : failedCount === recipients.length ? "failed" : "complete";
+  const { data: progressRows } = await supabase.rpc("campaign_job_progress", {
+    p_job_id: jobId,
+  });
+  const progress = (progressRows ?? [])[0] as
+    | { pending: number; sent: number; failed: number }
+    | undefined;
+  const remaining = progress?.pending ?? 0;
+
+  // Only terminal when nothing is left. An interrupted drain stays 'sending' so
+  // the recovery cron can pick it up — the old code marked it complete, which
+  // made partial sends invisible.
+  const finished = remaining === 0;
+  const totalFailed = progress?.failed ?? failedCount;
+  const totalSent = progress?.sent ?? sentCount;
+
   await supabase
     .from("campaign_jobs")
-    .update({ status: finalStatus, sent_so_far: sentCount, completed_at: new Date().toISOString() })
+    .update({
+      status: finished ? (totalSent === 0 && totalFailed > 0 ? "failed" : "complete") : "sending",
+      sent_so_far: totalSent,
+      completed_at: finished ? new Date().toISOString() : null,
+    })
     .eq("id", jobId);
 
+  if (interrupted && remaining > 0) {
+    logWarn("send-queue: time budget spent, job left open for recovery", {
+      jobId, campaignId, sent: totalSent, remaining,
+    });
+  }
+
   bus.emit({
-    type: failedCount === recipients.length ? "campaign:failed" : "campaign:completed",
+    type: finished && totalSent === 0 && totalFailed > 0 ? "campaign:failed" : "campaign:completed",
     timestamp: Date.now(),
-    campaignId,
+    campaignId: campaignId ?? "",
     workspaceId,
     data: {
-      sent: sentCount,
-      failed: failedCount,
-      durationMs: Date.now() - startTime,
+      sent: totalSent,
+      failed: totalFailed,
+      remaining,
+      durationMs: Date.now() - startedAt,
     },
   });
 
-  return { sentCount, failedCount };
-}
-
-/**
- * Resume an interrupted job by finding unsent recipients.
- * NOT YET IMPLEMENTED — future enhancement for Vercel timeout recovery.
- */
-export async function resumeSendQueue(_jobId: string): Promise<void> {
-  throw new Error("Resume not yet implemented");
+  return { sentCount, failedCount, remaining, interrupted };
 }

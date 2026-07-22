@@ -82,30 +82,62 @@ function maybeCapitalizeLowercaseName(value: string | null): string {
   return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
 }
 
+export interface MergeData {
+  /** Values escaped for interpolation into HTML. */
+  html: Record<string, string>;
+  /** Raw values, for the text/plain alternative. */
+  text: Record<string, string>;
+}
+
+/**
+ * Build the merge-tag values for one recipient.
+ *
+ * Two maps, not one: subscriber names are attacker-influenced and must be
+ * escaped before they reach HTML, but using those same escaped values in the
+ * plain-text part produced literal entities in the inbox — "O&#39;Brien".
+ */
 export function mergeDataForRecipient(
   sub: MergeRecipient,
   unsubUrl: string,
   webVersionUrl?: string
-): Record<string, string> {
-  const firstName = escapeHtml(maybeCapitalizeLowercaseName(sub.first_name));
-  const lastName = escapeHtml(maybeCapitalizeLowercaseName(sub.last_name));
+): MergeData {
+  const firstName = maybeCapitalizeLowercaseName(sub.first_name);
+  const lastName = maybeCapitalizeLowercaseName(sub.last_name);
   const fullName = [firstName, lastName].filter(Boolean).join(" ");
   const dateOfBirth = sub.date_of_birth ?? "";
-  const location = [escapeHtml(sub.city ?? ""), escapeHtml(sub.region ?? ""), escapeHtml(sub.country ?? "")].filter(Boolean).join(", ");
+  const city = (sub.city ?? "").trim();
+  const region = (sub.region ?? "").trim();
+  const country = (sub.country ?? "").trim();
+  const location = [city, region, country].filter(Boolean).join(", ");
 
-  return {
+  const raw: Record<string, string> = {
     first_name: firstName,
     last_name: lastName,
     full_name: fullName,
     date_of_birth: dateOfBirth,
     birthday_pretty: formatBirthdayPretty(dateOfBirth),
-    phone_number: escapeHtml((sub.phone_number ?? "").trim()),
-    city: escapeHtml((sub.city ?? "").trim()),
-    region: escapeHtml((sub.region ?? "").trim()),
-    country: escapeHtml((sub.country ?? "").trim()),
+    phone_number: (sub.phone_number ?? "").trim(),
+    city,
+    region,
+    country,
     location,
     email: sub.email,
+  };
+
+  // URLs are constructed by us, never by the subscriber, and escaping them
+  // would corrupt the query strings.
+  const urls: Record<string, string> = {
     unsubscribe_url: unsubUrl,
+    unsubscribe: unsubUrl,
     web_version_url: webVersionUrl ?? "",
+  };
+
+  const escaped = Object.fromEntries(
+    Object.entries(raw).map(([key, value]) => [key, escapeHtml(value)])
+  );
+
+  return {
+    html: { ...escaped, ...urls },
+    text: { ...raw, ...urls },
   };
 }

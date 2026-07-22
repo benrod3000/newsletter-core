@@ -32,7 +32,17 @@ async function processScheduledCampaigns(req: NextRequest) {
         campaignId: campaign.id, baseUrl,
       });
       sent += result.sentCount;
-      await supabase.from("campaigns").update({ status: "sent", sent_count: result.sentCount, last_sent_at: nowIso, last_error: null, updated_by: "cron" }).eq("id", campaign.id);
+      // A drain that ran out of time leaves recipients pending; the recovery
+      // cron finishes it. Marking the campaign "sent" here would report a
+      // partial send as a complete one.
+      const finished = result.remaining === 0;
+      await supabase.from("campaigns").update({
+        status: finished ? "sent" : "sending",
+        sent_count: result.sentCount,
+        last_sent_at: nowIso,
+        last_error: finished ? null : `Partial send: ${result.remaining} recipient(s) pending recovery`,
+        updated_by: "cron",
+      }).eq("id", campaign.id);
     } catch (err) {
       logError(err, { campaignId: campaign.id, workspaceId: campaign.client_id })
       await supabase.from("campaigns").update({ last_error: err instanceof Error ? err.message : "Send failed", updated_by: "cron" }).eq("id", campaign.id);

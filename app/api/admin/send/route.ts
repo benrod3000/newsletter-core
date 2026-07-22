@@ -60,11 +60,14 @@ export async function POST(req: NextRequest) {
         ? buildHtmlFromEditor(messageHtml, messageCss)
         : buildHtmlFromEditor(message.replace(/\n/g, "<br>"));
 
-      const sampleData = {
+      // Same { html, text } shape as mergeDataForRecipient so the test path
+      // renders exactly like a real send.
+      const sampleValues = {
         first_name: "Friend", last_name: "", full_name: "Friend", email: testEmail,
         unsubscribe_url: `${baseUrl}/unsubscribe?token=test`,
         web_version_url: `${baseUrl}/web/test-campaign?s=test`,
       };
+      const sampleData = { html: sampleValues, text: sampleValues };
 
       const { data: client } = await supabase.from("clients")
         .select("email_provider, sendgrid_api_key, resend_api_key, sender_email, sender_name")
@@ -77,9 +80,9 @@ export async function POST(req: NextRequest) {
       await dispatchEmail({
         to: testEmail,
         from: `${fromName} <${fromEmail}>`,
-        subject: `[TEST] ${renderTemplate(subject, sampleData)}`,
-        text: renderTemplate(message, sampleData),
-        html: renderTemplate(baseHtml, sampleData),
+        subject: `[TEST] ${renderTemplate(subject, sampleData.text)}`,
+        text: renderTemplate(message, sampleData.text),
+        html: renderTemplate(baseHtml, sampleData.html),
       }, config);
 
       if (campaignId) {
@@ -106,7 +109,14 @@ export async function POST(req: NextRequest) {
       baseUrl,
     });
 
-    return apiSuccess({ sentCount: result.sentCount });
+    return apiSuccess({
+      jobId: result.jobId,
+      queued: result.queued,
+      sentCount: result.sentCount,
+      failedCount: result.failedCount,
+      // > 0 means the send is unfinished and recovery will continue it.
+      remaining: result.remaining,
+    });
   } catch (err: any) {
     console.error("[admin/send] Error:", err?.message || err);
     return apiInternalError(err?.message || "Send failed");
