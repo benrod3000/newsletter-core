@@ -6,7 +6,8 @@
  * validating them against the configured email provider's requirements.
  */
 
-import dns from 'dns/promises';
+import { Resolver } from 'dns/promises';
+import type { MxRecord } from 'dns';
 import type { DnsCheckResult, DnsHealthReport, DnsStatus } from './types';
 
 // ── Provider-specific DKIM selectors ──
@@ -45,27 +46,31 @@ function result(
   return { status, label, value, expected, message };
 }
 
+/**
+ * A resolver with a real query timeout.
+ *
+ * `dns.resolveTxt`/`resolveMx` take only a hostname — they accept no options
+ * object and no AbortSignal, so the previous `{ signal }` argument was both a
+ * type error and a no-op. `new Resolver({ timeout, tries })` is the supported
+ * mechanism; timeout is per attempt, in milliseconds.
+ */
+function timeboxedResolver(timeoutMs: number): Resolver {
+  return new Resolver({ timeout: timeoutMs, tries: 2 });
+}
+
 async function resolveTxtSafe(domain: string, timeoutMs = 5000): Promise<string[][]> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await dns.resolveTxt(domain, { signal: controller.signal });
+    return await timeboxedResolver(timeoutMs).resolveTxt(domain);
   } catch {
     return [];
-  } finally {
-    clearTimeout(timer);
   }
 }
 
-async function resolveMxSafe(domain: string, timeoutMs = 5000): Promise<dns.MxRecord[]> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+async function resolveMxSafe(domain: string, timeoutMs = 5000): Promise<MxRecord[]> {
   try {
-    return await dns.resolveMx(domain, { signal: controller.signal });
+    return await timeboxedResolver(timeoutMs).resolveMx(domain);
   } catch {
     return [];
-  } finally {
-    clearTimeout(timer);
   }
 }
 
