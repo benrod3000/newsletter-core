@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import {
   getClientContextFromJWT,
   assertWorkspaceAccess,
   canEditAsClient,
 } from "@/lib/client-context";
+import { getSupabaseClient } from "@/lib/supabase";
+import { logError } from "@/lib/logger";
+
+/** Subscriber ids are uuid primary keys (migration 001). */
+const bulkDeleteSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(500),
+});
 
 /**
  * GET /api/clients/[workspaceId]/subscribers
@@ -217,43 +225,35 @@ export async function DELETE(
     );
   }
 
-  const body = await req.json();
-  const { ids } = body;
-
-  if (!Array.isArray(ids) || ids.length === 0) {
+  const parsed = bulkDeleteSchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: "ids must be a non-empty array" },
+      { error: "ids must be an array of 1-500 subscriber UUIDs" },
       { status: 400 }
     );
   }
-
-  if (ids.length > 500) {
-    return NextResponse.json(
-      { error: "Maximum 500 subscribers per batch delete" },
-      { status: 400 }
-    );
-  }
-
-  const supabaseUrl = process.env.SUPABASE_URL!;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  const auth = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" };
 
   try {
-    const orFilters = ids.map(id => `id.eq.${id}`).join(",");
-    const res = await fetch(`${supabaseUrl}/rest/v1/subscribers?or=(${orFilters})&client_id=eq.${workspaceId}`, {
-      method: "DELETE",
-      headers: auth,
-    });
+    // `.in()` parameterizes the id list. The previous implementation
+    // interpolated raw body values into a PostgREST `or=(id.eq.…)` filter with
+    // no encoding, on a request authenticated by the service-role key.
+    const { data, error } = await getSupabaseClient()
+      .from("subscribers")
+      .delete()
+      .in("id", parsed.data.ids)
+      .eq("client_id", workspaceId)
+      .select("id");
 
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error("Bulk subscriber delete error:", res.status, errText);
+    if (error) {
+      logError(error, { route: "clients.subscribers.bulkDelete", workspaceId });
       return NextResponse.json({ error: "Failed to delete subscribers" }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true, deleted: ids.length });
+    // Report rows actually deleted. Returning ids.length counted ids belonging
+    // to other workspaces, which the client_id filter silently drops.
+    return NextResponse.json({ ok: true, deleted: data?.length ?? 0 });
   } catch (error) {
-    console.error("Bulk delete endpoint error:", error);
+    logError(error, { route: "clients.subscribers.bulkDelete", workspaceId });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
