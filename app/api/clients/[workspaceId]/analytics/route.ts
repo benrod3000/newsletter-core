@@ -11,18 +11,34 @@ import { apiSuccess, apiUnauthorized, apiInternalError } from "@/lib/api-respons
  * Workspace-level analytics overview (JWT authenticated)
  *
  * Query params:
- * - days: number of days of subscriber growth history to return (default 14, max 90)
- * - topCampaigns: number of top campaigns to return (default 5, max 20)
+ * - days: length of the reporting window (default 14, max 90)
+ * - topCampaigns: number of campaigns to return (default 5, max 20)
+ *
+ * Every rate is scoped to the window, and the equivalent preceding window is
+ * returned as `previous` so the UI can show change rather than a bare number.
  *
  * Returns: {
- *   total_subscribers: number,
- *   campaigns_sent: number,
- *   avg_open_rate: number,   // 0-100
- *   avg_click_rate: number,  // 0-100
- *   subscriber_growth: [{ date: "YYYY-MM-DD", count: number }],
- *   top_campaigns: [{ id, name, sent, open_rate, click_rate }]
+ *   total_subscribers, new_subscribers, campaigns_sent,
+ *   avg_open_rate, avg_click_rate,          // 0-100, within the window
+ *   subscriber_growth: [{ date, count }],
+ *   top_campaigns: [{ id, name, sent, open_rate, click_rate, sent_at }],
+ *   previous: { new_subscribers, campaigns_sent, avg_open_rate, avg_click_rate },
+ *   period: { days, start, previous_start, truncated }
  * }
  */
+
+const EVENT_PAGE = 1000;
+const EVENT_CAP = 50000;
+
+type CampaignRow = {
+  id: string;
+  title: string;
+  sent_count: number | null;
+  last_sent_at: string | null;
+  created_at: string;
+};
+type EventRow = { campaign_id: string; event_type: string; email: string };
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ workspaceId: string }> }
@@ -33,18 +49,24 @@ export async function GET(
   if (!context || !assertWorkspaceAccess(context, workspaceId)) return apiUnauthorized();
 
   const url = new URL(req.url);
-  const days = Math.min(parseInt(url.searchParams.get("days") || "14"), 90);
+  const daysRaw = parseInt(url.searchParams.get("days") || "14", 10);
+  const days = Math.min(Math.max(Number.isFinite(daysRaw) ? daysRaw : 14, 1), 90);
   const topCampaignsLimit = Math.min(
-    parseInt(url.searchParams.get("topCampaigns") || "5"),
+    Math.max(parseInt(url.searchParams.get("topCampaigns") || "5", 10) || 5, 1),
     20
   );
+
+  const now = Date.now();
+  const windowMs = days * 86400000;
+  const startDate = new Date(now - windowMs);
+  const priorStartDate = new Date(now - windowMs * 2);
 
   const supabase = getSupabaseClient();
 
   try {
-    // Total subscribers currently on file for this workspace.
-    // NOTE: unsubscribes hard-delete the row (see /api/unsubscribe), so this
-    // is already a "current" count, not a running total.
+    // ── Subscribers ──────────────────────────────────────────────────────────
+    // Unsubscribes hard-delete the row, so this is a current headcount rather
+    // than a running total. New-in-window is the comparable figure.
     const { count: totalSubscribers, error: subCountError } = await supabase
       .from("subscribers")
       .select("id", { count: "exact", head: true })
@@ -55,126 +77,149 @@ export async function GET(
       return apiInternalError("Failed to compute subscriber count");
     }
 
-    // Subscriber growth: try materialized view first, fall back to manual bucketing
-    let subscriberGrowth: { date: string; count: number }[] = [];
-    try {
-      const { data: mvGrowth, error: mvGrowthErr } = await supabase
-        .from("mv_subscriber_growth")
-        .select("day, count")
-        .eq("client_id", workspaceId)
-        .order("day", { ascending: true });
+    const { data: windowSubscribers } = await supabase
+      .from("subscribers")
+      .select("created_at")
+      .eq("client_id", workspaceId)
+      .gte("created_at", priorStartDate.toISOString());
 
-      if (!mvGrowthErr && mvGrowth) {
-        subscriberGrowth = mvGrowth.map((r: any) => ({ date: r.day, count: r.count }));
+    let newSubscribers = 0;
+    let prevNewSubscribers = 0;
+    const growthBuckets: Record<string, number> = {};
+    for (let i = 0; i < days; i++) {
+      const d = new Date(startDate);
+      d.setUTCDate(d.getUTCDate() + i);
+      growthBuckets[d.toISOString().slice(0, 10)] = 0;
+    }
+    for (const row of windowSubscribers || []) {
+      const t = new Date(row.created_at).getTime();
+      if (t >= startDate.getTime()) {
+        newSubscribers += 1;
+        const key = new Date(row.created_at).toISOString().slice(0, 10);
+        if (key in growthBuckets) growthBuckets[key] += 1;
+      } else {
+        prevNewSubscribers += 1;
       }
-    } catch { /* view may not exist yet */ }
+    }
+    const subscriberGrowth = Object.entries(growthBuckets).map(([date, count]) => ({ date, count }));
 
-    // Fallback: manual bucketing from subscribers table
-    if (subscriberGrowth.length === 0) {
-      const since = new Date();
-      since.setDate(since.getDate() - (days - 1));
-      since.setHours(0, 0, 0, 0);
+    // ── Campaigns in this window and the preceding one ───────────────────────
+    // Sent campaigns are stamped with last_sent_at; fall back to created_at for
+    // rows that predate that column being populated.
+    const { data: campaignRows, error: campaignErr } = await supabase
+      .from("campaigns")
+      .select("id, title, sent_count, last_sent_at, created_at")
+      .eq("client_id", workspaceId)
+      .eq("status", "sent")
+      .order("last_sent_at", { ascending: false })
+      .limit(500);
 
-      const { data: recentSubscribers } = await supabase
-        .from("subscribers")
-        .select("created_at")
-        .eq("client_id", workspaceId)
-        .gte("created_at", since.toISOString());
-
-      const growthBuckets: Record<string, number> = {};
-      for (let i = 0; i < days; i++) {
-        const d = new Date(since);
-        d.setDate(d.getDate() + i);
-        growthBuckets[d.toISOString().slice(0, 10)] = 0;
-      }
-      for (const row of recentSubscribers || []) {
-        const day = new Date(row.created_at).toISOString().slice(0, 10);
-        if (day in growthBuckets) growthBuckets[day] += 1;
-      }
-      subscriberGrowth = Object.entries(growthBuckets).map(([date, count]) => ({ date, count }));
+    if (campaignErr) {
+      console.error("Analytics campaign fetch error:", campaignErr);
+      return apiInternalError("Failed to load campaigns");
     }
 
-    // Campaign performance: try materialized view first, fall back to raw events scan
-    let topCampaigns: { id: string; name: string; sent: number; open_rate: number; click_rate: number }[] = [];
-    let totalSent = 0;
-    let totalOpens = 0;
-    let totalClicks = 0;
-    let campaignsSent = 0;
+    const sentAtOf = (c: CampaignRow) => new Date(c.last_sent_at || c.created_at).getTime();
+    const all = (campaignRows || []) as CampaignRow[];
+    const current = all.filter((c) => sentAtOf(c) >= startDate.getTime());
+    const previous = all.filter(
+      (c) => sentAtOf(c) >= priorStartDate.getTime() && sentAtOf(c) < startDate.getTime()
+    );
 
-    try {
-      const { data: mvStats, error: mvStatsErr } = await supabase
-        .from("mv_campaign_stats")
-        .select("campaign_id, title, sent_count, opens, clicks, open_rate, click_rate")
-        .eq("client_id", workspaceId)
-        .order("created_at", { ascending: false })
-        .limit(topCampaignsLimit);
+    // ── Engagement events for those campaigns ────────────────────────────────
+    // Counted per unique email, so one subscriber opening five times is one
+    // open. (The materialized view double-counted these via a cartesian join.)
+    const relevantIds = [...current, ...previous].map((c) => c.id);
+    const events: EventRow[] = [];
+    let truncated = false;
 
-      if (!mvStatsErr && mvStats) {
-        for (const row of mvStats as any[]) {
-          totalSent += row.sent_count || 0;
-          totalOpens += row.opens || 0;
-          totalClicks += row.clicks || 0;
-        }
-        campaignsSent = (mvStats as any[]).length;
-        topCampaigns = (mvStats as any[]).map((r) => ({
-          id: r.campaign_id,
-          name: r.title,
-          sent: r.sent_count || 0,
-          open_rate: r.open_rate || 0,
-          click_rate: r.click_rate || 0,
-        }));
-      }
-    } catch { /* view may not exist yet */ }
-
-    // Fallback: raw campaign_events scan
-    if (topCampaigns.length === 0) {
-      const { data: sentCampaigns } = await supabase
-        .from("campaigns")
-        .select("id, title, sent_count")
-        .eq("client_id", workspaceId)
-        .eq("status", "sent");
-
-      const campaigns = sentCampaigns || [];
-      campaignsSent = campaigns.length;
-      const campaignIds = campaigns.map((c) => c.id);
-
-      let events: { campaign_id: string; event_type: string; email: string }[] = [];
-      if (campaignIds.length > 0) {
-        const { data: eventRows } = await supabase
+    if (relevantIds.length > 0) {
+      let from = 0;
+      // Paginate: an unbounded select caps at ~1000 rows and silently undercounts.
+      for (;;) {
+        const { data: page, error: evErr } = await supabase
           .from("campaign_events")
           .select("campaign_id, event_type, email")
-          .in("campaign_id", campaignIds)
-          .in("event_type", ["open", "click"]);
-        events = eventRows || [];
+          .in("campaign_id", relevantIds)
+          .in("event_type", ["open", "click"])
+          .range(from, from + EVENT_PAGE - 1);
+
+        if (evErr) {
+          console.error("Analytics event fetch error:", evErr);
+          break;
+        }
+        const rows = (page || []) as EventRow[];
+        events.push(...rows);
+        if (rows.length < EVENT_PAGE) break;
+        from += EVENT_PAGE;
+        if (events.length >= EVENT_CAP) { truncated = true; break; }
       }
-
-      function uniqueEmailCount(campaignId: string, type: string) {
-        return new Set(
-          events.filter((e) => e.campaign_id === campaignId && e.event_type === type).map((e) => e.email)
-        ).size;
-      }
-
-      const campaignStats = campaigns.map((c) => {
-        const sent = c.sent_count ?? 0;
-        const opens = uniqueEmailCount(c.id, "open");
-        const clicks = uniqueEmailCount(c.id, "click");
-        totalSent += sent;
-        totalOpens += opens;
-        totalClicks += clicks;
-        return { id: c.id, name: c.title, sent, open_rate: sent > 0 ? (opens / sent) * 100 : 0, click_rate: sent > 0 ? (clicks / sent) * 100 : 0 };
-      });
-
-      topCampaigns = campaignStats.sort((a, b) => b.open_rate - a.open_rate).slice(0, topCampaignsLimit);
     }
 
+    const uniq = new Map<string, Set<string>>(); // `${campaignId}:${type}` -> emails
+    for (const e of events) {
+      const key = `${e.campaign_id}:${e.event_type}`;
+      let set = uniq.get(key);
+      if (!set) { set = new Set(); uniq.set(key, set); }
+      set.add(e.email);
+    }
+    const countFor = (id: string, type: string) => uniq.get(`${id}:${type}`)?.size ?? 0;
+
+    function summarize(list: CampaignRow[]) {
+      let sent = 0, opens = 0, clicks = 0;
+      for (const c of list) {
+        sent += c.sent_count ?? 0;
+        opens += countFor(c.id, "open");
+        clicks += countFor(c.id, "click");
+      }
+      return {
+        campaigns_sent: list.length,
+        avg_open_rate: sent > 0 ? (opens / sent) * 100 : 0,
+        avg_click_rate: sent > 0 ? (clicks / sent) * 100 : 0,
+      };
+    }
+
+    const currentSummary = summarize(current);
+    const previousSummary = summarize(previous);
+
+    const topCampaigns = current
+      .map((c) => {
+        const sent = c.sent_count ?? 0;
+        const opens = countFor(c.id, "open");
+        const clicks = countFor(c.id, "click");
+        return {
+          id: c.id,
+          name: c.title,
+          sent,
+          open_rate: sent > 0 ? (opens / sent) * 100 : 0,
+          click_rate: sent > 0 ? (clicks / sent) * 100 : 0,
+          sent_at: c.last_sent_at || c.created_at,
+        };
+      })
+      .sort((a, b) => b.open_rate - a.open_rate)
+      .slice(0, topCampaignsLimit);
+
     return apiSuccess({
-        total_subscribers: totalSubscribers || 0,
-        campaigns_sent: campaignsSent,
-        avg_open_rate: totalSent > 0 ? (totalOpens / totalSent) * 100 : 0,
-        avg_click_rate: totalSent > 0 ? (totalClicks / totalSent) * 100 : 0,
-        subscriber_growth: subscriberGrowth,
-        top_campaigns: topCampaigns,
-      });
+      total_subscribers: totalSubscribers || 0,
+      new_subscribers: newSubscribers,
+      campaigns_sent: currentSummary.campaigns_sent,
+      avg_open_rate: currentSummary.avg_open_rate,
+      avg_click_rate: currentSummary.avg_click_rate,
+      subscriber_growth: subscriberGrowth,
+      top_campaigns: topCampaigns,
+      previous: {
+        new_subscribers: prevNewSubscribers,
+        campaigns_sent: previousSummary.campaigns_sent,
+        avg_open_rate: previousSummary.avg_open_rate,
+        avg_click_rate: previousSummary.avg_click_rate,
+      },
+      period: {
+        days,
+        start: startDate.toISOString(),
+        previous_start: priorStartDate.toISOString(),
+        truncated,
+      },
+    });
   } catch (error) {
     console.error("Analytics endpoint error:", error);
     return apiInternalError();
