@@ -48,6 +48,7 @@ export const registry = new ProviderRegistry();
 // ── Built-in provider registrations ──
 import { SendGridTransport } from "./sendgrid";
 import { ResendTransport } from "./resend";
+import { SESTransport } from "./ses";
 import { SandboxTransport } from "./sandbox";
 
 registry.register("sendgrid", (config) =>
@@ -60,6 +61,14 @@ registry.register("resend", (config) =>
   new ResendTransport(
     (config.resend as string) || (config.apiKey as string) || process.env.RESEND_API_KEY || ""
   )
+);
+
+registry.register("ses", (config) =>
+  new SESTransport({
+    accessKeyId: (config.sesAccessKey as string) || (config.ses_access_key as string) || process.env.AWS_ACCESS_KEY_ID || "",
+    secretAccessKey: (config.sesSecretKey as string) || (config.ses_secret_key as string) || process.env.AWS_SECRET_ACCESS_KEY || "",
+    region: (config.sesRegion as string) || (config.ses_region as string) || process.env.AWS_SES_REGION || process.env.AWS_REGION || "us-east-1",
+  })
 );
 
 registry.register("sandbox", (config) =>

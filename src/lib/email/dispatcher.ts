@@ -111,6 +111,9 @@ export function buildDispatcherConfig(client: {
   fallback_provider?: string | null;
   sendgrid_api_key?: string | null;
   resend_api_key?: string | null;
+  ses_access_key?: string | null;
+  ses_secret_key?: string | null;
+  ses_region?: string | null;
 } | null | undefined): DispatchConfig {
   return {
     provider: client?.email_provider || "sendgrid",
@@ -118,6 +121,9 @@ export function buildDispatcherConfig(client: {
     credentials: {
       sendgrid: client?.sendgrid_api_key || process.env.SENDGRID_API_KEY,
       resend: client?.resend_api_key || process.env.RESEND_API_KEY,
+      sesAccessKey: client?.ses_access_key || process.env.AWS_ACCESS_KEY_ID,
+      sesSecretKey: client?.ses_secret_key || process.env.AWS_SECRET_ACCESS_KEY,
+      sesRegion: client?.ses_region || process.env.AWS_SES_REGION || process.env.AWS_REGION,
     },
   };
 }

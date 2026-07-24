@@ -41,6 +41,9 @@ export async function sendEmail(
   };
   if (config.sendgridApiKey) dispatchConfig.credentials.sendgrid = config.sendgridApiKey;
   if (config.resendApiKey) dispatchConfig.credentials.resend = config.resendApiKey;
+  if (config.sesAccessKey) dispatchConfig.credentials.sesAccessKey = config.sesAccessKey;
+  if (config.sesSecretKey) dispatchConfig.credentials.sesSecretKey = config.sesSecretKey;
+  if (config.sesRegion) dispatchConfig.credentials.sesRegion = config.sesRegion;
 
   const result = await dispatchEmail(params, dispatchConfig);
   return result.success;
