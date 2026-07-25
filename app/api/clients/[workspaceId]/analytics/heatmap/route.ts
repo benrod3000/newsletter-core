@@ -35,11 +35,11 @@ export async function GET(
       { headers: auth }
     );
     if (!campaignsRes.ok) {
-      return NextResponse.json({ hours: [], days: [], totalOpens: 0, bestHour: -1, bestDay: -1 }, { status: 200 });
+      return NextResponse.json({ hours: [], days: [], matrix: [], totalOpens: 0, bestHour: -1, bestDay: -1 }, { status: 200 });
     }
     const campaigns = await campaignsRes.json();
     if (!Array.isArray(campaigns) || campaigns.length === 0) {
-      return NextResponse.json({ hours: [], days: [], totalOpens: 0, bestHour: -1, bestDay: -1 });
+      return NextResponse.json({ hours: [], days: [], matrix: [], totalOpens: 0, bestHour: -1, bestDay: -1 });
     }
 
     const campaignIds = campaigns.map((c: any) => c.id);
@@ -66,16 +66,22 @@ export async function GET(
 
     const events = allEvents;
 
-    // Build hour-of-day counts (24 hours) and day-of-week counts (7 days)
+    // Build hour-of-day counts (24 hours), day-of-week counts (7 days), and a
+    // day x hour matrix so the client can filter one axis by a selection on
+    // the other (e.g. "day-of-week breakdown for 3pm opens only").
     const hours = new Array(24).fill(0);
     const days = new Array(7).fill(0);
+    const matrix = Array.from({ length: 7 }, () => new Array(24).fill(0));
 
     for (const e of events) {
       // Shift into the viewer's local time, then read UTC parts so the bucket
       // is independent of whatever timezone this server happens to run in.
       const d = new Date(new Date(e.occurred_at).getTime() - tzOffsetMin * 60000);
-      hours[d.getUTCHours()]++;
-      days[d.getUTCDay()]++;
+      const hour = d.getUTCHours();
+      const day = d.getUTCDay();
+      hours[hour]++;
+      days[day]++;
+      matrix[day][hour]++;
     }
 
     const maxHour = Math.max(...hours, 1);
@@ -84,6 +90,10 @@ export async function GET(
     return NextResponse.json({
       hours: hours.map((count, hour) => ({ hour, count, pct: Math.round((count / maxHour) * 100) })),
       days: days.map((count, day) => ({ day, count, pct: Math.round((count / maxDay) * 100) })),
+      // cells[i].counts[hour] = opens on day i at that hour. Kept flat rather than
+      // nested per-hour objects since the client only needs raw counts to re-derive
+      // percentages against whatever subset it's currently viewing.
+      matrix: matrix.map((counts, day) => ({ day, counts })),
       totalOpens: events.length,
       bestHour: hours.indexOf(Math.max(...hours)),
       bestDay: days.indexOf(Math.max(...days)),
