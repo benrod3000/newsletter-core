@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useState, Suspense } from "react";
 
@@ -88,9 +89,9 @@ export default function UnsubscribePage() {
         </Suspense>
         <p className="mt-6 text-xs text-zinc-600">
           Changed your mind?{" "}
-          <a href="/" className="text-amber-400 underline underline-offset-4 hover:text-amber-300">
+          <Link href="/" className="text-amber-400 underline underline-offset-4 hover:text-amber-300">
             Re-subscribe
-          </a>
+          </Link>
         </p>
       </div>
     </main>

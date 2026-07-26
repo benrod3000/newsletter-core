@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { verifyClientJWT, extractJWTFromHeader, ClientJWTPayload } from "./jwt";
 
-export interface ClientContext extends ClientJWTPayload {}
+export type ClientContext = ClientJWTPayload;
 
 /**
  * Extract and verify client JWT from Authorization header

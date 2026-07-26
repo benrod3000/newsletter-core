@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push supersedes an in-flight run on the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: typecheck · lint · test · build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Capped baseline: fails if the warning count grows. See eslint.config.mjs.
+      - name: Lint
+        run: npm run lint:ci
+
+      - name: Test
+        run: npm test
+
+      # `instrumentation.ts` calls assertRequiredEnv(), which throws when
+      # NODE_ENV=production and a required secret is absent — which is the whole
+      # point of it. These are throwaway values that exist only so the build can
+      # reach the end. They are not secrets and must never be real ones: CI
+      # builds nothing that talks to a live service.
+      - name: Build
+        run: npm run build
+        env:
+          SUPABASE_URL: https://ci.invalid
+          SUPABASE_SERVICE_ROLE_KEY: ci-not-a-real-key
+          JWT_SECRET: ci-not-a-real-secret
+          ADMIN_HMAC_SECRET: ci-not-a-real-secret
+          CRON_SECRET: ci-not-a-real-secret

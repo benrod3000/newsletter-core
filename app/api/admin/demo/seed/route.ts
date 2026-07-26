@@ -27,11 +27,11 @@ export async function POST(req: NextRequest) {
     const auth = { apikey: suKey, Authorization: `Bearer ${suKey}`, "Content-Type": "application/json" };
 
     // 1. Find or create the demo user + workspace
-    let wsRes = await fetch(
+    const wsRes = await fetch(
       `${suUrl}/rest/v1/workspace_users?select=id,workspace_id,email&email=eq.${encodeURIComponent(DEMO_EMAIL)}&limit=1`,
       { headers: auth }
     );
-    let users = await wsRes.json();
+    const users = await wsRes.json();
     let workspaceId: string;
     let demoUserId: string;
     const demoPasswordHash = await hashPassword(getDemoPassword());

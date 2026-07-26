@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 interface Props {
   searchParams: Promise<{ status?: string | string[]; lead_title?: string | string[]; lead_url?: string | string[] }>;
 }
@@ -89,12 +91,12 @@ export default async function ConfirmedPage({ searchParams }: Props) {
         )}
 
         <div className="my-8 h-px w-16 bg-zinc-700" />
-        <a
+        <Link
           href="/"
           className="text-sm text-amber-400 underline underline-offset-4 hover:text-amber-300"
         >
           ← Back home
-        </a>
+        </Link>
       </div>
     </main>
   );

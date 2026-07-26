@@ -13,7 +13,7 @@ async function processScheduledCampaigns(req: NextRequest) {
   const supabase = getSupabaseClient();
   const nowIso = new Date().toISOString();
   const baseUrl = getBaseUrl(req);
-  let dueQuery = supabase
+  const dueQuery = supabase
     .from("campaigns")
     .select("id, client_id, subject, audience, geo_filter, editor_html, editor_css, plain_text")
     .eq("status", "scheduled")

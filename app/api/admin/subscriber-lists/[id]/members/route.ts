@@ -73,7 +73,7 @@ export async function DELETE(
   }
 
   const supabase = getSupabaseClient();
-  let query = supabase
+  const query = supabase
     .from("subscriber_list_memberships")
     .delete()
     .eq("list_id", id)

@@ -43,7 +43,7 @@ export async function GET(
 
     // Get submission counts for each widget
     const widgetIds = (data || []).map((w) => w.id);
-    let counts: Record<string, number> = {};
+    const counts: Record<string, number> = {};
 
     if (widgetIds.length > 0) {
       const { data: countData, error: countError } = await supabase
