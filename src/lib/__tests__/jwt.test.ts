@@ -16,7 +16,7 @@ describe("password hashing", () => {
     expect(valid).toBe(false);
   });
 
-  it("is timing-safe — malformed hashes are rejected without crashing", async () => {
+  it("is timing-safe - malformed hashes are rejected without crashing", async () => {
     const { valid } = await verifyPassword("anything", "not-a-real-hash");
     expect(valid).toBe(false);
   });

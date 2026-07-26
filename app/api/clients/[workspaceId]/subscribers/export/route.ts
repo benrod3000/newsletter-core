@@ -10,7 +10,7 @@ import {
  * Export subscribers as CSV. JWT authenticated.
  *
  * Query params:
- * - status: "confirmed" | "pending" (optional — exports all if omitted)
+ * - status: "confirmed" | "pending" (optional - exports all if omitted)
  *
  * Returns: CSV file download with headers
  */

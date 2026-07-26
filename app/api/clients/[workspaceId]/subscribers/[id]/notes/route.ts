@@ -74,7 +74,7 @@ export async function POST(
 
   try {
     // Without this, a note or tag could be attached to another workspace's
-    // subscriber — and GET filters only on subscriber_id, so the owning
+    // subscriber - and GET filters only on subscriber_id, so the owning
     // workspace would then see content it did not create.
     if (!(await subscriberBelongsToWorkspace(id, workspaceId))) {
       return NextResponse.json({ error: "Subscriber not found" }, { status: 404 });

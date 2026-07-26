@@ -31,7 +31,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const senderName = client?.sender_name || "Veloce";
   // Authored by a workspace user and served from an origin every tenant shares,
-  // on a page marked indexable — never interpolate either of these raw.
+  // on a page marked indexable - never interpolate either of these raw.
   const html = sanitizeCampaignHtml(campaign.editor_html);
   const css = sanitizeCampaignCss(campaign.editor_css);
   const pubDate = campaign.published_at

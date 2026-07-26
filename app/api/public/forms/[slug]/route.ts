@@ -13,7 +13,7 @@ export async function OPTIONS() {
 
 /**
  * GET /api/public/forms/[slug]
- * Public endpoint — returns widget configuration for rendering the signup form.
+ * Public endpoint - returns widget configuration for rendering the signup form.
  * No authentication required.
  *
  * Returns: { widget: { headline, description, button_text, placeholder, success_message } }

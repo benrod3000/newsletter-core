@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Verify the partial token (issued during password step).
-    // Only accepts audience "totp_pending" — a full session token cannot be
+    // Only accepts audience "totp_pending" - a full session token cannot be
     // replayed here, and a pending token cannot be used anywhere else.
     const payload = verifyPendingTOTPJWT(partial_token);
     if (!payload) {

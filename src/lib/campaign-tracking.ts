@@ -1,7 +1,7 @@
 /**
  * Open- and click-tracking injection.
  *
- * Lived in two places — send-campaign.ts (exported but never actually called on
+ * Lived in two places - send-campaign.ts (exported but never actually called on
  * the send path, so sent email carried no tracking at all) and a private copy in
  * app/web/[id]/route.ts. One copy now, used by both.
  */
@@ -11,7 +11,7 @@
  *
  * Unsubscribe in particular: routing it through the click tracker makes
  * unsubscribing depend on the tracker being up, and records every unsubscribe
- * as a click. Both are bad — the first is a compliance risk under one-click
+ * as a click. Both are bad - the first is a compliance risk under one-click
  * unsubscribe, the second quietly inflates engagement metrics.
  */
 const UNTRACKED_PATHS = ["/api/track/", "/unsubscribe", "/api/unsubscribe"];

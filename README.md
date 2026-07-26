@@ -10,17 +10,17 @@ The backend for Veloce. Raw `fetch()` to Supabase REST API. JWT auth. Scheduled 
 
 This is the API layer. It handles:
 
-- **Auth** — login, signup, password reset, JWT tokens, Google/GitHub OAuth. Rate-limited everywhere (5/min login, 3/min signup, 3/min forgot-password). Dedicated demo-login endpoint with proper password verification.
-- **Subscribers** — create, read, update, delete. Bulk import/export. Search and filter by status, health, date range.
-- **Broadcasts** — drafts, test sends, scheduling. Sending via provider-agnostic EmailTransport with automatic failover. Retries with exponential backoff (0s, 2s, 8s) for transient errors. Time-budget protection prevents Vercel timeout data loss. Campaign activity log tracks every lifecycle event. Open and click tracking built in. HTML-escaping on all subscriber-controlled merge fields.
-- **Automations** — cron-triggered jobs: confirm-remind for unconfirmed subs, auto-clean for cold ones, smart auto-tagging.
-- **Health scores** — daily job that classifies every subscriber as active, at risk, or cold based on engagement.
-- **Analytics** — growth tracking, campaign performance, open/click rates, heatmap data, live pulse.
-- **Branding** — per-workspace sender identity, email provider config (SendGrid or Resend), colors, custom domains.
-- **Capture Forms** — embeddable signup widgets. Create, render, and process submissions.
-- **SMS/RCS** — Twilio integration for SMS campaigns and RCS rich messaging. Test sends, cost estimates, geo-filtering.
-- **Webhooks** — SendGrid event processing for bounces, opens, clicks, spam reports.
-- **Admin** — Basic Auth-protected dashboard at `/admin`.
+- **Auth** - login, signup, password reset, JWT tokens, Google/GitHub OAuth. Rate-limited everywhere (5/min login, 3/min signup, 3/min forgot-password). Dedicated demo-login endpoint with proper password verification.
+- **Subscribers** - create, read, update, delete. Bulk import/export. Search and filter by status, health, date range.
+- **Broadcasts** - drafts, test sends, scheduling. Sending via provider-agnostic EmailTransport with automatic failover. Retries with exponential backoff (0s, 2s, 8s) for transient errors. Time-budget protection prevents Vercel timeout data loss. Campaign activity log tracks every lifecycle event. Open and click tracking built in. HTML-escaping on all subscriber-controlled merge fields.
+- **Automations** - cron-triggered jobs: confirm-remind for unconfirmed subs, auto-clean for cold ones, smart auto-tagging.
+- **Health scores** - daily job that classifies every subscriber as active, at risk, or cold based on engagement.
+- **Analytics** - growth tracking, campaign performance, open/click rates, heatmap data, live pulse.
+- **Branding** - per-workspace sender identity, email provider config (SendGrid or Resend), colors, custom domains.
+- **Capture Forms** - embeddable signup widgets. Create, render, and process submissions.
+- **SMS/RCS** - Twilio integration for SMS campaigns and RCS rich messaging. Test sends, cost estimates, geo-filtering.
+- **Webhooks** - SendGrid event processing for bounces, opens, clicks, spam reports.
+- **Admin** - Basic Auth-protected dashboard at `/admin`.
 
 Everything is multi-tenant. Every query filters by workspace. No data leaks.
 
@@ -108,9 +108,9 @@ vercel.json             # Cron job schedules
 ## Security features
 
 - **HTML escaping** on all subscriber-controlled merge fields in campaign web version pages (prevents stored XSS)
-- **HMAC-signed admin headers** — proxy stamps a SHA-256 HMAC over admin context headers; route handlers verify the signature (defense-in-depth against middleware bypass)
+- **HMAC-signed admin headers** - proxy stamps a SHA-256 HMAC over admin context headers; route handlers verify the signature (defense-in-depth against middleware bypass)
 - **CORS scoped** to known frontend origins (no wildcard for API routes)
-- **Rate limiting** via in-memory token bucket (note: resets per serverless instance — consider Upstash Redis for production)
+- **Rate limiting** via in-memory token bucket (note: resets per serverless instance - consider Upstash Redis for production)
 - **PBKDF2 password hashing** at 600,000 iterations with timing-safe comparison
 - **Admin Basic Auth** on all /admin and /api/admin routes via proxy middleware
 ```
@@ -146,10 +146,10 @@ Deployed at [newsletter-core.vercel.app](https://newsletter-core.vercel.app).
 
 Located in `supabase/migrations/`. Run them in order in the Supabase SQL Editor. Key migrations:
 
-- `001-018` — Core schema (subscribers, campaigns, lists, workspace users)
-- `019` — Branding columns on clients table
-- `022` — SES configuration
-- `023` — Widgets + widget submissions
+- `001-018` - Core schema (subscribers, campaigns, lists, workspace users)
+- `019` - Branding columns on clients table
+- `022` - SES configuration
+- `023` - Widgets + widget submissions
 
 If you're setting up from scratch, start at `001` and work forward. If you're adding to an existing project, use `IF NOT EXISTS` variants.
 
@@ -164,7 +164,7 @@ If you're setting up from scratch, start at `001` and work forward. If you're ad
 
 `/api/admin/campaigns/recover` re-drives campaign sends that stalled mid-flight.
 It is scheduled daily (`0 1 * * *`) because Vercel Hobby rejects any cron that
-runs more than once per day — and it rejects the *whole deployment*, not just
+runs more than once per day - and it rejects the *whole deployment*, not just
 that cron.
 
 The intended schedule is `*/10 * * * *`. On Hobby, a stalled send can sit

@@ -143,7 +143,7 @@ export async function runSmartTagsForWorkspace(workspaceId: string) {
         }
       }
     } catch {
-      // campaign_events table may not exist — continue without events
+      // campaign_events table may not exist - continue without events
     }
 
     // Build per-subscriber engagement data

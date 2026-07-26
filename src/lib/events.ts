@@ -1,8 +1,8 @@
 /**
- * EventBus — lightweight in-memory pub/sub for domain events.
+ * EventBus - lightweight in-memory pub/sub for domain events.
  *
  * No external dependencies. Events are synchronous (each handler
- * runs before the next). Fire-and-forget — handler errors never
+ * runs before the next). Fire-and-forget - handler errors never
  * propagate to the caller.
  *
  * Future: replace with a persistent event store for replay capability.

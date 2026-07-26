@@ -7,7 +7,7 @@ const baseRecipient: MergeRecipient = {
   date_of_birth: null, phone_number: null,
 };
 
-describe("mergeDataForRecipient — html map", () => {
+describe("mergeDataForRecipient - html map", () => {
   it("escapes HTML in subscriber-controlled name fields", () => {
     const malicious: MergeRecipient = {
       ...baseRecipient,
@@ -36,7 +36,7 @@ describe("mergeDataForRecipient — html map", () => {
   });
 });
 
-describe("mergeDataForRecipient — text map", () => {
+describe("mergeDataForRecipient - text map", () => {
   it("does not HTML-escape values used in the plain-text part", () => {
     const recipient: MergeRecipient = { ...baseRecipient, first_name: "O'Brien" };
     const result = mergeDataForRecipient(recipient, "https://x.test/unsub");

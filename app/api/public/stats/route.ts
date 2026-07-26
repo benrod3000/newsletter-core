@@ -6,7 +6,7 @@ const auth = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` };
 
 /**
  * GET /api/public/stats
- * Public landing page stats — no auth required.
+ * Public landing page stats - no auth required.
  * Returns aggregate counts from all workspaces via content-range headers.
  */
 export async function GET() {

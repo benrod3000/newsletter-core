@@ -2,7 +2,7 @@
  * Redis-backed rate limiter using a sliding-window token bucket.
  * Works across all Vercel regions and serverless instances.
  *
- * Uses Upstash Redis REST API — no TCP, no persistent connection.
+ * Uses Upstash Redis REST API - no TCP, no persistent connection.
  * Falls back to permissive mode if Redis is unavailable (no crash).
  */
 
@@ -28,9 +28,9 @@ export interface RateLimitResult {
 /**
  * What to do when the limiter itself cannot run (Redis missing or erroring).
  *
- * - "open"   — allow the request. Correct for tracking pixels and other paths
+ * - "open"   - allow the request. Correct for tracking pixels and other paths
  *              where a dropped event costs more than an unmetered request.
- * - "closed" — reject the request. Correct for authentication, where a Redis
+ * - "closed" - reject the request. Correct for authentication, where a Redis
  *              outage would otherwise silently remove the brute-force ceiling.
  */
 export type FailureMode = "open" | "closed";
@@ -60,7 +60,7 @@ export async function rateLimit(
   const now = Date.now();
 
   try {
-    // Lua script does: get bucket → refill → deduct → return result — atomically
+    // Lua script does: get bucket → refill → deduct → return result - atomically
     const raw = await redis.eval(
       `
       local key = KEYS[1]

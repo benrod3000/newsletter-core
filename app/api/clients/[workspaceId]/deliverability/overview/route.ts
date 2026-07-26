@@ -7,7 +7,7 @@
  * Auth: client JWT.
  *
  * The dashboard previously called /api/admin/deliverability/overview, which is
- * behind admin Basic Auth — so the page always 401'd. Shares its implementation
+ * behind admin Basic Auth - so the page always 401'd. Shares its implementation
  * with the admin route via buildDeliverabilityOverview().
  */
 

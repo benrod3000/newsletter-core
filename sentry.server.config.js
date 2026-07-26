@@ -1,4 +1,4 @@
-// Sentry server-side config — captures errors from API routes, cron jobs, and background tasks
+// Sentry server-side config - captures errors from API routes, cron jobs, and background tasks
 import * as Sentry from '@sentry/nextjs'
 
 Sentry.init({

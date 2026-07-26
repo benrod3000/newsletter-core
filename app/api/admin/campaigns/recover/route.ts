@@ -9,7 +9,7 @@ import { logError, logWarn } from "@/lib/logger";
 /**
  * GET /api/admin/campaigns/recover
  *
- * Finishes campaign jobs that stopped partway — a function timeout, a crash, or
+ * Finishes campaign jobs that stopped partway - a function timeout, a crash, or
  * a deploy mid-send. A job is "unfinished" iff it still has pending recipient
  * rows, so recovery is just: drain it again.
  *

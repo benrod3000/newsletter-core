@@ -6,16 +6,16 @@
  * which the activity log subscriber captures.
  *
  * States:
- *   draft     — being edited, not yet ready
- *   scheduled — queued for future delivery
- *   queued    — in the send queue, waiting for processing
- *   preparing — resolving recipients, building email content
- *   sending   — actively dispatching to recipients
- *   retrying  — transient failure, will retry
- *   paused    — manually paused mid-send (future)
- *   completed — all recipients processed (may have partial failures)
- *   failed    — all recipients failed or permanent error
- *   cancelled — manually cancelled before sending
+ *   draft     - being edited, not yet ready
+ *   scheduled - queued for future delivery
+ *   queued    - in the send queue, waiting for processing
+ *   preparing - resolving recipients, building email content
+ *   sending   - actively dispatching to recipients
+ *   retrying  - transient failure, will retry
+ *   paused    - manually paused mid-send (future)
+ *   completed - all recipients processed (may have partial failures)
+ *   failed    - all recipients failed or permanent error
+ *   cancelled - manually cancelled before sending
  */
 
 export type CampaignStatus =

@@ -21,7 +21,7 @@ afterEach(() => {
   delete process.env.UPSTASH_REDIS_REST_TOKEN;
 });
 
-describe("rateLimit — Lua reply parsing", () => {
+describe("rateLimit - Lua reply parsing", () => {
   it("allows a request when the script returns allowed=1", async () => {
     // Redis returns a Lua table as an ARRAY: [allowed, retryAfter, remaining, max]
     evalMock.mockResolvedValue([1, 0, 4, 5]);
@@ -48,7 +48,7 @@ describe("rateLimit — Lua reply parsing", () => {
 
   it("does not treat the array reply as an object", async () => {
     // Regression: the old code cast the array to {allowed,...} and read
-    // `.allowed`, which is undefined — so `=== 1` was false for every reply
+    // `.allowed`, which is undefined - so `=== 1` was false for every reply
     // and legitimate requests were reported as rate-limited.
     evalMock.mockResolvedValue([1, 0, 99, 100]);
     const { rateLimit } = await import("../rate-limit");
@@ -69,7 +69,7 @@ describe("rateLimit — Lua reply parsing", () => {
   });
 });
 
-describe("rateLimit — failure modes", () => {
+describe("rateLimit - failure modes", () => {
   it("allows through on Redis error when failing open", async () => {
     evalMock.mockRejectedValue(new Error("connection refused"));
     const { rateLimit } = await import("../rate-limit");
@@ -98,7 +98,7 @@ describe("rateLimit — failure modes", () => {
   });
 });
 
-describe("rateLimit — Redis not configured", () => {
+describe("rateLimit - Redis not configured", () => {
   it("allows traffic even on fail-closed routes", async () => {
     vi.resetModules();
     delete process.env.UPSTASH_REDIS_REST_URL;

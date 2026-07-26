@@ -11,7 +11,7 @@ import {
  * DELETE /api/clients/[workspaceId]/subscribers/[id]
  * Remove a subscriber from the workspace. JWT authenticated, requires edit permission.
  *
- * This is a hard-delete — the subscriber row is removed entirely.
+ * This is a hard-delete - the subscriber row is removed entirely.
  * (Unsubscribing via the public /api/unsubscribe endpoint also hard-deletes.)
  */
 export async function DELETE(

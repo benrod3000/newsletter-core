@@ -11,7 +11,7 @@
 
 import type { DnsCheckResult, DnsHealthReport, Recommendation } from './types';
 
-// Scoring constants — multipliers convert decimal rates to [0,100] scale.
+// Scoring constants - multipliers convert decimal rates to [0,100] scale.
 // Bounce: 10% → 0 score.  Complaint: 0.5% → 0 score.
 const BOUNCE_SCALE_FACTOR = 1000;
 const COMPLAINT_SCALE_FACTOR = 2000;
@@ -28,7 +28,7 @@ function dnsResultToScore(result: DnsCheckResult): number {
     case 'pass': return 100;
     case 'warning': return 50;
     case 'fail': return 0;
-    case 'unknown': return 50; // neutral — don't penalize what we can't check
+    case 'unknown': return 50; // neutral - don't penalize what we can't check
   }
 }
 
@@ -75,7 +75,7 @@ export function calculateOverallScore(
 
 // ── Recommendations ──
 
-/** Score tier for display — internal helper, not exported. */
+/** Score tier for display - internal helper, not exported. */
 function scoreTier(score: number): 'good' | 'warning' | 'bad' {
   if (score >= 80) return 'good';
   if (score >= 50) return 'warning';
@@ -115,7 +115,7 @@ export function generateRecommendations(
       priority: 1,
       category: 'bounces',
       title: 'High bounce rate detected',
-      description: `Your bounce rate is ${(bounceRate * 100).toFixed(1)}% — well above the 2% industry threshold. Enable auto-clean in Settings to automatically suppress bounced addresses, and verify your list uses confirmed opt-in.`,
+      description: `Your bounce rate is ${(bounceRate * 100).toFixed(1)}% - well above the 2% industry threshold. Enable auto-clean in Settings to automatically suppress bounced addresses, and verify your list uses confirmed opt-in.`,
     });
   } else if (bounceRate >= 0.02) {
     recs.push({
@@ -132,7 +132,7 @@ export function generateRecommendations(
       priority: 1,
       category: 'complaints',
       title: 'Spam complaint rate critical',
-      description: `Your complaint rate is ${(complaintRate * 100).toFixed(2)}% — Google and Yahoo require rates below 0.3% (effective Feb 2024). Immediately review your opt-in process and remove unengaged subscribers.`,
+      description: `Your complaint rate is ${(complaintRate * 100).toFixed(2)}% - Google and Yahoo require rates below 0.3% (effective Feb 2024). Immediately review your opt-in process and remove unengaged subscribers.`,
     });
   } else if (complaintRate >= 0.001) {
     recs.push({

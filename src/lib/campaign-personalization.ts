@@ -94,7 +94,7 @@ export interface MergeData {
  *
  * Two maps, not one: subscriber names are attacker-influenced and must be
  * escaped before they reach HTML, but using those same escaped values in the
- * plain-text part produced literal entities in the inbox — "O&#39;Brien".
+ * plain-text part produced literal entities in the inbox - "O&#39;Brien".
  */
 export function mergeDataForRecipient(
   sub: MergeRecipient,

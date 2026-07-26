@@ -2,7 +2,7 @@
  * Sanitiser for campaign content rendered onto a public web page.
  *
  * `editor_html` and `editor_css` are authored in the dashboard by workspace
- * users and were interpolated raw into two public routes — /newsletter/[slug]
+ * users and were interpolated raw into two public routes - /newsletter/[slug]
  * and /web/[id]. Both serve HTML from the shared newsletter-core origin, and
  * the archive page is marked `robots: index, follow`, so any workspace editor
  * could publish executing script onto a search-indexed page on a domain every
@@ -39,7 +39,7 @@ const OPTIONS: sanitizeHtml.IOptions = {
     table: ["width", "cellpadding", "cellspacing", "border", "align", "style"],
     "*": ["class", "style", "align", "dir", "lang"],
   },
-  // http/https/mailto/tel only — blocks javascript: and data: URLs in href.
+  // http/https/mailto/tel only - blocks javascript: and data: URLs in href.
   allowedSchemes: ["http", "https", "mailto", "tel"],
   // Images may be inlined as data URIs; script cannot execute from an <img src>.
   allowedSchemesByTag: { img: ["http", "https", "data"] },
@@ -64,8 +64,8 @@ export function sanitizeCampaignHtml(html: string | null | undefined): string {
  * Make author-supplied CSS safe to place inside a <style> element.
  *
  * The only escape from a style block is a literal `</style>`, so `<` is
- * replaced with its CSS escape. `>` is left alone — it is the child
- * combinator and is needed by real stylesheets — and `<` has no valid
+ * replaced with its CSS escape. `>` is left alone - it is the child
+ * combinator and is needed by real stylesheets - and `<` has no valid
  * unquoted meaning in CSS, so nothing legitimate is lost.
  *
  * @-rules that can fetch or navigate are dropped as well: they cannot execute

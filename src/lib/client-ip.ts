@@ -2,7 +2,7 @@
  * The client IP, as far as it can be trusted.
  *
  * Every rate limiter in this codebase used to derive the caller from
- * `x-forwarded-for`.split(",")[0] — the *first* entry in the chain. A proxy
+ * `x-forwarded-for`.split(",")[0] - the *first* entry in the chain. A proxy
  * appends to that header rather than replacing it, so a request that arrives
  * carrying its own X-Forwarded-For puts an attacker-chosen value in exactly
  * that position. Rotating it bought unlimited login attempts, unlimited
@@ -12,7 +12,7 @@
  *
  * Vercel sets `x-vercel-forwarded-for` at the edge and a client cannot forge
  * it, so it is preferred. Falling back to X-Forwarded-For, the entry to trust
- * is the *last* one — that is the address the nearest trusted proxy observed
+ * is the *last* one - that is the address the nearest trusted proxy observed
  * and appended, and anything to the left of it is client-supplied.
  *
  * Returns "unknown" when no header is present. Callers use that as a bucket

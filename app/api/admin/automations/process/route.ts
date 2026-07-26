@@ -10,7 +10,7 @@ import { checkSendingLimit, SendingLimitError } from "@/lib/sending-limits";
  * so the caller stops this automation instead of sending past the cap.
  *
  * This route used to read the counter once, before the loop, then "increment"
- * it by writing that same stale value + 1 after every send — so a run of 100
+ * it by writing that same stale value + 1 after every send - so a run of 100
  * emails advanced sent_this_month by 1 in total, and the on_schedule loop below
  * never counted at all. Both paths now go through the same atomic
  * check-and-consume as campaign sends.

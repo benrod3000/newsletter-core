@@ -37,12 +37,12 @@ export function apiError(
   return NextResponse.json(body, { status, headers: { ...DEFAULT_CORS, ...extraHeaders } });
 }
 
-/** 401 Unauthorized — standard response used by all auth-protected routes */
+/** 401 Unauthorized - standard response used by all auth-protected routes */
 export function apiUnauthorized() {
   return apiError(401, "UNAUTHORIZED", "Authentication required");
 }
 
-/** 403 Forbidden — insufficient permissions */
+/** 403 Forbidden - insufficient permissions */
 export function apiForbidden(message = "Insufficient permissions") {
   return apiError(403, "FORBIDDEN", message);
 }

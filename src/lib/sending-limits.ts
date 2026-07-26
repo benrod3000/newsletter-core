@@ -3,11 +3,11 @@
  *
  * The check and the increment happen together, inside the database, in
  * increment_sending_counters() (migration 045). Everything this module used to
- * do in Node — read the counters, compare, increment separately — was both racy
+ * do in Node - read the counters, compare, increment separately - was both racy
  * and, because the RPC it called did not exist, entirely inert.
  *
  * The failure mode is closed. A quota exists to stop sends; a version of it that
- * waves sends through whenever it cannot run is not a quota — that was the
+ * waves sends through whenever it cannot run is not a quota - that was the
  * previous behaviour, and it is what made the control inert.
  *
  * The single exception is the function being absent (PGRST202), which can only
@@ -56,7 +56,7 @@ function describe(reason: string, remaining: number | null): string {
  * be evaluated. Returns the remaining monthly headroom (null when uncapped).
  *
  * Quota is consumed up front, against the real recipient count. Recipients that
- * later fail to send are not refunded — deliberately conservative for an abuse
+ * later fail to send are not refunded - deliberately conservative for an abuse
  * control, but it does mean a badly failing send still spends quota. Worth
  * revisiting alongside per-recipient reconciliation in the send queue.
  */
@@ -72,8 +72,8 @@ export async function checkSendingLimit(
 
   if (error) {
     // PGRST202 is PostgREST's "no such function in the schema cache". The only
-    // realistic way to reach it here is deployment skew — this code live before
-    // migration 045 is applied — so it degrades to unenforced for that one case
+    // realistic way to reach it here is deployment skew - this code live before
+    // migration 045 is applied - so it degrades to unenforced for that one case
     // rather than rejecting every send in the window between the two deploys.
     //
     // Deliberately narrow. Any other failure (permissions, timeout, bad
@@ -86,7 +86,7 @@ export async function checkSendingLimit(
         degraded: true,
         workspaceId,
         detail:
-          "increment_sending_counters is missing — apply migration " +
+          "increment_sending_counters is missing - apply migration " +
           "045_atomic_sending_counters.sql. Sending limits are NOT enforced until then.",
       });
       return null;

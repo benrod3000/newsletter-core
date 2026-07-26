@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
   const rl = await rateLimit(`track-click:${ip}`, 50, 50);
   let destination = "/";
   if (!rl.allowed) {
-    // Still redirect — just don't record the event
+    // Still redirect - just don't record the event
     if (rawUrl) {
       try { destination = decodeURIComponent(rawUrl); new URL(destination); } catch { destination = "/"; }
     }
@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
         destination = decoded;
       }
     } catch {
-      // bad URL — fall through to "/"
+      // bad URL - fall through to "/"
     }
   }
 

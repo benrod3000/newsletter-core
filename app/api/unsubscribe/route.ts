@@ -17,7 +17,7 @@ async function unsubscribeByToken(token: string): Promise<boolean> {
 }
 
 // One-click unsubscribe per RFC 8058 / Gmail+Yahoo requirement.
-// Email clients POST to this URL with no body — token is in the query string.
+// Email clients POST to this URL with no body - token is in the query string.
 export async function POST(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const queryToken = searchParams.get("token");

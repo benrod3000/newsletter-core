@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 /**
- * First route-handler test. The pattern here — mock the auth context and the
- * Supabase client, then drive the exported handler directly — is what the rest
+ * First route-handler test. The pattern here - mock the auth context and the
+ * Supabase client, then drive the exported handler directly - is what the rest
  * of the API surface should follow.
  */
 

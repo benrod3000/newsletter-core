@@ -1,5 +1,5 @@
 /**
- * SandboxTransport — intercepts emails in sandbox mode.
+ * SandboxTransport - intercepts emails in sandbox mode.
  *
  * Instead of calling a real provider, it simulates delivery
  * and optionally generates synthetic open/click events so

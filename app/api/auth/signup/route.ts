@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
     const expiresIn = 86400 * 30;
     const token = createClientJWT(user.workspace_id, user.id, user.email, "owner", expiresIn);
 
-    // Send welcome email (non-blocking — don't fail signup if email fails)
+    // Send welcome email (non-blocking - don't fail signup if email fails)
     sendTransactionalEmail({
       to: userEmail,
       subject: "Welcome to Veloce!",

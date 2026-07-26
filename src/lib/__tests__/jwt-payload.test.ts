@@ -48,7 +48,7 @@ describe("verifyClientJWT payload validation", () => {
       exp: future(),
     });
 
-    // Signature is valid — only the shape check can catch this.
+    // Signature is valid - only the shape check can catch this.
     expect(verifyClientJWT(token)).toBeNull();
   });
 

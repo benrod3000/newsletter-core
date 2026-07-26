@@ -25,7 +25,7 @@ function hmacDigestBase64Url(data: string): string {
 /**
  * Runtime shape of a decoded JWT payload.
  *
- * A verified signature only proves *we* minted the token — it says nothing about
+ * A verified signature only proves *we* minted the token - it says nothing about
  * the payload's shape. Validating here keeps `ClientContext` an enforced
  * guarantee rather than an unchecked `as` cast, so every downstream
  * authorization check can rely on `role` and `workspaceId` being present.
@@ -48,8 +48,8 @@ const clientJWTPayloadSchema = z.object({
 
 /**
  * What a token is allowed to do.
- * - "session"      — fully authenticated; may access workspace APIs.
- * - "totp_pending" — password verified, second factor NOT yet supplied.
+ * - "session"      - fully authenticated; may access workspace APIs.
+ * - "totp_pending" - password verified, second factor NOT yet supplied.
  *                    Only /api/auth/totp/verify may accept this.
  */
 export type TokenAudience = "session" | "totp_pending";
@@ -101,7 +101,7 @@ export function createClientJWT(
 }
 
 /**
- * Verify signature, shape and expiry. Does NOT check the audience claim —
+ * Verify signature, shape and expiry. Does NOT check the audience claim -
  * callers must use verifyClientJWT or verifyPendingTOTPJWT instead.
  */
 function decodeVerifiedJWT(token: string): ClientJWTPayload | null {
@@ -117,7 +117,7 @@ function decodeVerifiedJWT(token: string): ClientJWTPayload | null {
     const expBuf = Buffer.from(expectedSignature);
     if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) return null;
 
-    // Decode and validate payload shape — a valid signature is not a valid payload
+    // Decode and validate payload shape - a valid signature is not a valid payload
     const parsed = clientJWTPayloadSchema.safeParse(JSON.parse(fromBase64Url(payloadB64)));
     if (!parsed.success) return null;
     const payload = parsed.data;
@@ -148,7 +148,7 @@ export function verifyClientJWT(token: string): ClientJWTPayload | null {
 
 /**
  * Verify a token from the password step of a 2FA login.
- * Used only by /api/auth/totp/verify — never grants workspace access on its own.
+ * Used only by /api/auth/totp/verify - never grants workspace access on its own.
  */
 export function verifyPendingTOTPJWT(token: string): ClientJWTPayload | null {
   const payload = decodeVerifiedJWT(token);

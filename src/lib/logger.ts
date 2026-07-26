@@ -1,11 +1,11 @@
 /**
  * Lightweight logger with optional Sentry integration.
- * Works out of the box — degrades to console.
+ * Works out of the box - degrades to console.
  * To add Sentry: npm install @sentry/nextjs + add SENTRY_DSN to Vercel env vars.
  * Then replace the catch below with: import * as Sentry from '@sentry/nextjs'
  */
 
-/** Log an error — always console, also Sentry if configured */
+/** Log an error - always console, also Sentry if configured */
 export function logError(err: unknown, context?: Record<string, unknown>) {
   console.error('[error]', err)
   if (context && Object.keys(context).length) console.error('  context:', context)

@@ -45,7 +45,7 @@ export type DemoWorkspaceCheck =
  * Resolve the demo user and confirm its workspace is marked sandbox_mode.
  *
  * Without this check, the demo routes would happily reset the password of, or
- * seed data into, whatever workspace the demo user happens to be attached to —
+ * seed data into, whatever workspace the demo user happens to be attached to -
  * including one holding real customer data if the account were ever moved or
  * re-pointed. sandbox_mode is the existing flag for "this workspace does not
  * send real email" (migration 043), which is exactly the property required.

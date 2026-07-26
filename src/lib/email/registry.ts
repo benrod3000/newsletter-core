@@ -1,5 +1,5 @@
 /**
- * ProviderRegistry — dependency injection for email providers.
+ * ProviderRegistry - dependency injection for email providers.
  *
  * Providers register themselves at import time. The dispatcher
  * asks the registry for a provider by ID. No hardcoded conditionals.

@@ -1,5 +1,5 @@
 /**
- * email-sender.ts — unified transactional email helpers.
+ * email-sender.ts - unified transactional email helpers.
  *
  * All sending goes through dispatchEmail() from the dispatcher module.
  * This file is now a thin convenience layer over the canonical send path.

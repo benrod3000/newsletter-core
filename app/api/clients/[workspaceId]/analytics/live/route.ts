@@ -8,7 +8,7 @@ const auth = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` };
 /**
  * GET /api/clients/[workspaceId]/analytics/live
  * Returns the most recent campaign events (opens & clicks) for the real-time pulse.
- * Lightweight — queries last 5 minutes only, limited to 10 events.
+ * Lightweight - queries last 5 minutes only, limited to 10 events.
  */
 export async function GET(
   req: NextRequest,

@@ -1,5 +1,5 @@
 /**
- * Campaign Activity Log — subscribes to domain events and writes
+ * Campaign Activity Log - subscribes to domain events and writes
  * a human-readable timeline for every campaign.
  *
  * Like GitHub's commit history. You can replay exactly what happened.
@@ -22,7 +22,7 @@ const EVENT_LABELS: Record<string, string | ((data: Record<string, unknown>) => 
   "campaign:sending":     "Sending started",
   "campaign:retrying":    ({ attempt, maxAttempts }) => `Retrying (attempt ${attempt}/${maxAttempts})`,
   "campaign:completed":   ({ sent, failed, durationMs }) =>
-    `Send complete — ${sent} sent, ${failed} failed in ${Math.round((durationMs as number) / 1000)}s`,
+    `Send complete - ${sent} sent, ${failed} failed in ${Math.round((durationMs as number) / 1000)}s`,
   "campaign:failed":      ({ error }) => {
     const err = error as { message?: string } | undefined;
     return `Send failed: ${err?.message || "unknown error"}`;
@@ -34,7 +34,7 @@ const EVENT_LABELS: Record<string, string | ((data: Record<string, unknown>) => 
     const err = error as { message?: string } | undefined;
     return `Failed via ${provider}: ${err?.message || "unknown"}`;
   },
-  "provider:fallback":    ({ from, to, reason }) => `Fell back from ${from} to ${to} — ${reason || "primary failed"}`,
+  "provider:fallback":    ({ from, to, reason }) => `Fell back from ${from} to ${to} - ${reason || "primary failed"}`,
   "queue:batch_complete": ({ batch, sent, total }) => `Batch ${batch}/${total} complete: ${sent} sent`,  "campaign:transition":  ({ from, to }) => `Status changed: ${from} → ${to}`,};
 
 function describe(event: DomainEvent): string {

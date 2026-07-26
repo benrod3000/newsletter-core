@@ -1,4 +1,4 @@
-// Sentry client-side config (browser bundle — minimal, just for completeness)
+// Sentry client-side config (browser bundle - minimal, just for completeness)
 import * as Sentry from '@sentry/nextjs'
 
 Sentry.init({

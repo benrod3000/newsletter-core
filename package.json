@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "//lint:ci": "Capped baseline — see eslint.config.mjs. Lower this number as warnings are fixed; never raise it.",
+    "//lint:ci": "Capped baseline - see eslint.config.mjs. Lower this number as warnings are fixed; never raise it.",
     "lint:ci": "eslint app src --max-warnings=80",
     "test": "vitest run",
     "geo:backfill": "node scripts/backfill-subscriber-geo.mjs"

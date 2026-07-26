@@ -8,7 +8,7 @@ const authHeaders = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KE
 
 /**
  * POST /api/clients/[workspaceId]/automations/smart-tags/run
- * JWT-authenticated, workspace-scoped — runs smart tag evaluation
+ * JWT-authenticated, workspace-scoped - runs smart tag evaluation
  * for the current workspace only. Called from the Settings dashboard.
  */
 export async function POST(

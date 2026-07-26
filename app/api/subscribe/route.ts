@@ -158,7 +158,7 @@ function buildCapturedSignals(snapshot: SignupSnapshot): Array<{ label: string; 
 }
 
 async function resolveClientIdForSignup(supabase: ReturnType<typeof getSupabaseClient>, clientSlug: string | null) {
-  // Require an explicit workspace slug — no default fallback
+  // Require an explicit workspace slug - no default fallback
   if (!clientSlug) return null;
 
   const { data } = await supabase
@@ -271,7 +271,7 @@ async function sendConfirmationEmail({
 }
 
 export async function POST(req: NextRequest) {
-  // Public, unauthenticated, and writes rows — cap it before doing any work.
+  // Public, unauthenticated, and writes rows - cap it before doing any work.
   // 5/min per IP is well above human signup rate and far below scripted abuse.
   const rl = await applyRateLimit(req, { max: 5, windowSec: 60, keyPrefix: "subscribe" });
   if (!rl.allowed) return rateLimitedResponse(rl);
@@ -413,7 +413,7 @@ export async function POST(req: NextRequest) {
       if (dbError.code === "23505") {
         // Scoped to this workspace. The unique key is (client_id, email) since
         // migration 024, so the same address legitimately exists in several
-        // workspaces — an unscoped lookup here returned another workspace's
+        // workspaces - an unscoped lookup here returned another workspace's
         // confirmation and unsubscribe tokens and mailed them to the subscriber.
         const { data: existing, error: existingError } = await supabase
           .from("subscribers")

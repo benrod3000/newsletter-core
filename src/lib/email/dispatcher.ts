@@ -1,5 +1,5 @@
 /**
- * EmailDispatcher — single entry point for all email sending.
+ * EmailDispatcher - single entry point for all email sending.
  *
  * Does NOT know about specific providers. Asks the registry.
  * Tries primary provider, falls back on transient failure.
@@ -24,7 +24,7 @@ export interface DispatchConfig {
   fallbackProvider?: string;
   /** Per-workspace credentials (matches client table columns) */
   credentials: Record<string, unknown>;
-  /** Enable sandbox mode — intercepts all sends, generates synthetic events */
+  /** Enable sandbox mode - intercepts all sends, generates synthetic events */
   sandbox?: boolean;
 }
 
@@ -37,7 +37,7 @@ export async function dispatchEmail(
   params: SendParams,
   config: DispatchConfig
 ): Promise<DispatchResult> {
-  // Sandbox mode — intercept and simulate
+  // Sandbox mode - intercept and simulate
   if (config.sandbox) {
     const sandbox = registry.resolve("sandbox", {});
     if (sandbox) {
@@ -72,7 +72,7 @@ export async function dispatchEmail(
       return { ...result, provider: providerId, fallbackUsed: tried.length > 1 };
     }
 
-    // Permanent failure — don't try another provider
+    // Permanent failure - don't try another provider
     if (result.error && !result.error.retryable) {
       bus.emit({
         type: "email:failed",
@@ -82,7 +82,7 @@ export async function dispatchEmail(
       return { ...result, provider: providerId, fallbackUsed: false };
     }
 
-    // Transient failure — log and try next provider
+    // Transient failure - log and try next provider
     lastResult = { ...result, provider: providerId, fallbackUsed: tried.length > 1 };
 
     bus.emit({

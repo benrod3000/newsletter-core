@@ -26,7 +26,7 @@ interface ResolvedSubscriber {
  * Suppression must never cross tenants. Since migration 024 the unique key is
  * (client_id, email), so one address can be a subscriber in several workspaces,
  * and a bounce in one says nothing about the others. Matching on the address
- * alone suppressed every workspace's copy at once — one tenant's stale list
+ * alone suppressed every workspace's copy at once - one tenant's stale list
  * silently stopped delivery for everyone else's engaged subscribers.
  *
  * Identity normally comes from the custom_args the transport attaches to each

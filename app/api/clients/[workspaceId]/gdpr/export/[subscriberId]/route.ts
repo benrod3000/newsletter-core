@@ -21,7 +21,7 @@ export async function GET(
     const supabase = getSupabaseClient();
 
     // Establish ownership first. Previously the child queries ran in the same
-    // Promise.all as the ownership check — their results were gated by the 404
+    // Promise.all as the ownership check - their results were gated by the 404
     // below, so nothing leaked, but the queries executed regardless and the
     // safety depended entirely on the ordering of a later branch.
     const { data: subscriber, error: subError } = await supabase

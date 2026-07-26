@@ -11,7 +11,7 @@
 --
 -- One row per (job, subscriber) fixes all three: the pending rows ARE the work
 -- list, the primary key makes enqueue idempotent, and the list never enters the
--- application at all — it is built by INSERT ... SELECT inside the database.
+-- application at all - it is built by INSERT ... SELECT inside the database.
 
 CREATE TABLE IF NOT EXISTS campaign_job_recipients (
   job_id        UUID        NOT NULL REFERENCES campaign_jobs(id) ON DELETE CASCADE,
@@ -36,7 +36,7 @@ CREATE INDEX IF NOT EXISTS idx_cjr_pending
 ALTER TABLE campaign_job_recipients ENABLE ROW LEVEL SECURITY;
 
 -- An ad-hoc blast from the admin tool has no campaign row. This column was
--- NOT NULL, and the send path coerced null to '' — which is not a valid uuid,
+-- NOT NULL, and the send path coerced null to '' - which is not a valid uuid,
 -- so every ad-hoc send failed at job creation.
 ALTER TABLE campaign_jobs ALTER COLUMN campaign_id DROP NOT NULL;
 

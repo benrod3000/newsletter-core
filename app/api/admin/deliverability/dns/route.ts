@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
 
     return apiSuccess(response);
   } catch (err) {
-    // Don't echo err.message to the client — it leaks internals.
+    // Don't echo err.message to the client - it leaks internals.
     logError(err, { route: "admin.deliverability.dns" });
     return apiInternalError("DNS check failed");
   }

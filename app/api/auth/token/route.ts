@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
       }).catch(() => {});
     }
 
-    // Check if TOTP is required — if so, return a partial token that needs verification
+    // Check if TOTP is required - if so, return a partial token that needs verification
     if (user.totp_enabled) {
       // Audience "totp_pending": password verified, second factor still outstanding.
       // This token is rejected by every workspace route until it is exchanged

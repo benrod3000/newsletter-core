@@ -16,7 +16,7 @@ export async function DELETE(
   if (!ctx || !assertWorkspaceAccess(ctx, workspaceId))
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // canEditAsClient was imported but never enforced here — a viewer could
+  // canEditAsClient was imported but never enforced here - a viewer could
   // delete saved segments.
   if (!canEditAsClient(ctx)) {
     return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });

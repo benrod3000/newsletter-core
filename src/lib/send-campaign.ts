@@ -11,7 +11,7 @@ import type { DispatchConfig } from "@/lib/email/dispatcher";
 /**
  * Audience selector.
  *
- * The template-literal member is what makes this a real union — the previous
+ * The template-literal member is what makes this a real union - the previous
  * `| string` collapsed it back to `string`, so a typo'd audience compiled fine
  * and silently sent to the wrong people.
  */
@@ -110,7 +110,7 @@ export async function sendCampaignBlast(
   //
   // A rejection has to close the job. enqueue has already written the recipient
   // rows, and a job sitting in 'sending' with pending rows is precisely what
-  // /api/admin/campaigns/recover looks for — left open, the recovery cron would
+  // /api/admin/campaigns/recover looks for - left open, the recovery cron would
   // drain the whole campaign 15 minutes later, past the limit that just
   // refused it.
   try {

@@ -17,7 +17,7 @@ export interface EmailTransport {
   /** Maximum emails per single API call. Used for batching. */
   readonly maxBatchSize: number;
 
-  /** Send a single email. Never throws — always returns a SendResult. */
+  /** Send a single email. Never throws - always returns a SendResult. */
   send(params: SendParams): Promise<SendResult>;
 
   /** Check if provider is reachable and credentials are valid. */

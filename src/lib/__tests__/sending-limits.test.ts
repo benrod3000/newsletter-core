@@ -69,7 +69,7 @@ describe("checkSendingLimit", () => {
     await expect(checkSendingLimit(supabase, WS, 10)).rejects.toThrow(SendingLimitError);
   });
 
-  // Deployment skew only — code live, migration 045 not applied yet.
+  // Deployment skew only - code live, migration 045 not applied yet.
   it("degrades to unenforced when the function itself is missing", async () => {
     rpcMock.mockResolvedValue({
       data: null,

@@ -13,7 +13,7 @@
  *                         spent, leaving the remaining rows pending.
  *
  * Everything that used to be fragile falls out of that shape:
- *   - Resume is "claim the pending rows again" — no separate resume path.
+ *   - Resume is "claim the pending rows again" - no separate resume path.
  *   - Double-sending is prevented by the (job_id, subscriber_id) primary key
  *     and by claiming rows with FOR UPDATE SKIP LOCKED.
  *   - A job is only ever marked complete when zero pending rows remain, so a
@@ -345,7 +345,7 @@ export async function drainCampaignJob(params: DrainParams): Promise<DrainResult
 
     if (completeError) {
       // The rows stay claimed and become eligible again once claimed_at goes
-      // stale, so nothing is lost — but it will be retried, so say so.
+      // stale, so nothing is lost - but it will be retried, so say so.
       logError(completeError, { scope: "send-queue.complete", jobId, batch: batch.length });
     }
 
@@ -361,7 +361,7 @@ export async function drainCampaignJob(params: DrainParams): Promise<DrainResult
   const remaining = progress?.pending ?? 0;
 
   // Only terminal when nothing is left. An interrupted drain stays 'sending' so
-  // the recovery cron can pick it up — the old code marked it complete, which
+  // the recovery cron can pick it up - the old code marked it complete, which
   // made partial sends invisible.
   const finished = remaining === 0;
   const totalFailed = progress?.failed ?? failedCount;

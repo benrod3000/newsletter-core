@@ -19,7 +19,7 @@ export async function OPTIONS() {
 
 /**
  * POST /api/public/forms/[slug]/submit
- * Public endpoint — accepts an email, adds the subscriber to the widget's
+ * Public endpoint - accepts an email, adds the subscriber to the widget's
  * target list, records the submission, and fires a subscriber_joined
  * automation so a download email gets sent.
  *
@@ -110,7 +110,7 @@ export async function POST(
   const userAgent = req.headers.get("user-agent") || null;
   const referrer = req.headers.get("referer") || null;
 
-  // Resolve location — browser GPS overrides IP lookup
+  // Resolve location - browser GPS overrides IP lookup
   const ipGeo = await geolocateIP(ip);
   const finalLatitude = body.browser_latitude ?? ipGeo?.latitude ?? null;
   const finalLongitude = body.browser_longitude ?? ipGeo?.longitude ?? null;

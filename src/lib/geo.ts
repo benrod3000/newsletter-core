@@ -2,7 +2,7 @@
  * IP geolocation and distance utilities.
  *
  * Uses ip-api.com (free tier: 45 req/min, no API key).
- * Falls back to null on failure — callers must handle missing geo data gracefully.
+ * Falls back to null on failure - callers must handle missing geo data gracefully.
  */
 
 export interface GeoResult {

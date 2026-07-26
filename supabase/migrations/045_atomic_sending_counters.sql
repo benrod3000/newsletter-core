@@ -8,14 +8,14 @@
 -- to a direct UPDATE never ran: sent_this_month was never incremented, and the
 -- cap was therefore never reached by the campaign send path.
 --
--- The read-check-write it replaced was also racy — two concurrent sends both
+-- The read-check-write it replaced was also racy - two concurrent sends both
 -- read the same counter, both passed, and both sent.
 --
 -- This does the check and the increment as one locked statement, and rolls the
 -- monthly counter over lazily. Rollover belongs here rather than in a cron: the
 -- reset day is per-workspace (sending_limit_reset_day), so a job resetting
 -- every row on the 1st would be wrong for most of them, and a cron that stops
--- running fails silently — which is exactly the failure mode being fixed.
+-- running fails silently - which is exactly the failure mode being fixed.
 
 ALTER TABLE public.clients
   ADD COLUMN IF NOT EXISTS sending_period_start date DEFAULT NULL;
@@ -27,10 +27,10 @@ COMMENT ON COLUMN public.clients.sending_period_start IS
 -- Atomically check the caps and, if the send fits, consume the quota.
 --
 -- Returns one row:
---   allowed   — whether the caller may send p_count emails
---   reason    — NULL when allowed; otherwise 'monthly_limit' | 'lifetime_limit'
+--   allowed   - whether the caller may send p_count emails
+--   reason    - NULL when allowed; otherwise 'monthly_limit' | 'lifetime_limit'
 --               | 'workspace_not_found' | 'invalid_count'
---   remaining — headroom left in the monthly cap (NULL when uncapped)
+--   remaining - headroom left in the monthly cap (NULL when uncapped)
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION increment_sending_counters(
   p_workspace_id UUID,

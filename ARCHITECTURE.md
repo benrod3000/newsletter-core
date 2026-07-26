@@ -1,4 +1,4 @@
-# Veloce — Architecture
+# Veloce - Architecture
 
 _Target architecture and migration plan. Written 2026-07-26. Covers both repos:
 `newsletter` (frontend) and `newsletter-core` (backend/API)._
@@ -13,8 +13,8 @@ Read [`CLAUDE-HANDOFF.md`](../newsletter/CLAUDE-HANDOFF.md) for current working 
 
 ## 0. The constraint
 
-Veloce is built by one person. The feature ambition — email, SMS, RCS, push,
-WhatsApp, webhooks, APIs, automation, AI, enterprise, white-label, multi-region —
+Veloce is built by one person. The feature ambition - email, SMS, RCS, push,
+WhatsApp, webhooks, APIs, automation, AI, enterprise, white-label, multi-region -
 is a decade of work for a team of thirty. So the design question is never "how do
 I support all of this," it is:
 
@@ -27,9 +27,9 @@ purchased. Multi-region is a routing table, not an infrastructure project.
 
 ### The three decisions that foreclose the most future
 
-1. **Tenancy shape** — Organization → Workspace → Membership, enforced by RLS.
-2. **Event envelope** — one append-only log, many consumers.
-3. **Delivery record** — one send pipeline, every channel flows through it.
+1. **Tenancy shape** - Organization → Workspace → Membership, enforced by RLS.
+2. **Event envelope** - one append-only log, many consumers.
+3. **Delivery record** - one send pipeline, every channel flows through it.
 
 Get these right and the next decade is additive. Get them wrong and every feature
 becomes a migration.
@@ -86,54 +86,54 @@ Conflating these is the most common structural error in this category of product
 
 ### Entities
 
-**Organization** — the commercial and identity-federation boundary. Owns billing,
+**Organization** - the commercial and identity-federation boundary. Owns billing,
 plan/entitlements, SSO/SCIM config, verified domains, residency region. Created at
 signup *always*, even for a single self-serve user, even when no UI shows it.
 Retrofitting the top of the tenancy tree touches every foreign key and every token.
 
-**Workspace** — the **data controller boundary**, and therefore the tenancy, RLS,
+**Workspace** - the **data controller boundary**, and therefore the tenancy, RLS,
 and residency boundary. Under GDPR each workspace is a distinct controller, which
 has a hard consequence: **audience data is never joined across workspaces.**
 
-**User** — an authenticated operator. Credentials delegated to an identity
+**User** - an authenticated operator. Credentials delegated to an identity
 provider. Deactivation must revoke sessions immediately.
 
-**Membership** — User × (Org | Workspace) → Role. The single answer to "may this
+**Membership** - User × (Org | Workspace) → Role. The single answer to "may this
 actor do this here?" Replaces the baked-in `workspaceId` JWT claim: the token
 identifies the *user*, the path identifies the workspace, Membership authorizes.
 
-**Person** — the durable record of a relationship with a human. Not an email
+**Person** - the durable record of a relationship with a human. Not an email
 address. Holds profile attributes, computed traits, lifecycle state, source.
-**Always workspace-scoped** — cross-workspace identity resolution is a legal
+**Always workspace-scoped** - cross-workspace identity resolution is a legal
 problem, not a feature.
 
-**ChannelIdentity** — one reachable endpoint: email address, phone number, push
+**ChannelIdentity** - one reachable endpoint: email address, phone number, push
 token, WhatsApp ID. Carries verification state, **consent state**, **suppression
 state**, unsubscribe token, provider metadata.
 
 > The single most important structural change. Consent, suppression and
-> verification are properties of *(person, channel, address)* — not of a person,
+> verification are properties of *(person, channel, address)* - not of a person,
 > and certainly not of a row that gets deleted.
 
-**ConsentRecord** — append-only legal proof: exact text, version, timestamp,
+**ConsentRecord** - append-only legal proof: exact text, version, timestamp,
 IP/UA, mechanism, scope. Current consent is a projection over these.
 
-**Segment** — the only audience abstraction, and the addressable unit for every
+**Segment** - the only audience abstraction, and the addressable unit for every
 send. Dynamic (a predicate) or static (an explicit set); both addressed
 identically. Collapses today's `subscriber_lists`, `saved_segments`,
 `subscriber_tags` and inline geo params. **Tag becomes a Person attribute** that
-predicates reference. *Audience is not an entity — it is the aggregate.*
+predicates reference. *Audience is not an entity - it is the aggregate.*
 
-**Content / ContentVersion** — Content is the mutable editing surface;
+**Content / ContentVersion** - Content is the mutable editing surface;
 **ContentVersion is immutable and is what a send references.** Per-channel
 variants live here, which is what makes channel a *decision* rather than a fact.
 
-**Campaign** — a one-time broadcast: this content, to this segment, at this time.
+**Campaign** - a one-time broadcast: this content, to this segment, at this time.
 
-**Journey / JourneyVersion / JourneyRun** — a versioned automation graph, and one
+**Journey / JourneyVersion / JourneyRun** - a versioned automation graph, and one
 Person's traversal of it. In-flight runs pin to the version they entered.
 
-**Delivery** — **the universal spine.** One record per "we attempted to deliver
+**Delivery** - **the universal spine.** One record per "we attempted to deliver
 this content to this identity via this provider." Channel, person,
 channel_identity, content_version, source (`campaign` | `journey` |
 `transactional` | `api` | `intent`), provider, provider message id, status,
@@ -142,37 +142,37 @@ produced it** (see §8).
 
 > Every channel produces Deliveries; every engagement event references one. This
 > is what buys cross-channel analytics, frequency capping, one retry engine and
-> one reporting surface — for free.
+> one reporting surface - for free.
 
-**Event** — an immutable fact. The system's memory and its nervous system.
+**Event** - an immutable fact. The system's memory and its nervous system.
 
-**Connection** — a configured link to an external system (ESP, SMS provider, CRM,
+**Connection** - a configured link to an external system (ESP, SMS provider, CRM,
 warehouse). Encrypted credentials, capability declaration, health, routing
 eligibility.
 
-**Domain** — a customer-controlled domain with **purposes**, commonly conflated
+**Domain** - a customer-controlled domain with **purposes**, commonly conflated
 but genuinely distinct:
-- **Sending** — DKIM/SPF/DMARC alignment. Deliverability-critical.
-- **Tracking** — the click/open domain. Deliverability-critical **and a one-way
+- **Sending** - DKIM/SPF/DMARC alignment. Deliverability-critical.
+- **Tracking** - the click/open domain. Deliverability-critical **and a one-way
   door**: links live in inboxes forever.
-- **Hosting** — public archive and landing pages. Branding.
+- **Hosting** - public archive and landing pages. Branding.
 
-**ApiKey / Credential** — a non-human actor. Hashed, prefixed, scoped, expiring,
+**ApiKey / Credential** - a non-human actor. Hashed, prefixed, scoped, expiring,
 rotatable. **A key can never exceed the permissions of its creator.**
 
-**AuditLogEntry** — control-plane accountability.
+**AuditLogEntry** - control-plane accountability.
 
 > **Do not merge the audit log with the event stream.** They differ in volume
 > (thousands vs billions), retention (legally fixed vs tiered), access control
 > (compliance-restricted vs product-facing) and consumers (auditors vs product).
 
-**Asset** — uploaded media, CDN-served, servable from a customer domain.
+**Asset** - uploaded media, CDN-served, servable from a customer domain.
 
 ---
 
 ## 3. Bounded contexts
 
-The value is in the *does not own* column — that is where architectures leak.
+The value is in the *does not own* column - that is where architectures leak.
 
 | Context | Owns | Does **not** own |
 | --- | --- | --- |
@@ -180,7 +180,7 @@ The value is in the *does not own* column — that is where architectures leak.
 | **Audience** | Persons, ChannelIdentities, Consent, suppression, Segments, attributes, imports, GDPR erasure | Content, delivery, provider selection |
 | **Content** | Content, ContentVersions, Assets, rendering, personalization, per-channel variants | Who receives anything |
 | **Messaging & Delivery** | Campaigns, Deliveries, transports, provider routing, retries, rate shaping, frequency capping, quiet hours, tracking ingestion | Consent decisions (asks Audience), quota (asks Billing) |
-| **Automation** | Journeys, versions, runs, triggers, scheduler, goals | Sending — it *requests* a Delivery |
+| **Automation** | Journeys, versions, runs, triggers, scheduler, goals | Sending - it *requests* a Delivery |
 | **Events & Analytics** | Ingestion, the log, schema registry, rollups, reporting, export, attribution | Business decisions |
 | **Deliverability** | Domain auth, reputation, bounce/complaint classification, feedback loops, warmup, health scoring | Sending. It advises and constrains Messaging |
 | **Integrations** | Connections, inbound/outbound webhooks, CRM/warehouse sync, OAuth apps | The core domain. Everything translates at the boundary |
@@ -190,7 +190,7 @@ The value is in the *does not own* column — that is where architectures leak.
 channel.** Messaging asks; it never decides.
 
 **The sending quota belongs to Billing**, not Messaging. It currently lives in the
-send path (`src/lib/sending-limits.ts`) — acceptable for now; note where it goes.
+send path (`src/lib/sending-limits.ts`) - acceptable for now; note where it goes.
 
 ### AI is not a bounded context
 
@@ -199,9 +199,9 @@ prompt versioning, per-workspace cost attribution and eval hooks, plus (b)
 features owned by the contexts they serve: subject lines → Content, segment
 suggestion → Audience, send-time optimization → Deliverability.
 
-Two rules: **AI is an actor, not a bypass** — it authenticates, carries scopes,
+Two rules: **AI is an actor, not a bypass** - it authenticates, carries scopes,
 emits events and appears in the audit log like a human. And **the event stream is
-the feature store** — done properly, AI features are queries, not a data
+the feature store** - done properly, AI features are queries, not a data
 engineering project.
 
 ---
@@ -213,13 +213,13 @@ GIN, and materialized rollups reach a scale you will be delighted to hit.
 
 ### Two halves, designed oppositely
 
-**Control plane — normalize hard.** Orgs, Workspaces, Users, Memberships, Persons,
+**Control plane - normalize hard.** Orgs, Workspaces, Users, Memberships, Persons,
 ChannelIdentities, Segments, Content, Journeys, Connections, Domains. Small,
 relational, correctness-critical. Full FK/check/unique constraints.
 
-**Data plane — denormalize deliberately.** Events, Deliveries, JourneyRuns,
+**Data plane - denormalize deliberately.** Events, Deliveries, JourneyRuns,
 rollups.
-- **No foreign keys on hot append tables** — FK checks cost write throughput and
+- **No foreign keys on hot append tables** - FK checks cost write throughput and
   couple locks to the control plane. Enforce integrity in the write path.
 - **Denormalize read keys onto the row** so reports never join to find them.
 - **`jsonb` for the open-ended tail**, GIN-indexed, and **promote hot predicates
@@ -243,12 +243,12 @@ event_type)`. **Dashboards must never touch raw events.**
 > Today `analytics/route.ts` pulls up to 50,000 event rows into Node per dashboard
 > load, dedupes by email in a `Map<string, Set<string>>`, then reports
 > `truncated: true` with wrong numbers past the cap. The fix is structural, not a
-> better query — and it should be written against the new `events` table so it is
+> better query - and it should be written against the new `events` table so it is
 > only written once.
 
 ### Keys
 
-- **UUIDv7** — time-ordered, so append-table index locality is good.
+- **UUIDv7** - time-ordered, so append-table index locality is good.
 - **Public IDs are prefixed and opaque** (`per_`, `cmp_`, `dlv_`).
 - **Natural keys for idempotency**: `(campaign_id, person_id)`,
   `(journey_run_id, node_id)` unique. This is how exactly-once is actually
@@ -281,7 +281,7 @@ without downtime, plus a legal problem in the interim.
 
 Events are an immutable append-only log written in the **same transaction** as the
 state change (transactional outbox). **State tables remain the source of truth.**
-Full event sourcing — rebuilding entity state by replay — is where small teams
+Full event sourcing - rebuilding entity state by replay - is where small teams
 lose years.
 
 ### Envelope
@@ -292,7 +292,7 @@ lose years.
 | `workspace_id` | tenancy, on every event without exception |
 | `type` | `noun.verb`, past tense, namespaced |
 | `schema_version` | consumers branch on it |
-| `occurred_at` / `received_at` | real-world vs ingestion time — **both**, because late-arriving provider and mobile events are routine |
+| `occurred_at` / `received_at` | real-world vs ingestion time - **both**, because late-arriving provider and mobile events are routine |
 | `actor` | `{type: user\|system\|api_key\|journey\|ai, id}` |
 | `subject` | `{person_id?, delivery_id?, campaign_id?, journey_run_id?}` |
 | `properties` | `jsonb` |
@@ -301,7 +301,7 @@ lose years.
 
 ### Naming: channel is a property, never part of the name
 
-**`message.clicked` with `{channel: "sms"}` — not `sms.clicked`.**
+**`message.clicked` with `{channel: "sms"}` - not `sms.clicked`.**
 
 With channel-in-name, every consumer must enumerate channels: "clicked anything in
 30 days" becomes `email.clicked OR sms.clicked OR rcs.clicked OR …` and silently
@@ -312,7 +312,7 @@ questions are the default and new channels join existing analytics on day one.
 Reserve system namespaces (`person.*`, `message.*`, `journey.*`, `segment.*`,
 `campaign.*`, `consent.*`, `workspace.*`); customer events live under their own.
 
-`segment.entered` / `segment.exited` are *derived* events — they are what make
+`segment.entered` / `segment.exited` are *derived* events - they are what make
 "when someone becomes a VIP, start this journey" possible without polling.
 
 ### One log, six consumers
@@ -346,25 +346,25 @@ and pretending otherwise is where naive abstractions break.
 | --- | --- |
 | Email | MIME, HTML rendering, `List-Unsubscribe`, opens unreliable (proxy prefetch) |
 | SMS | 160/70-char segments (GSM-7 vs UCS-2) drive **per-segment cost**; no open tracking; carrier filtering |
-| RCS | Rich cards, carousels, suggested replies — **structured payloads, not a body string**; SMS fallback mandatory |
+| RCS | Rich cards, carousels, suggested replies - **structured payloads, not a body string**; SMS fallback mandatory |
 | Push | Tokens expire and rotate; per-device not per-person; silent-failure-heavy |
 | WhatsApp | **Pre-approved templates only** outside a 24h window; per-conversation pricing |
 | Webhook | Destination is a system, not a person; different retry economics and retention |
 
-> **Design against WhatsApp now, even if it ships last.** Its constraints —
-> template pre-approval, session windows, conversation billing — break any
+> **Design against WhatsApp now, even if it ships last.** Its constraints -
+> template pre-approval, session windows, conversation billing - break any
 > abstraction assuming content is free-form and sending is always permitted. If
 > the model handles WhatsApp on paper it handles everything else.
 
 ### Structure
 
-- **Channel Capability Descriptor** — payload schema, size limits, template
+- **Channel Capability Descriptor** - payload schema, size limits, template
   pre-registration, session windows, supported tracking, fallback channel. The
   pipeline reads capabilities rather than branching on channel names.
-- **ChannelPayload** — a discriminated union validated at *authoring* time.
-- **ChannelTransport** — today's `EmailTransport`, generalized. The registry
+- **ChannelPayload** - a discriminated union validated at *authoring* time.
+- **ChannelTransport** - today's `EmailTransport`, generalized. The registry
   pattern carries over unchanged.
-- **Provider routing** — per workspace and channel, ordered by rules (region,
+- **Provider routing** - per workspace and channel, ordered by rules (region,
   cost, volume, warmup) with health-based circuit breaking and fallback.
 
 ### Cross-channel concerns, only possible with one Delivery table
@@ -384,10 +384,10 @@ logic or analytics. It is four files deep. Unify before it is forty.
 **Build the journey engine. Do not adopt a general workflow engine** for
 customer-facing journeys. Four domain requirements a general engine fights:
 
-1. **Reportability** — "how many people are at node 4" is a core product screen.
-2. **Bulk mutation** — "remove everyone in this branch" needs rows, not opaque
+1. **Reportability** - "how many people are at node 4" is a core product screen.
+2. **Bulk mutation** - "remove everyone in this branch" needs rows, not opaque
    instances.
-3. **Cost at rest** — millions of runs idle for days. A row with `next_wake_at`
+3. **Cost at rest** - millions of runs idle for days. A row with `next_wake_at`
    costs nothing.
 4. **Versioning semantics are a product decision** you need to own.
 
@@ -405,7 +405,7 @@ advancement is the second path: waiting runs register interest, the event consum
 wakes matches. Both converge on one node executor.
 
 **The hard parts, named:** version pinning for in-flight runs (prefer *drain* over
-*migrate*) · re-entry rules (default no — getting this wrong produces duplicate
+*migrate*) · re-entry rules (default no - getting this wrong produces duplicate
 sends) · idempotency on `(run, node)` · re-evaluate conditions at wake time, never
 at entry · **poison runs dead-letter into a UI-visible state with bulk retry**
 (silent failure destroys trust faster than any other bug class) · node-level
@@ -419,8 +419,8 @@ generic automation engine currently has no trigger.
 ## 8. Intent (the direction of travel)
 
 Over five years the object a user authors moves up a level. Rather than building a
-campaign, they declare an outcome — *"everyone interested in Product X should know
-about this"* — and the system solves for channel, timing, frequency, retry and
+campaign, they declare an outcome - *"everyone interested in Product X should know
+about this"* - and the system solves for channel, timing, frequency, retry and
 follow-up.
 
 ```
@@ -435,30 +435,30 @@ overriding the system, an engineer debugging "why did she get two texts," and a
 regulator asking what was sent. Compilers keep the intermediate representation for
 exactly this reason.
 
-**Nothing below Intent changes** — Campaign and Journey are already only *sources*
+**Nothing below Intent changes** - Campaign and Journey are already only *sources*
 of Deliveries in this model. That is what putting Delivery at the centre bought.
 
 **Intent is late, not first.** A solver needs an objective function and a feedback
 loop, both downstream of outcome data that does not exist yet. An optimizer with no
 data is strictly worse than a marketer with judgment. And consent, per-segment SMS
 cost, WhatsApp template approval, quiet hours and frequency caps are **hard
-constraints, not preferences** — the system decides *within* a feasible set.
+constraints, not preferences** - the system decides *within* a feasible set.
 
 ### Four hooks that keep the door open, at ~zero cost
 
 1. **Record the decision, not just the delivery.** A `decision` field on every
    Delivery: which intent, which policy, which channels were considered and
-   rejected and why. **The one irreversible item** — free to write today,
+   rejected and why. **The one irreversible item** - free to write today,
    impossible to reconstruct later, and it is the training set.
 2. **Goals attach to anything that sends**, not only journeys.
 3. **Author messages with per-channel variants**, never channel-specific
-   campaigns — otherwise there is nothing left to route.
+   campaigns - otherwise there is nothing left to route.
 4. **Eligibility as a service**: *can I reach this person on this channel now, and
    at what cost?* Buried in the send path, a solver cannot reason over it.
    Exposed, **the constraint checker becomes the optimizer's API.**
 
 LLMs flipped which half is hard: parsing fuzzy intent into a structured spec is now
-the easy half. The hard half is the constraint model and the feedback loop — which
+the easy half. The hard half is the constraint model and the feedback loop - which
 is Phase 1 and 2 plumbing. The temptation will be to build the demo-able half
 first; it would be a toy that cannot be made real without the layer underneath.
 
@@ -466,41 +466,41 @@ first; it would be a toy that cannot be made real without the layer underneath.
 
 ## 9. API platform
 
-**Versioning** — `/v1/` in the path **plus** a dated revision header
+**Versioning** - `/v1/` in the path **plus** a dated revision header
 (`Veloce-Version: 2026-07-25`). Path-only versioning accumulates breaking changes
 until "v2" is a total rewrite maintained forever in parallel. Dated revisions allow
 continuous evolution with per-customer pinning and transformation shims. *The
 cheapest moment to establish this is while there are zero integrators.*
 
-**Authentication** — API keys (`vlc_live_…` / `vlc_test_…`, hashed, prefixed,
+**Authentication** - API keys (`vlc_live_…` / `vlc_test_…`, hashed, prefixed,
 scoped, rotatable) for server-to-server; OAuth 2.0 for third-party apps acting on
 behalf of a user; short-lived tokens for the first-party dashboard. Prefixed keys
 are scannable, so leak-detection services can notify you. Test keys route to
 sandbox transports and never send.
 
-**Permissions** — scopes intersected with the principal's role, downgraded
+**Permissions** - scopes intersected with the principal's role, downgraded
 automatically when the creator's role is reduced.
 
-**Consistency** — plural nouns · **cursor pagination only** (offset is O(n) *and*
+**Consistency** - plural nouns · **cursor pagination only** (offset is O(n) *and*
 skips/duplicates rows when the set mutates, which for an audience API is
 constantly) · one success and one error envelope with stable codes · `request_id`
 on every response · **idempotency keys required on POST** · consistent filter and
 sort grammar.
 
-**Webhooks** — HMAC over `timestamp + body` with a tolerance window (replay
+**Webhooks** - HMAC over `timestamp + body` with a tolerance window (replay
 defence) · versioned payloads reusing the event envelope · at-least-once with
 backoff and dead-lettering · per-subscription filters · **a delivery log with
 manual replay in the UI**, which removes most integration support load. Reuse the
 Delivery retry machinery; separate table (retention and query patterns differ).
 
-**SDKs** — **OpenAPI is the source of truth.** Server types, client SDKs and docs
+**SDKs** - **OpenAPI is the source of truth.** Server types, client SDKs and docs
 are outputs; contract tests run in CI.
 
 > This permanently kills the `data.data ?? data` unwrap in the frontend's
 > `lib/api.ts`, which exists because 13 of 94 routes use the standard envelope and
 > 77 do not.
 
-**Rate limiting** — per key, per workspace, per endpoint class, with separate
+**Rate limiting** - per key, per workspace, per endpoint class, with separate
 budgets for read / write / send. Standard `RateLimit-*` headers. Publish limits.
 
 ---
@@ -509,7 +509,7 @@ budgets for read / write / send. Standard `RateLimit-*` headers. Publish limits.
 
 **Org → Workspaces → Members**, with roles grantable at both levels. Ship a fixed
 role set but **implement roles as named bundles of `(action, resource_type)`
-permissions from day one** — custom roles then become a data change rather than a
+permissions from day one** - custom roles then become a data change rather than a
 refactor of every check.
 
 **Agency requirements** (an underrated near-term segment): workspace switching
@@ -517,17 +517,17 @@ without re-authentication *(blocked today by the single `workspaceId` JWT claim)
 consolidated billing · template/asset sharing across workspaces · full UI
 white-label.
 
-**SSO and SCIM — buy** (WorkOS or equivalent). SAML has a long history of subtle
+**SSO and SCIM - buy** (WorkOS or equivalent). SAML has a long history of subtle
 signature-validation vulnerabilities and every IdP interprets the spec differently.
 **Corollary: migrate off hand-rolled authentication before SSO is needed.** The
 current custom JWT correctly avoids the `alg`-confusion trap, but it has no
 revocation and it is the wrong place to stand when a deal requires SAML, SCIM,
 session policy and IP allowlisting.
 
-**Audit logs** — immutable, exportable (CSV/JSON + SIEM streaming), actor + IP + UA
+**Audit logs** - immutable, exportable (CSV/JSON + SIEM streaming), actor + IP + UA
 + before/after, retention by plan.
 
-**Domain management** — per-workspace, per-purpose, generated DNS records,
+**Domain management** - per-workspace, per-purpose, generated DNS records,
 **continuous re-verification** (records drift and silently break deliverability),
 automated TLS.
 
@@ -549,10 +549,10 @@ code" does not survive a security questionnaire.
 
 ## 11. Roadmap
 
-Ordered by **long-term leverage** — how many future decisions each unlocks or
-forecloses — not by user-visible value.
+Ordered by **long-term leverage** - how many future decisions each unlocks or
+forecloses - not by user-visible value.
 
-### Phase 0 — Foundations
+### Phase 0 - Foundations
 Nothing user-visible ships. Highest-leverage work in this document.
 
 CI · RLS + `withWorkspace()` · Org/Workspace/Membership skeleton · business logic
@@ -562,31 +562,31 @@ out of route handlers · OpenAPI + generated client · token revocation ·
 *Exit test: adding a route cannot introduce a tenant leak, and changing a response
 shape cannot silently break the frontend.*
 
-### Phase 1 — Audience model
+### Phase 1 - Audience model
 Person + ChannelIdentity + Consent + Suppression (absorbing the soft-delete fix) ·
 Segment as a compiled predicate · event stream + outbox + first rollups.
 
 *Everything downstream reads this. Doing Phase 2+ first means doing it twice.*
 
-### Phase 2 — Messaging spine
+### Phase 2 - Messaging spine
 Delivery as the universal record · generalize transports to channels · migrate
 email onto it, then fold SMS in and delete the parallel stack · frequency capping,
 quiet hours, entitlements · **record the policy decision on every Delivery** (§8).
 
 *Exit test: adding a channel is a transport plus a payload schema, not a subsystem.*
 
-### Phase 3 — Platform
+### Phase 3 - Platform
 Journey engine on the `SKIP LOCKED` primitive · API keys, scopes, webhooks, SDKs,
 sandbox, dated versioning.
 
-*Where Veloce stops being a tool and becomes a platform — and where other people
+*Where Veloce stops being a tool and becomes a platform - and where other people
 start building things you do not have to.*
 
-### Phase 4 — Enterprise
+### Phase 4 - Enterprise
 Orgs UI · permission sets · SSO/SCIM (bought) · audit export · custom domains ·
 region pinning · SOC 2. Driven by the first real enterprise deal.
 
-### Phase 5 — Intelligence and scale
+### Phase 5 - Intelligence and scale
 Partitioning and tiering · dedicated worker fleet · warehouse export · Intent layer
 · AI on the event stream · RCS, WhatsApp, Push · OAuth app ecosystem.
 
@@ -605,7 +605,7 @@ permanently lost with every unsubscribe).
 
 1. **Never build a feature that writes to a model you are about to replace.**
 2. **Expand → backfill → contract, every migration.**
-3. **A context is done when adding an instance requires no changes outside it** —
+3. **A context is done when adding an instance requires no changes outside it** -
    new channel → transport + schema; new role → a row; new event type → a registry
    entry.
 4. **Buy anything that is not audience ownership.**

@@ -1,8 +1,8 @@
 -- 026: Fix all missing automation columns and tables
 -- Closes 4 silent failures where code writes to columns/tables that were never created:
---   1. health_score   — health-scores.ts + auto-clean.ts + frontend badges
---   2. reminded       — confirm-remind.ts
---   3. subscriber_tags — smart-tags.ts
+--   1. health_score   - health-scores.ts + auto-clean.ts + frontend badges
+--   2. reminded       - confirm-remind.ts
+--   3. subscriber_tags - smart-tags.ts
 
 ALTER TABLE public.subscribers
   ADD COLUMN IF NOT EXISTS health_score TEXT

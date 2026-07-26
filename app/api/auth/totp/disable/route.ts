@@ -6,7 +6,7 @@ import { logAudit, AUDIT_ACTIONS, extractRequestMeta } from "@/lib/audit-log";
 /**
  * POST /api/auth/totp/disable
  * Disable 2FA for the user.
- * Body: { code } — current TOTP code or recovery code
+ * Body: { code } - current TOTP code or recovery code
  */
 export async function POST(req: NextRequest) {
   const ctx = getClientContextFromJWT(req);
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: { code: "ALREADY_DISABLED", message: "2FA is not enabled" } }, { status: 400 });
     }
 
-    // Disable — no code verification needed for authenticated user disabling their own 2FA
+    // Disable - no code verification needed for authenticated user disabling their own 2FA
     // (the session JWT is the auth proof)
     const { error: updateError } = await supabase
       .from("workspace_users")

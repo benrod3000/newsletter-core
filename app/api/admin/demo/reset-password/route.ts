@@ -6,7 +6,7 @@ import { logError } from "@/lib/logger";
 
 /**
  * POST /api/admin/demo/reset-password
- * Resets the demo account password. Fast — no subscriber/campaign seeding.
+ * Resets the demo account password. Fast - no subscriber/campaign seeding.
  * Protected by admin Basic Auth (handled by proxy.ts middleware).
  *
  * Refuses to run unless the demo user's workspace is flagged sandbox_mode, so

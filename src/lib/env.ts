@@ -28,7 +28,7 @@ export function assertRequiredEnv(): void {
   const missingRecommended = RECOMMENDED.filter(([name]) => !process.env[name]);
 
   for (const [name, why] of missingRecommended) {
-    console.warn(`[env] ${name} is not set — ${why}`);
+    console.warn(`[env] ${name} is not set - ${why}`);
   }
 
   if (missingRequired.length === 0) return;

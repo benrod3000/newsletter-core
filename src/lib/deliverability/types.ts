@@ -2,7 +2,7 @@
  * Deliverability types.
  *
  * DNS checking, health scoring, and deliverability overview types.
- * All DNS resolution uses Node.js built-in `dns` module — zero dependencies.
+ * All DNS resolution uses Node.js built-in `dns` module - zero dependencies.
  */
 
 /** Status of a single DNS record check */

@@ -81,7 +81,7 @@ export async function recalculateHealthScores() {
           score = "at_risk";
         }
       } else {
-        // Never engaged — check if they subscribed recently
+        // Never engaged - check if they subscribed recently
         const subDate = new Date(sub.created_at);
         if (subDate >= new Date(thirtyDaysAgo)) {
           score = "active"; // new subscriber, give them active status

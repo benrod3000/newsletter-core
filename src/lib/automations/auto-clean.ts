@@ -32,7 +32,7 @@ export async function runAutoClean() {
     for (const sub of coldSubs) {
       const createdDate = new Date(sub.created_at);
       if (createdDate < new Date(ninetyDaysAgo)) {
-        // 90+ days cold — log GDPR event, then delete
+        // 90+ days cold - log GDPR event, then delete
         await fetch(`${supabaseUrl}/rest/v1/gdpr_audit_events`, {
           method: "POST",
           headers: auth,
@@ -49,7 +49,7 @@ export async function runAutoClean() {
         });
         removed++;
       } else if (createdDate < new Date(sixtyDaysAgo)) {
-        // 60-89 days — move to cold list (future: implement list membership)
+        // 60-89 days - move to cold list (future: implement list membership)
         moved++;
       }
     }

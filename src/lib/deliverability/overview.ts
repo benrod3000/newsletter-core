@@ -3,7 +3,7 @@
  *
  * Extracted from the admin route so the admin (Basic Auth) and client (JWT)
  * endpoints share one implementation. The computation only ever needed a
- * workspace id — it was never admin-specific.
+ * workspace id - it was never admin-specific.
  */
 
 import { getSupabaseClient } from "@/lib/supabase";

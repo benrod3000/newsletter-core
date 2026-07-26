@@ -1,7 +1,7 @@
 /**
  * DNS record checker for deliverability health.
  *
- * Uses Node.js built-in `dns.promises` — zero dependencies.
+ * Uses Node.js built-in `dns.promises` - zero dependencies.
  * Checks SPF, DKIM, DMARC, and MX records for a given domain,
  * validating them against the configured email provider's requirements.
  */
@@ -49,7 +49,7 @@ function result(
 /**
  * A resolver with a real query timeout.
  *
- * `dns.resolveTxt`/`resolveMx` take only a hostname — they accept no options
+ * `dns.resolveTxt`/`resolveMx` take only a hostname - they accept no options
  * object and no AbortSignal, so the previous `{ signal }` argument was both a
  * type error and a no-op. `new Resolver({ timeout, tries })` is the supported
  * mechanism; timeout is per attempt, in milliseconds.
@@ -207,7 +207,7 @@ export async function checkDmarc(domain: string): Promise<DnsCheckResult> {
       'DMARC',
       record,
       'p=reject or p=quarantine',
-      `DMARC policy is set to "reject" — strongest protection.${hasRua ? ' Aggregate reports enabled.' : ''}`,
+      `DMARC policy is set to "reject" - strongest protection.${hasRua ? ' Aggregate reports enabled.' : ''}`,
     );
   }
 
@@ -221,7 +221,7 @@ export async function checkDmarc(domain: string): Promise<DnsCheckResult> {
     );
   }
 
-  // p=none — monitoring only, no protection
+  // p=none - monitoring only, no protection
   return result(
     'warning',
     'DMARC',

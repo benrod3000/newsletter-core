@@ -21,8 +21,8 @@ export class SendGridTransport implements EmailTransport {
     if (params.replyTo) msg.replyTo = params.replyTo;
 
     // Echoed back on the event webhook. Without them a bounce or complaint
-    // arrives carrying only an address, which is ambiguous — the same address
-    // can be a subscriber in several workspaces — and suppression cannot be
+    // arrives carrying only an address, which is ambiguous - the same address
+    // can be a subscriber in several workspaces - and suppression cannot be
     // attributed to one tenant. See app/api/webhooks/sendgrid/route.ts.
     const customArgs: Record<string, string> = {};
     if (params.campaignId) customArgs.campaign_id = params.campaignId;

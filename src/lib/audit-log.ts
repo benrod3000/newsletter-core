@@ -31,7 +31,7 @@ export interface AuditLogEntry {
 
 /**
  * Log an audit event to the database
- * Fire-and-forget — never throws
+ * Fire-and-forget - never throws
  */
 export async function logAudit(entry: AuditLogEntry): Promise<void> {
   try {

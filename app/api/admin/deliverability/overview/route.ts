@@ -5,7 +5,7 @@
  * Auth: Admin (Basic Auth via proxy middleware).
  *
  * The computation is shared with the client-facing route via
- * buildDeliverabilityOverview() — see src/lib/deliverability/overview.ts.
+ * buildDeliverabilityOverview() - see src/lib/deliverability/overview.ts.
  */
 
 import { NextRequest } from "next/server";

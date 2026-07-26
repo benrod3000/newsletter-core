@@ -16,7 +16,7 @@ function getHmacSecret(): string {
   const secret = process.env.ADMIN_HMAC_SECRET;
   if (!secret) {
     throw new Error(
-      "ADMIN_HMAC_SECRET is required — admin header signing cannot be disabled."
+      "ADMIN_HMAC_SECRET is required - admin header signing cannot be disabled."
     );
   }
   return secret;

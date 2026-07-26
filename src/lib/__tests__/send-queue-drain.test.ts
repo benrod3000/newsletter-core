@@ -103,7 +103,7 @@ describe("drainCampaignJob", () => {
     expect(result.remaining).toBe(4200);
 
     const status = updates.find((u) => "status" in u);
-    // Must stay "sending" — this is exactly what campaigns/recover looks for.
+    // Must stay "sending" - this is exactly what campaigns/recover looks for.
     expect(status?.status).toBe("sending");
     expect(status?.completed_at).toBeNull();
   });

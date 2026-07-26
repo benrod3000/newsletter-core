@@ -70,7 +70,7 @@ describe("buildRawMessage", () => {
 
   /**
    * The header block is everything before the first blank line. Injection is
-   * only prevented if no *new line* starts with the smuggled header name —
+   * only prevented if no *new line* starts with the smuggled header name -
    * the text itself surviving, folded into the value it came from, is the
    * intended outcome, not a leak.
    */

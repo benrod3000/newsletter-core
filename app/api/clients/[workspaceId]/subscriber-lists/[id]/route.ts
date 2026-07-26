@@ -11,7 +11,7 @@ import {
  * DELETE /api/clients/[workspaceId]/subscriber-lists/[id]
  * Delete a subscriber list. JWT authenticated, requires edit permission.
  *
- * This only deletes the list container — subscriber records are not affected.
+ * This only deletes the list container - subscriber records are not affected.
  * Memberships in subscriber_list_memberships are cleaned up by the DB cascade.
  */
 export async function DELETE(

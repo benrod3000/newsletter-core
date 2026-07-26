@@ -9,7 +9,7 @@ import { getSupabaseClient } from "@/lib/supabase";
 import { renderTemplate, buildHtmlFromEditor } from "@/lib/campaign-personalization";
 import { apiSuccess, apiError, apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api-response";
 
-/** POST /api/admin/send — Send campaign or test. Delegates to sendCampaignBlast. */
+/** POST /api/admin/send - Send campaign or test. Delegates to sendCampaignBlast. */
 export async function POST(req: NextRequest) {
   const admin = getAdminContextFromHeaders(req.headers);
   if (!admin) return apiUnauthorized();
@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
       return apiSuccess({ testSent: true });
     }
 
-    // Full send — canonical pipeline
+    // Full send - canonical pipeline
     const result = await sendCampaignBlast({
       workspaceId,
       subject,

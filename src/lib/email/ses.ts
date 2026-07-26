@@ -38,7 +38,7 @@ function encodeHeaderWord(s: string): string {
  * Header values arrive here already rendered: the subject passes through
  * renderTemplate() with the recipient's own profile, so `{{first_name}}` in a
  * subject line puts subscriber-controlled text directly into a MIME header. A
- * value containing CRLF would close `Subject:` and open a new header — enough to
+ * value containing CRLF would close `Subject:` and open a new header - enough to
  * add a Bcc, set Reply-To, or start a second body.
  *
  * encodeHeaderWord() is not a defence: it only encodes when a value contains
@@ -49,10 +49,10 @@ function sanitizeHeaderValue(value: string): string {
   return value.replace(/[\r\n\0\u2028\u2029]+/g, " ").trim();
 }
 
-/** A header name may only be an RFC 5322 token — no colons, spaces or breaks. */
+/** A header name may only be an RFC 5322 token - no colons, spaces or breaks. */
 const VALID_HEADER_NAME = /^[A-Za-z0-9!#$%&'*+\-.^_`|~]+$/;
 
-/** Headers we always control — never let a caller-supplied header duplicate them. */
+/** Headers we always control - never let a caller-supplied header duplicate them. */
 const RESERVED_HEADERS = /^(from|to|subject|reply-to|mime-version|content-type|content-transfer-encoding|list-unsubscribe|list-unsubscribe-post)$/i;
 
 /**
