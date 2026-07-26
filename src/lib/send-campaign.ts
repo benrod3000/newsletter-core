@@ -107,7 +107,21 @@ export async function sendCampaignBlast(
   }
 
   // Enforced once, against the real recipient count, before anything is sent.
-  await checkSendingLimit(supabase, workspaceId, queued);
+  //
+  // A rejection has to close the job. enqueue has already written the recipient
+  // rows, and a job sitting in 'sending' with pending rows is precisely what
+  // /api/admin/campaigns/recover looks for — left open, the recovery cron would
+  // drain the whole campaign 15 minutes later, past the limit that just
+  // refused it.
+  try {
+    await checkSendingLimit(supabase, workspaceId, queued);
+  } catch (err) {
+    await supabase
+      .from("campaign_jobs")
+      .update({ status: "failed", completed_at: new Date().toISOString() })
+      .eq("id", jobId);
+    throw err;
+  }
 
   const { fromEmail, fromName, dispatchConfig } = await getWorkspaceSender(supabase, workspaceId);
 

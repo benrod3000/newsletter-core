@@ -5,6 +5,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { isDisposableEmail } from "@/lib/disposable-emails";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { logError } from "@/lib/logger";
+import { getClientIp } from "@/lib/client-ip";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -37,8 +38,7 @@ export async function POST(
   const supabase = getSupabaseClient();
 
   // Rate limit: 10 submissions per minute per IP
-  const forwarded = req.headers.get("x-forwarded-for");
-  const ip = forwarded ? forwarded.split(",")[0].trim() : req.headers.get("x-real-ip") || "unknown";
+  const ip = getClientIp(req);
   const { allowed, retryAfter } = await rateLimit(`widget-submit:${ip}`, 10, 10 / 60);
   if (!allowed) {
     return NextResponse.json(

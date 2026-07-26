@@ -1,85 +1,121 @@
 /**
  * Sending limit enforcement for newsletter-core.
  *
- * Reads the workspace's `sending_limit_monthly` from the `clients` table
- * and rejects a send if it would exceed the cap.
+ * The check and the increment happen together, inside the database, in
+ * increment_sending_counters() (migration 045). Everything this module used to
+ * do in Node — read the counters, compare, increment separately — was both racy
+ * and, because the RPC it called did not exist, entirely inert.
  *
- * The DB columns (`sending_limit_monthly`, `sent_this_month`, etc.)
- * were added in migration 021_add_sending_limits.sql.
+ * The failure mode is closed. A quota exists to stop sends; a version of it that
+ * waves sends through whenever it cannot run is not a quota — that was the
+ * previous behaviour, and it is what made the control inert.
+ *
+ * The single exception is the function being absent (PGRST202), which can only
+ * mean migration 045 has not been applied to this database yet. That degrades to
+ * unenforced-and-loudly-logged so the code and the migration can be deployed in
+ * either order without taking sending down in between.
  */
 
+import { logError } from "@/lib/logger";
+
+/** Thrown when a send would exceed the workspace's quota, or cannot be checked. */
+export class SendingLimitError extends Error {
+  constructor(
+    message: string,
+    readonly reason: string,
+  ) {
+    super(message);
+    this.name = "SendingLimitError";
+  }
+}
+
+interface QuotaRow {
+  allowed: boolean;
+  reason: string | null;
+  remaining: number | null;
+}
+
+function describe(reason: string, remaining: number | null): string {
+  switch (reason) {
+    case "monthly_limit":
+      return `Monthly sending limit reached. You can send ${remaining ?? 0} more emails this period. Upgrade or wait for the limit to reset.`;
+    case "lifetime_limit":
+      return `Lifetime sending limit reached. You can send ${remaining ?? 0} more emails total. Upgrade to increase your limit.`;
+    case "workspace_not_found":
+      return "This workspace no longer exists.";
+    case "invalid_count":
+      return "Invalid recipient count for this send.";
+    default:
+      return "This send exceeds the workspace's sending limit.";
+  }
+}
+
 /**
- * Checks whether sending `requestedCount` emails would exceed
- * the workspace's monthly sending limit. Throws if it would.
+ * Consume `requestedCount` from the workspace's sending quota.
+ * Throws SendingLimitError if the send would exceed it, or if the quota cannot
+ * be evaluated. Returns the remaining monthly headroom (null when uncapped).
  *
- * Also increments the `sent_this_month` counter atomically so that
- * concurrent sends don't race past the limit.
+ * Quota is consumed up front, against the real recipient count. Recipients that
+ * later fail to send are not refunded — deliberately conservative for an abuse
+ * control, but it does mean a badly failing send still spends quota. Worth
+ * revisiting alongside per-recipient reconciliation in the send queue.
  */
 export async function checkSendingLimit(
   supabase: ReturnType<typeof import("@/lib/supabase").getSupabaseClient>,
   workspaceId: string,
   requestedCount: number,
-): Promise<void> {
-  // Fetch the workspace's current sending limit & counters
-  const { data: client, error } = await supabase
-    .from("clients")
-    .select("sending_limit_monthly, sent_this_month, sending_limit_total, sent_total")
-    .eq("id", workspaceId)
-    .single();
+): Promise<number | null> {
+  const { data, error } = await supabase.rpc("increment_sending_counters", {
+    p_workspace_id: workspaceId,
+    p_count: requestedCount,
+  });
 
   if (error) {
-    // If we can't read limits, fail open (allow send) — the DB row should exist
-    console.warn(`[sending-limits] Could not read limits for ${workspaceId}: ${error.message}`);
-    return;
-  }
-
-  if (!client) return;
-
-  const limitMonthly = client.sending_limit_monthly;
-  const sentThisMonth = client.sent_this_month ?? 0;
-  const limitTotal = client.sending_limit_total;
-  const sentTotal = client.sent_total ?? 0;
-
-  // Check monthly limit
-  if (limitMonthly !== null && limitMonthly > 0) {
-    const wouldExceedMonthly = (sentThisMonth + requestedCount) > limitMonthly;
-    if (wouldExceedMonthly) {
-      const remaining = Math.max(0, limitMonthly - sentThisMonth);
-      throw new Error(
-        `Monthly sending limit reached (${sentThisMonth}/${limitMonthly}). ` +
-        `You can send ${remaining} more emails this month. Upgrade or wait for the limit to reset.`
-      );
+    // PGRST202 is PostgREST's "no such function in the schema cache". The only
+    // realistic way to reach it here is deployment skew — this code live before
+    // migration 045 is applied — so it degrades to unenforced for that one case
+    // rather than rejecting every send in the window between the two deploys.
+    //
+    // Deliberately narrow. Any other failure (permissions, timeout, bad
+    // argument, connection loss) still fails closed: a quota that waves sends
+    // through whenever it cannot run is not a quota, and that is precisely the
+    // bug this module was written to fix.
+    if (error.code === "PGRST202") {
+      logError(error, {
+        scope: "sending-limits",
+        degraded: true,
+        workspaceId,
+        detail:
+          "increment_sending_counters is missing — apply migration " +
+          "045_atomic_sending_counters.sql. Sending limits are NOT enforced until then.",
+      });
+      return null;
     }
+
+    logError(error, { scope: "sending-limits", workspaceId, requestedCount });
+    throw new SendingLimitError(
+      "Sending limits could not be verified, so the send was not started.",
+      "check_failed",
+    );
   }
 
-  // Check total lifetime limit
-  if (limitTotal !== null && limitTotal > 0) {
-    const wouldExceedTotal = (sentTotal + requestedCount) > limitTotal;
-    if (wouldExceedTotal) {
-      const remaining = Math.max(0, limitTotal - sentTotal);
-      throw new Error(
-        `Lifetime sending limit reached (${sentTotal}/${limitTotal}). ` +
-        `You can send ${remaining} more emails total. Upgrade to increase your limit.`
-      );
-    }
-  }
+  // RETURNS TABLE arrives as an array of rows.
+  const row = (Array.isArray(data) ? data[0] : data) as QuotaRow | undefined;
 
-  // Atomically increment the counters so concurrent sends don't race past the cap.
-  // This uses a Supabase RPC or direct update — we do a simple increment here.
-  // If the RPC doesn't exist, we just warn and continue.
-  try {
-    await supabase.rpc("increment_sending_counters", {
-      p_workspace_id: workspaceId,
-      p_count: requestedCount,
+  if (!row) {
+    logError(new Error("increment_sending_counters returned no row"), {
+      scope: "sending-limits",
+      workspaceId,
     });
-  } catch {
-    // RPC may not exist yet — fall back to a direct update
-    await supabase
-      .from("clients")
-      .update({
-        sent_this_month: sentThisMonth + requestedCount,
-        sent_total: sentTotal + requestedCount,
-      })
-      .eq("id", workspaceId);
+    throw new SendingLimitError(
+      "Sending limits could not be verified, so the send was not started.",
+      "check_failed",
+    );
   }
+
+  if (!row.allowed) {
+    throw new SendingLimitError(describe(row.reason ?? "", row.remaining), row.reason ?? "unknown");
+  }
+
+  return row.remaining ?? null;
 }

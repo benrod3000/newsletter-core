@@ -32,6 +32,26 @@ function encodeHeaderWord(s: string): string {
   return /[^\x00-\x7F]/.test(s) ? `=?UTF-8?B?${b64(s)}?=` : s;
 }
 
+/**
+ * Remove anything that could end the current header line.
+ *
+ * Header values arrive here already rendered: the subject passes through
+ * renderTemplate() with the recipient's own profile, so `{{first_name}}` in a
+ * subject line puts subscriber-controlled text directly into a MIME header. A
+ * value containing CRLF would close `Subject:` and open a new header — enough to
+ * add a Bcc, set Reply-To, or start a second body.
+ *
+ * encodeHeaderWord() is not a defence: it only encodes when a value contains
+ * non-ASCII, and CR and LF are both ASCII, so a plain-ASCII injection passed
+ * straight through. Strip first, encode second.
+ */
+function sanitizeHeaderValue(value: string): string {
+  return value.replace(/[\r\n\0\u2028\u2029]+/g, " ").trim();
+}
+
+/** A header name may only be an RFC 5322 token — no colons, spaces or breaks. */
+const VALID_HEADER_NAME = /^[A-Za-z0-9!#$%&'*+\-.^_`|~]+$/;
+
 /** Headers we always control — never let a caller-supplied header duplicate them. */
 const RESERVED_HEADERS = /^(from|to|subject|reply-to|mime-version|content-type|content-transfer-encoding|list-unsubscribe|list-unsubscribe-post)$/i;
 
@@ -40,22 +60,26 @@ const RESERVED_HEADERS = /^(from|to|subject|reply-to|mime-version|content-type|c
  * `boundary` is injectable so tests can assert against a fixed value.
  */
 export function buildRawMessage(params: SendParams, boundary: string = randomUUID()): string {
+  const address = sanitizeHeaderValue(params.from);
   const from = params.fromName
-    ? `${encodeHeaderWord(params.fromName)} <${params.from}>`
-    : params.from;
+    ? `${encodeHeaderWord(sanitizeHeaderValue(params.fromName))} <${address}>`
+    : address;
 
-  const headers: string[] = [`From: ${from}`, `To: ${params.to}`];
-  if (params.replyTo) headers.push(`Reply-To: ${params.replyTo}`);
-  headers.push(`Subject: ${encodeHeaderWord(params.subject)}`);
+  const headers: string[] = [`From: ${from}`, `To: ${sanitizeHeaderValue(params.to)}`];
+  if (params.replyTo) headers.push(`Reply-To: ${sanitizeHeaderValue(params.replyTo)}`);
+  headers.push(`Subject: ${encodeHeaderWord(sanitizeHeaderValue(params.subject))}`);
   headers.push("MIME-Version: 1.0");
   if (params.listUnsubscribe) {
-    headers.push(`List-Unsubscribe: <${params.listUnsubscribe}>`);
+    headers.push(`List-Unsubscribe: <${sanitizeHeaderValue(params.listUnsubscribe)}>`);
     headers.push("List-Unsubscribe-Post: List-Unsubscribe=One-Click");
   }
   if (params.headers) {
     for (const [k, v] of Object.entries(params.headers)) {
       if (RESERVED_HEADERS.test(k)) continue;
-      headers.push(`${k}: ${v}`);
+      // A name carrying a colon or a line break would inject a header of its
+      // own, so anything that isn't a bare token is dropped rather than fixed.
+      if (!VALID_HEADER_NAME.test(k)) continue;
+      headers.push(`${k}: ${sanitizeHeaderValue(String(v))}`);
     }
   }
 

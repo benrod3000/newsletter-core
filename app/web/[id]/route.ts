@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
 import { buildHtmlFromEditor, buildWebVersionUrl, mergeDataForRecipient, renderTemplate, type MergeRecipient } from "@/lib/campaign-personalization";
 import { injectTracking } from "@/lib/campaign-tracking";
+import { sanitizeCampaignHtml, sanitizeCampaignCss } from "@/lib/sanitize-campaign-html";
 
 type WebCampaign = {
   id: string;
@@ -34,7 +35,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return new NextResponse("Not found", { status: 404 });
   }
 
-  const baseHtml = buildHtmlFromEditor(campaign.editor_html, campaign.editor_css || "");
+  // This is the browser-rendered copy of the campaign, so the body is sanitised
+  // here even though the emailed copy is not: mail clients do not execute
+  // script, a browser does.
+  const baseHtml = buildHtmlFromEditor(
+    sanitizeCampaignHtml(campaign.editor_html),
+    sanitizeCampaignCss(campaign.editor_css)
+  );
 
   if (!subscriberId) {
     const html = renderTemplate(baseHtml, { web_version_url: "" });

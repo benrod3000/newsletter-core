@@ -3,6 +3,7 @@ import sgMail from "@sendgrid/mail";
 import { getSupabaseClient } from "@/lib/supabase";
 import { geolocateIP } from "@/lib/geo";
 import { applyRateLimit, rateLimitedResponse } from "@/lib/rate-limit-middleware";
+import { getClientIp } from "@/lib/client-ip";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -320,10 +321,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Get IP
-    const ip =
-      req.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
-      req.headers.get("x-real-ip") ||
-      "unknown";
+    const ip = getClientIp(req);
 
     // 4. Rate limit
     if (await isRateLimited(ip)) {
@@ -413,10 +411,15 @@ export async function POST(req: NextRequest) {
 
     if (dbError) {
       if (dbError.code === "23505") {
+        // Scoped to this workspace. The unique key is (client_id, email) since
+        // migration 024, so the same address legitimately exists in several
+        // workspaces — an unscoped lookup here returned another workspace's
+        // confirmation and unsubscribe tokens and mailed them to the subscriber.
         const { data: existing, error: existingError } = await supabase
           .from("subscribers")
           .select("confirmed, confirmation_token, unsubscribe_token")
           .eq("email", email)
+          .eq("client_id", client_id)
           .maybeSingle();
 
         if (existingError || !existing) {
@@ -438,7 +441,8 @@ export async function POST(req: NextRequest) {
             consent_text: CONSENT_COPY,
             consent_source: landing_path,
           })
-          .eq("email", email);
+          .eq("email", email)
+          .eq("client_id", client_id);
 
         const resendResult = await sendConfirmationEmail({
           email,

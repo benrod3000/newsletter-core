@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
+import { sanitizeCampaignHtml, sanitizeCampaignCss } from "@/lib/sanitize-campaign-html";
 
 /**
  * GET /newsletter/{slug}
@@ -29,8 +30,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     .single();
 
   const senderName = client?.sender_name || "Veloce";
-  const html = campaign.editor_html || "";
-  const css = campaign.editor_css || "";
+  // Authored by a workspace user and served from an origin every tenant shares,
+  // on a page marked indexable — never interpolate either of these raw.
+  const html = sanitizeCampaignHtml(campaign.editor_html);
+  const css = sanitizeCampaignCss(campaign.editor_css);
   const pubDate = campaign.published_at
     ? new Date(campaign.published_at).toLocaleDateString("en-US", {
         year: "numeric", month: "long", day: "numeric",

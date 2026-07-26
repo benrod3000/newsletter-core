@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { rateLimit } from "@/lib/rate-limit";
 import { sendTransactionalEmail } from "@/lib/email-sender";
+import { getClientIp } from "@/lib/client-ip";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -15,8 +16,7 @@ export async function OPTIONS() {
 
 export async function POST(req: NextRequest) {
   // Rate limit: 3 requests per minute per IP
-  const forwarded = req.headers.get("x-forwarded-for");
-  const ip = forwarded ? forwarded.split(",")[0].trim() : req.headers.get("x-real-ip") || "unknown";
+  const ip = getClientIp(req);
   const { allowed, retryAfter } = await rateLimit(`forgot-password:${ip}`, 3, 3 / 60, "closed");
   if (!allowed) {
     return NextResponse.json(

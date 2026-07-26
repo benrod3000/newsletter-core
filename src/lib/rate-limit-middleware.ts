@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { rateLimit, type FailureMode } from "@/lib/rate-limit";
+import { getClientIp } from "./client-ip";
 
 interface RateLimitConfig {
   max: number;
@@ -37,9 +38,7 @@ export async function applyRateLimit(
   req: NextRequest,
   config: RateLimitConfig
 ): Promise<RateLimitResult> {
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-    || req.headers.get("x-real-ip")
-    || "unknown";
+  const ip = getClientIp(req);
   const key = config.keyPrefix || new URL(req.url).pathname;
   const compositeKey = `${key}:${ip}`;
 

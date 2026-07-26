@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
 import { rateLimit } from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/client-ip";
 
 function parseCoordinate(value: string | null): number | null {
   if (!value) return null;
@@ -31,7 +32,7 @@ export async function GET(req: NextRequest) {
   const rawUrl = searchParams.get("u");
 
   // Rate limit: 50 clicks per IP per second
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const ip = getClientIp(req);
   const rl = await rateLimit(`track-click:${ip}`, 50, 50);
   let destination = "/";
   if (!rl.allowed) {

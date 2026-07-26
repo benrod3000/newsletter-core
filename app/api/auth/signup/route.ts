@@ -4,6 +4,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { isDisposableEmail } from "@/lib/disposable-emails";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { sendTransactionalEmail } from "@/lib/email-sender";
+import { getClientIp } from "@/lib/client-ip";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -38,8 +39,7 @@ async function supabaseFetch(path: string, options: RequestInit = {}) {
 
 export async function POST(req: NextRequest) {
   // Rate limit: 3 signup attempts per minute per IP
-  const forwarded = req.headers.get("x-forwarded-for");
-  const ip = forwarded ? forwarded.split(",")[0].trim() : req.headers.get("x-real-ip") || "unknown";
+  const ip = getClientIp(req);
   const { allowed, retryAfter } = await rateLimit(`signup:${ip}`, 3, 3 / 60, "closed");
   if (!allowed) {
     return NextResponse.json(

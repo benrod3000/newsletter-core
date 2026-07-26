@@ -67,6 +67,80 @@ describe("buildRawMessage", () => {
     expect(raw).toContain("X-Custom: 1");
     expect(raw).not.toContain("<evil>");
   });
+
+  /**
+   * The header block is everything before the first blank line. Injection is
+   * only prevented if no *new line* starts with the smuggled header name —
+   * the text itself surviving, folded into the value it came from, is the
+   * intended outcome, not a leak.
+   */
+  const headerNames = (raw: string) =>
+    raw
+      .split("\r\n\r\n")[0]
+      .split("\r\n")
+      .map((line) => line.split(":")[0].trim().toLowerCase());
+
+  // A subject reaches buildRawMessage already rendered, so `{{first_name}}` in
+  // the subject line puts the recipient's own profile text into a MIME header.
+  it("neutralises CRLF injected through a subject merge tag", () => {
+    const raw = buildRawMessage(
+      {
+        to: "a@b.com",
+        from: "f@g.com",
+        subject: "Hi Bob\r\nBcc: victim@evil.com\r\nX-Injected: yes",
+        text: "hi",
+      },
+      "B",
+    );
+
+    const names = headerNames(raw);
+    expect(names).not.toContain("bcc");
+    expect(names).not.toContain("x-injected");
+    // Flattened onto the one Subject line rather than starting new headers.
+    expect(raw).toContain("Subject: Hi Bob Bcc: victim@evil.com X-Injected: yes");
+    expect(names.filter((n) => n === "subject")).toHaveLength(1);
+  });
+
+  it("neutralises CRLF in from name, address, to and reply-to", () => {
+    const raw = buildRawMessage(
+      {
+        to: "a@b.com\r\nBcc: sneak@evil.com",
+        from: "f@g.com\r\nX-From: bad",
+        fromName: "Ada\r\nX-Name: bad",
+        replyTo: "r@g.com\r\nX-Reply: bad",
+        subject: "S",
+        text: "hi",
+      },
+      "B",
+    );
+
+    const names = headerNames(raw);
+    expect(names).not.toContain("bcc");
+    expect(names).not.toContain("x-from");
+    expect(names).not.toContain("x-name");
+    expect(names).not.toContain("x-reply");
+    // Exactly the headers we control, one line each.
+    expect(names.filter((n) => n === "to")).toHaveLength(1);
+    expect(names.filter((n) => n === "from")).toHaveLength(1);
+    expect(names.filter((n) => n === "reply-to")).toHaveLength(1);
+  });
+
+  it("drops custom headers whose name is not a bare token", () => {
+    const raw = buildRawMessage(
+      {
+        to: "a@b.com",
+        from: "f@g.com",
+        subject: "S",
+        text: "hi",
+        headers: { "X-Bad: injected\r\nBcc": "x", "X-Good": "1" },
+      },
+      "B",
+    );
+
+    expect(raw).toContain("X-Good: 1");
+    expect(raw).not.toContain("X-Bad");
+    expect(raw).not.toContain("Bcc");
+  });
 });
 
 describe("mapSesError", () => {

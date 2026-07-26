@@ -3,6 +3,30 @@ import { getSupabaseClient } from "@/lib/supabase";
 import { requireCronSecret } from "@/lib/cron-auth";
 import { sendEmail } from "@/lib/email-sender";
 import { buildHtmlFromEditor } from "@/lib/campaign-personalization";
+import { checkSendingLimit, SendingLimitError } from "@/lib/sending-limits";
+
+/**
+ * Consume one email of sending quota. Returns false when the workspace is out,
+ * so the caller stops this automation instead of sending past the cap.
+ *
+ * This route used to read the counter once, before the loop, then "increment"
+ * it by writing that same stale value + 1 after every send — so a run of 100
+ * emails advanced sent_this_month by 1 in total, and the on_schedule loop below
+ * never counted at all. Both paths now go through the same atomic
+ * check-and-consume as campaign sends.
+ */
+async function consumeQuota(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  workspaceId: string
+): Promise<boolean> {
+  try {
+    await checkSendingLimit(supabase, workspaceId, 1);
+    return true;
+  } catch (err) {
+    if (err instanceof SendingLimitError) return false;
+    throw err;
+  }
+}
 
 /**
  * POST /api/admin/automations/process
@@ -44,7 +68,7 @@ export async function POST(req: NextRequest) {
       // Get workspace email config
       const { data: workspace } = await supabase
         .from("clients")
-        .select("sender_name, sender_email, email_provider, ses_access_key, ses_secret_key, ses_region, ses_from_email, sending_limit_monthly, sent_this_month, sent_total")
+        .select("sender_name, sender_email, email_provider, ses_access_key, ses_secret_key, ses_region, ses_from_email")
         .eq("id", auto.workspace_id)
         .single();
 
@@ -54,12 +78,6 @@ export async function POST(req: NextRequest) {
         ? workspace.ses_from_email
         : workspace.sender_email;
       const fromName = workspace.sender_name || "Newsletter";
-
-      // Check sending limits
-      if (workspace.sending_limit_monthly && (workspace.sent_this_month || 0) >= workspace.sending_limit_monthly) {
-        results.push(`${auto.name}: monthly sending limit reached`);
-        continue;
-      }
 
       if (auto.trigger_type === "subscriber_joined") {
         // Find subscribers who joined after (now - delay) but before now
@@ -87,6 +105,10 @@ export async function POST(req: NextRequest) {
           if (!campaign) continue;
 
           for (const sub of subscribers) {
+            if (!(await consumeQuota(supabase, auto.workspace_id))) {
+              results.push(`${auto.name}: monthly sending limit reached`);
+              break;
+            }
             try {
               const html = campaign.editor_html
                 ? buildHtmlFromEditor(campaign.editor_html, campaign.editor_css || "")
@@ -109,12 +131,6 @@ export async function POST(req: NextRequest) {
               );
 
               processed++;
-
-              // Increment counter
-              await supabase
-                .from("clients")
-                .update({ sent_this_month: (workspace.sent_this_month || 0) + 1, sent_total: (workspace.sent_total || 0) + 1 })
-                .eq("id", auto.workspace_id);
             } catch (err) {
               console.error(`Automation ${auto.name} send failed for ${sub.email}:`, err);
             }
@@ -171,6 +187,10 @@ export async function POST(req: NextRequest) {
           if (!subscribers) continue;
 
           for (const sub of subscribers) {
+            if (!(await consumeQuota(supabase, auto.workspace_id))) {
+              results.push(`${auto.name}: monthly sending limit reached`);
+              break;
+            }
             try {
               await sendEmail(
                 {

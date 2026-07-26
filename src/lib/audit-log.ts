@@ -1,4 +1,5 @@
 import { getSupabaseClient } from "./supabase";
+import { getClientIp } from "./client-ip";
 
 const AUDIT_ACTIONS = {
   LOGIN: "login",
@@ -52,8 +53,7 @@ export async function logAudit(entry: AuditLogEntry): Promise<void> {
  * Extract IP and user agent from a NextRequest
  */
 export function extractRequestMeta(req: Request): { ip: string; ua: string } {
-  const forwarded = req.headers.get("x-forwarded-for");
-  const ip = forwarded ? forwarded.split(",")[0].trim() : req.headers.get("x-real-ip") || "unknown";
+  const ip = getClientIp(req);
   const ua = req.headers.get("user-agent") || "unknown";
   return { ip, ua };
 }
