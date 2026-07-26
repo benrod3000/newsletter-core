@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { hashPassword } from "@/lib/jwt";
 import { rateLimit } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/client-ip";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -25,9 +26,13 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { token, password } = await req.json();
+    const { token, password, turnstile_token } = await req.json();
     if (!token || !password || password.length < 6) {
       return NextResponse.json({ error: "Valid token and password (6+ chars) required" }, { status: 400, headers: CORS_HEADERS });
+    }
+
+    if (!turnstile_token || !(await verifyTurnstileToken(turnstile_token))) {
+      return NextResponse.json({ error: "Security check failed. Please try again." }, { status: 400, headers: CORS_HEADERS });
     }
 
     const supabaseUrl = process.env.SUPABASE_URL!;

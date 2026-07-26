@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { rateLimit } from "@/lib/rate-limit";
 import { sendTransactionalEmail } from "@/lib/email-sender";
 import { getClientIp } from "@/lib/client-ip";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -26,9 +27,13 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { email } = await req.json();
+    const { email, turnstile_token } = await req.json();
     if (!email) {
       return NextResponse.json({ error: "Email required" }, { status: 400, headers: CORS_HEADERS });
+    }
+
+    if (!turnstile_token || !(await verifyTurnstileToken(turnstile_token))) {
+      return NextResponse.json({ error: "Security check failed. Please try again." }, { status: 400, headers: CORS_HEADERS });
     }
 
     const supabaseUrl = process.env.SUPABASE_URL!;
