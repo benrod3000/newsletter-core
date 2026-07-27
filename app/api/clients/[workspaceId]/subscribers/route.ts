@@ -1,11 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { z } from "zod";
-import {
-  getClientContextFromJWT,
-  assertWorkspaceAccess,
-  canEditAsClient,
-} from "@/lib/client-context";
-import { getSupabaseClient } from "@/lib/supabase";
+import { withWorkspace } from "@/lib/with-workspace";
 import { logError } from "@/lib/logger";
 
 /** Subscriber ids are uuid primary keys (migration 001). */
@@ -14,246 +9,193 @@ const bulkDeleteSchema = z.object({
 });
 
 /**
+ * Escape a user-supplied value for use inside a PostgREST filter.
+ *
+ * PostgREST treats `,` `(` `)` and `.` as filter syntax. The previous version
+ * built an `or=(email.ilike.*<search>*,...)` string with only
+ * encodeURIComponent applied, which does not encode parentheses at all - so a
+ * search term containing `)` could close the or-group and append further
+ * top-level filters. The workspace filter is a separate ANDed parameter, so this
+ * could not remove tenant scoping, but it could still bend the query.
+ *
+ * PostgREST allows double-quoting a value, with backslash escapes inside it.
+ * Quoting is the correct fix; stripping characters would silently break searches
+ * for names like "O'Brien (work)".
+ */
+function quoteFilterValue(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+/**
  * GET /api/clients/[workspaceId]/subscribers
- * Fetch subscribers for a workspace (JWT authenticated)
- * 
+ * Fetch subscribers for a workspace.
+ *
  * Query params:
  * - limit: number (default 100)
  * - offset: number (default 0)
- * - status: "confirmed" | "pending" | "unsubscribed" (optional)
- * - near_lat: number (optional, for radius query)
- * - near_lng: number (optional, for radius query)
- * - radius: number (optional, miles, default 10)
- * 
+ * - status: "confirmed" | "pending" | "unsubscribed" | "active" | "at_risk" | "cold"
+ * - near_lat / near_lng / radius: radius query (miles, default 10)
+ * - joined_after / joined_before, search
+ *
  * Returns: { subscribers: [...], total: number, limit: number, offset: number }
  */
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> }
-) {
-  const { workspaceId } = await params;
-  const context = getClientContextFromJWT(req);
-
-  if (!context || !assertWorkspaceAccess(context, workspaceId)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+export const GET = withWorkspace(async ({ req, ctx, db }) => {
   const url = new URL(req.url);
   const limit = Math.min(parseInt(url.searchParams.get("limit") || "100"), 1000);
   const offset = parseInt(url.searchParams.get("offset") || "0");
   const status = url.searchParams.get("status");
 
-  const supabaseUrl = process.env.SUPABASE_URL!;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  const auth = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, Accept: "application/json" };
+  const nearLat = url.searchParams.get("near_lat");
+  const nearLng = url.searchParams.get("near_lng");
+  const radius = url.searchParams.get("radius") || "10";
 
-  try {
-    let filters = `workspace_id=eq.${workspaceId}`;
-    if (status === "confirmed") filters += `&confirmed=eq.true`;
-    else if (status === "pending") filters += `&confirmed=eq.false`;
-    else if (status === "unsubscribed") filters += `&unsubscribed=eq.true`;
-    else if (status === "active" || status === "at_risk" || status === "cold") filters += `&health_score=eq.${status}`;
+  if (nearLat && nearLng) {
+    // KNOWN BROKEN, PRE-EXISTING: there is no nearby_subscribers function in the
+    // database. This path has been returning 500 for every radius search. Left
+    // calling the same RPC rather than silently changing behaviour in a tenancy
+    // change - the fix is a migration adding the function (the haversine in
+    // enqueue_campaign_recipients is the model) and is tracked separately.
+    const { data, error } = await db.rpc("nearby_subscribers", {
+      p_workspace_id: ctx.workspaceId,
+      center_lat: parseFloat(nearLat),
+      center_lng: parseFloat(nearLng),
+      radius_miles: parseFloat(radius),
+    });
 
-    const joinedAfter = url.searchParams.get("joined_after");
-    const joinedBefore = url.searchParams.get("joined_before");
-    if (joinedAfter) filters += `&created_at=gte.${encodeURIComponent(joinedAfter)}`;
-    if (joinedBefore) filters += `&created_at=lte.${encodeURIComponent(joinedBefore + 'T23:59:59')}`;
-
-    const search = url.searchParams.get("search");
-    if (search) filters += `&or=(email.ilike.*${encodeURIComponent(search)}*,first_name.ilike.*${encodeURIComponent(search)}*,last_name.ilike.*${encodeURIComponent(search)}*)`;
-
-    // Geo-radius query: use Postgres nearby_subscribers RPC
-    const nearLat = url.searchParams.get("near_lat");
-    const nearLng = url.searchParams.get("near_lng");
-    const radius = url.searchParams.get("radius") || "10";
-
-    if (nearLat && nearLng) {
-      const rpcRes = await fetch(
-        `${supabaseUrl}/rest/v1/rpc/nearby_subscribers`,
-        {
-          method: "POST",
-          headers: { ...auth, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            p_workspace_id: workspaceId,
-            center_lat: parseFloat(nearLat),
-            center_lng: parseFloat(nearLng),
-            radius_miles: parseFloat(radius),
-          }),
-        }
-      );
-
-      if (!rpcRes.ok) {
-        const errText = await rpcRes.text();
-        console.error("Nearby subscribers RPC error:", rpcRes.status, errText);
-        return NextResponse.json({ error: "Failed to fetch nearby subscribers" }, { status: 500 });
-      }
-
-      const data = await rpcRes.json();
-      const rows = Array.isArray(data) ? data : [];
-      const total = rows.length;
-      const paged = rows.slice(offset, offset + limit);
-
-      return NextResponse.json({ subscribers: paged, total, limit, offset }, { status: 200 });
+    if (error) {
+      logError(error, { route: "clients.subscribers.nearby", workspaceId: ctx.workspaceId });
+      return NextResponse.json({ error: "Failed to fetch nearby subscribers" }, { status: 500 });
     }
 
-    const countRes = await fetch(`${supabaseUrl}/rest/v1/subscribers?${filters}&select=count`, { headers: auth });
-    const countResult = await countRes.json();
-    const total = countResult?.[0]?.count ?? 0;
-
-    const res = await fetch(
-      `${supabaseUrl}/rest/v1/subscribers?${filters}&order=created_at.desc&limit=${limit}&offset=${offset}`,
-      { headers: auth }
+    const rows = Array.isArray(data) ? data : [];
+    return NextResponse.json(
+      { subscribers: rows.slice(offset, offset + limit), total: rows.length, limit, offset },
+      { status: 200 }
     );
-
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error("Subscriber fetch error:", res.status, errText);
-      return NextResponse.json({ error: "Failed to fetch subscribers" }, { status: 500 });
-    }
-
-    const data = await res.json();
-    return NextResponse.json({ subscribers: data || [], total, limit, offset }, { status: 200 });
-  } catch (error) {
-    console.error("Subscriber endpoint error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
-}
+
+  let query = db
+    .from("subscribers")
+    .select("*", { count: "exact" })
+    .eq("workspace_id", ctx.workspaceId);
+
+  if (status === "confirmed") query = query.eq("confirmed", true);
+  else if (status === "pending") query = query.eq("confirmed", false);
+  else if (status === "unsubscribed") query = query.eq("unsubscribed", true);
+  else if (status === "active" || status === "at_risk" || status === "cold") {
+    query = query.eq("health_score", status);
+  }
+
+  const joinedAfter = url.searchParams.get("joined_after");
+  const joinedBefore = url.searchParams.get("joined_before");
+  if (joinedAfter) query = query.gte("created_at", joinedAfter);
+  if (joinedBefore) query = query.lte("created_at", `${joinedBefore}T23:59:59`);
+
+  const search = url.searchParams.get("search");
+  if (search) {
+    const q = quoteFilterValue(search);
+    query = query.or(
+      `email.ilike."%${q}%",first_name.ilike."%${q}%",last_name.ilike."%${q}%"`
+    );
+  }
+
+  const { data, error, count } = await query
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (error) {
+    logError(error, { route: "clients.subscribers.list", workspaceId: ctx.workspaceId });
+    return NextResponse.json({ error: "Failed to fetch subscribers" }, { status: 500 });
+  }
+
+  return NextResponse.json(
+    { subscribers: data || [], total: count ?? 0, limit, offset },
+    { status: 200 }
+  );
+});
 
 /**
  * POST /api/clients/[workspaceId]/subscribers
- * Add a subscriber to the workspace (JWT authenticated)
- * 
- * Body: {
- *   email: string;
- *   first_name?: string;
- *   last_name?: string;
- *   phone_number?: string;
- *   date_of_birth?: string;
- *   country?: string;
- *   region?: string;
- *   city?: string;
- *   latitude?: number;
- *   longitude?: number;
- *   consent_email_marketing?: boolean;
- *   consent_analytics_tracking?: boolean;
- * }
+ * Add a subscriber to the workspace.
  */
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> }
-) {
-  const { workspaceId } = await params;
-  const context = getClientContextFromJWT(req);
+export const POST = withWorkspace(async ({ req, ctx, db }) => {
+  const body = await req.json().catch(() => null);
+  if (!body) return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
 
-  // Verify authentication and workspace access
-  if (!context || !assertWorkspaceAccess(context, workspaceId)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const body = await req.json();
-  const { email, first_name, last_name, phone_number, date_of_birth, country, region, city, latitude, longitude } = body;
+  const {
+    email, first_name, last_name, phone_number, date_of_birth,
+    country, region, city, latitude, longitude,
+  } = body;
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json({ error: "Invalid email" }, { status: 400 });
   }
 
-  try {
-    const supabaseUrl = process.env.SUPABASE_URL!;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-    const auth = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json", Prefer: "return=representation" };
+  const { data, error } = await db
+    .from("subscribers")
+    .insert({
+      workspace_id: ctx.workspaceId,
+      email: email.toLowerCase().trim(),
+      first_name: first_name || null,
+      last_name: last_name || null,
+      phone_number: phone_number || null,
+      date_of_birth: date_of_birth || null,
+      country: country || null,
+      region: region || null,
+      city: city || null,
+      latitude: latitude || null,
+      longitude: longitude || null,
+      confirmed: false,
+    })
+    .select("*")
+    .single();
 
-    const res = await fetch(`${supabaseUrl}/rest/v1/subscribers`, {
-      method: "POST",
-      headers: auth,
-      body: JSON.stringify({
-        workspace_id: workspaceId,
-        email: email.toLowerCase().trim(),
-        first_name: first_name || null,
-        last_name: last_name || null,
-        phone_number: phone_number || null,
-        date_of_birth: date_of_birth || null,
-        country: country || null,
-        region: region || null,
-        city: city || null,
-        latitude: latitude || null,
-        longitude: longitude || null,
-        confirmed: false,
-      }),
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error("Subscriber create error:", res.status, errText);
-      if (res.status === 409) {
-        return NextResponse.json({ error: "Subscriber already exists" }, { status: 409 });
-      }
-      return NextResponse.json({ error: "Failed to create subscriber" }, { status: 500 });
+  if (error) {
+    // (workspace_id, email) is unique since migration 024.
+    if (error.code === "23505") {
+      return NextResponse.json({ error: "Subscriber already exists" }, { status: 409 });
     }
-
-    const data = await res.json();
-    return NextResponse.json(data?.[0] || data, { status: 201 });
-  } catch (error) {
-    console.error("Subscriber creation endpoint error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    logError(error, { route: "clients.subscribers.create", workspaceId: ctx.workspaceId });
+    return NextResponse.json({ error: "Failed to create subscriber" }, { status: 500 });
   }
-}
+
+  return NextResponse.json(data, { status: 201 });
+});
 
 /**
  * DELETE /api/clients/[workspaceId]/subscribers
- * Bulk-delete subscribers by ID. JWT authenticated, requires edit permission.
+ * Bulk-delete subscribers by ID. Requires edit permission.
  *
  * Body: { ids: string[] }
  */
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> }
-) {
-  const { workspaceId } = await params;
-  const context = getClientContextFromJWT(req);
+export const DELETE = withWorkspace(
+  async ({ req, ctx, db }) => {
+    const parsed = bulkDeleteSchema.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "ids must be an array of 1-500 subscriber UUIDs" },
+        { status: 400 }
+      );
+    }
 
-  if (!context || !assertWorkspaceAccess(context, workspaceId)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  if (!canEditAsClient(context)) {
-    return NextResponse.json(
-      { error: "Insufficient permissions" },
-      { status: 403 }
-    );
-  }
-
-  const parsed = bulkDeleteSchema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: "ids must be an array of 1-500 subscriber UUIDs" },
-      { status: 400 }
-    );
-  }
-
-  try {
-    // `.in()` parameterizes the id list. The previous implementation
-    // interpolated raw body values into a PostgREST `or=(id.eq.…)` filter with
+    // `.in()` parameterizes the id list. The original implementation
+    // interpolated raw body values into a PostgREST `or=(id.eq....)` filter with
     // no encoding, on a request authenticated by the service-role key.
-    const { data, error } = await getSupabaseClient()
+    const { data, error } = await db
       .from("subscribers")
       .delete()
       .in("id", parsed.data.ids)
-      .eq("workspace_id", workspaceId)
+      .eq("workspace_id", ctx.workspaceId)
       .select("id");
 
     if (error) {
-      logError(error, { route: "clients.subscribers.bulkDelete", workspaceId });
+      logError(error, { route: "clients.subscribers.bulkDelete", workspaceId: ctx.workspaceId });
       return NextResponse.json({ error: "Failed to delete subscribers" }, { status: 500 });
     }
 
     // Report rows actually deleted. Returning ids.length counted ids belonging
-    // to other workspaces, which the workspace_id filter silently drops.
+    // to other workspaces, which the workspace filter silently drops.
     return NextResponse.json({ ok: true, deleted: data?.length ?? 0 });
-  } catch (error) {
-    logError(error, { route: "clients.subscribers.bulkDelete", workspaceId });
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-  }
-}
+  },
+  { minRole: "editor" }
+);
