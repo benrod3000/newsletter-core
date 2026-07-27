@@ -110,13 +110,13 @@ export async function POST(req: NextRequest) {
   }
 
   if (campaignId) {
-    let campaignQuery = supabase.from("campaigns").select("id, client_id, geo_filter").eq("id", campaignId).single();
+    let campaignQuery = supabase.from("campaigns").select("id, workspace_id, geo_filter").eq("id", campaignId).single();
     if (admin.role !== "owner" && admin.clientId) {
       campaignQuery = supabase
         .from("campaigns")
-        .select("id, client_id, geo_filter")
+        .select("id, workspace_id, geo_filter")
         .eq("id", campaignId)
-        .eq("client_id", admin.clientId)
+        .eq("workspace_id", admin.clientId)
         .single();
     }
 
@@ -125,14 +125,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Campaign not found or not accessible." }, { status: 404 });
     }
 
-    workspaceClientId = campaignScope.client_id;
+    workspaceClientId = campaignScope.workspace_id;
     if (campaignScope.geo_filter && typeof campaignScope.geo_filter === "object") {
       const campaignGeo = parseGeoFilter(campaignScope.geo_filter);
       geoFilter = { ...campaignGeo, ...geoFilter };
     }
   }
 
-  let query = supabase.from("subscribers").select("email, latitude, longitude").eq("client_id", workspaceClientId);
+  let query = supabase.from("subscribers").select("email, latitude, longitude").eq("workspace_id", workspaceClientId);
 
   if (audience === "confirmed") query = query.eq("confirmed", true);
   if (audience === "pending") query = query.eq("confirmed", false);

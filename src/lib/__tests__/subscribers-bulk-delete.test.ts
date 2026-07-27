@@ -72,7 +72,7 @@ describe("DELETE /api/clients/[workspaceId]/subscribers", () => {
     await DELETE(request({ ids: [ID_A] }), params);
 
     expect(deleteChain.in).toHaveBeenCalledWith("id", [ID_A]);
-    expect(deleteChain.eq).toHaveBeenCalledWith("client_id", WS);
+    expect(deleteChain.eq).toHaveBeenCalledWith("workspace_id", WS);
   });
 
   it("rejects ids that are not UUIDs", async () => {
@@ -81,7 +81,7 @@ describe("DELETE /api/clients/[workspaceId]/subscribers", () => {
     );
 
     // Previously interpolated raw into a PostgREST or=(id.eq.…) filter.
-    const res = await DELETE(request({ ids: ["x&client_id=neq.0"] }), params);
+    const res = await DELETE(request({ ids: ["x&workspace_id=neq.0"] }), params);
 
     expect(res.status).toBe(400);
     expect(deleteChain.delete).not.toHaveBeenCalled();

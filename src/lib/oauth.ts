@@ -32,7 +32,7 @@ export async function getGoogleTokens(code: string): Promise<{ access_token: str
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       code,
-      client_id: process.env.GOOGLE_CLIENT_ID!,
+      workspace_id: process.env.GOOGLE_CLIENT_ID!,
       client_secret: process.env.GOOGLE_CLIENT_SECRET!,
       redirect_uri: `${OAUTH_REDIRECT}/google/callback`,
       grant_type: "authorization_code",
@@ -58,7 +58,7 @@ export async function getGitHubTokens(code: string): Promise<{ access_token: str
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({
       code,
-      client_id: process.env.GITHUB_CLIENT_ID!,
+      workspace_id: process.env.GITHUB_CLIENT_ID!,
       client_secret: process.env.GITHUB_CLIENT_SECRET!,
     }),
   });

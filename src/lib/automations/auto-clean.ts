@@ -23,7 +23,7 @@ export async function runAutoClean() {
   try {
     // Find or create "🥶 Cold Leads" list per workspace
     const coldSubs90Res = await fetch(
-      `${supabaseUrl}/rest/v1/subscribers?select=id,client_id,health_score,created_at&health_score=eq.cold&limit=5000`,
+      `${supabaseUrl}/rest/v1/subscribers?select=id,workspace_id,health_score,created_at&health_score=eq.cold&limit=5000`,
       { headers: auth }
     );
     const coldSubs = await coldSubs90Res.json();

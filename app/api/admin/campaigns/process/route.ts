@@ -15,7 +15,7 @@ async function processScheduledCampaigns(req: NextRequest) {
   const baseUrl = getBaseUrl(req);
   const dueQuery = supabase
     .from("campaigns")
-    .select("id, client_id, subject, audience, geo_filter, editor_html, editor_css, plain_text")
+    .select("id, workspace_id, subject, audience, geo_filter, editor_html, editor_css, plain_text")
     .eq("status", "scheduled")
     .lte("scheduled_for", nowIso);
   const { data: dueCampaigns, error: dueError } = await dueQuery;
@@ -25,7 +25,7 @@ async function processScheduledCampaigns(req: NextRequest) {
   for (const campaign of dueCampaigns) {
     try {
       const result = await sendCampaignBlast({
-        workspaceId: campaign.client_id, subject: campaign.subject,
+        workspaceId: campaign.workspace_id, subject: campaign.subject,
         message: campaign.plain_text || "Newsletter update.",
         messageHtml: campaign.editor_html ?? "", messageCss: campaign.editor_css ?? "",
         audience: campaign.audience ?? "confirmed", geoFilter: parseGeoFilter(campaign.geo_filter),
@@ -44,7 +44,7 @@ async function processScheduledCampaigns(req: NextRequest) {
         updated_by: "cron",
       }).eq("id", campaign.id);
     } catch (err) {
-      logError(err, { campaignId: campaign.id, workspaceId: campaign.client_id })
+      logError(err, { campaignId: campaign.id, workspaceId: campaign.workspace_id })
       await supabase.from("campaigns").update({ last_error: err instanceof Error ? err.message : "Send failed", updated_by: "cron" }).eq("id", campaign.id);
     }
   }

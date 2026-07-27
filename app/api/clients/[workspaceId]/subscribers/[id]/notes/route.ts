@@ -14,7 +14,7 @@ async function subscriberBelongsToWorkspace(id: string, workspaceId: string): Pr
     .from("subscribers")
     .select("id")
     .eq("id", id)
-    .eq("client_id", workspaceId)
+    .eq("workspace_id", workspaceId)
     .maybeSingle();
   return !!data;
 }

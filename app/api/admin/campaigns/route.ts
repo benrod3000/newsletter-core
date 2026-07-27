@@ -31,7 +31,7 @@ async function resolveGeoCenter(
   let query = supabase
     .from("subscribers")
     .select("latitude, longitude")
-    .eq("client_id", clientId)
+    .eq("workspace_id", clientId)
     .not("latitude", "is", null)
     .not("longitude", "is", null)
     .limit(200);
@@ -89,11 +89,11 @@ export async function GET(req: NextRequest) {
   const supabase = getSupabaseClient();
   let campaignsQuery = supabase
     .from("campaigns")
-    .select("id, client_id, title, subject, audience, status, editor_html, editor_css, plain_text, scheduled_for, sent_count, last_sent_at, last_test_sent_at, last_test_recipient, geo_filter, updated_at")
+    .select("id, workspace_id, title, subject, audience, status, editor_html, editor_css, plain_text, scheduled_for, sent_count, last_sent_at, last_test_sent_at, last_test_recipient, geo_filter, updated_at")
     .order("updated_at", { ascending: false });
 
   if (admin.role !== "owner" && admin.clientId) {
-    campaignsQuery = campaignsQuery.eq("client_id", admin.clientId);
+    campaignsQuery = campaignsQuery.eq("workspace_id", admin.clientId);
   }
 
   const { data: campaigns, error } = await campaignsQuery;
@@ -206,7 +206,7 @@ export async function POST(req: NextRequest) {
   }
 
   const payload = {
-    client_id: clientId,
+    workspace_id: clientId,
     title,
     subject,
     audience,
@@ -227,7 +227,7 @@ export async function POST(req: NextRequest) {
         .from("campaigns")
         .update(payload)
         .eq("id", id)
-        .eq("client_id", admin.clientId)
+        .eq("workspace_id", admin.clientId)
         .select("*")
         .single();
     }

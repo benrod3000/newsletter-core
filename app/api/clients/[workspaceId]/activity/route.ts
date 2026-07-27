@@ -23,7 +23,7 @@ export async function GET(
   try {
     // Recent campaigns
     const campRes = await fetch(
-      `${supabaseUrl}/rest/v1/campaigns?client_id=eq.${workspaceId}&order=created_at.desc&limit=5`,
+      `${supabaseUrl}/rest/v1/campaigns?workspace_id=eq.${workspaceId}&order=created_at.desc&limit=5`,
       { headers: auth }
     );
     const campaigns = await campRes.json();
@@ -39,7 +39,7 @@ export async function GET(
 
     // Recent subscribers
     const subRes = await fetch(
-      `${supabaseUrl}/rest/v1/subscribers?client_id=eq.${workspaceId}&order=created_at.desc&limit=5&select=email,created_at`,
+      `${supabaseUrl}/rest/v1/subscribers?workspace_id=eq.${workspaceId}&order=created_at.desc&limit=5&select=email,created_at`,
       { headers: auth }
     );
     const subscribers = await subRes.json();
@@ -51,7 +51,7 @@ export async function GET(
 
     // Recent widget submissions
     const widgetRes = await fetch(
-      `${supabaseUrl}/rest/v1/widget_submissions?select=email,created_at&client_id=eq.${workspaceId}&limit=5`,
+      `${supabaseUrl}/rest/v1/widget_submissions?select=email,created_at&workspace_id=eq.${workspaceId}&limit=5`,
       { headers: auth }
     );
     const submissions = await widgetRes.json();

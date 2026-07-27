@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
 
     const row: Record<string, unknown> = {
       email,
-      client_id: clientId,
+      workspace_id: clientId,
       confirmed: markConfirmed,
     };
 

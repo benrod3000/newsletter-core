@@ -26,7 +26,7 @@ export async function POST(
   try {
     // Fetch campaign
     const campRes = await fetch(
-      `${supabaseUrl}/rest/v1/campaigns?id=eq.${encodeURIComponent(id)}&client_id=eq.${encodeURIComponent(workspaceId)}&limit=1`,
+      `${supabaseUrl}/rest/v1/campaigns?id=eq.${encodeURIComponent(id)}&workspace_id=eq.${encodeURIComponent(workspaceId)}&limit=1`,
       { headers: auth }
     );
     const campaigns = await campRes.json();
@@ -38,7 +38,7 @@ export async function POST(
 
     // Fetch branding for sender config
     const brandRes = await fetch(
-      `${supabaseUrl}/rest/v1/branding?client_id=eq.${encodeURIComponent(workspaceId)}&limit=1`,
+      `${supabaseUrl}/rest/v1/branding?workspace_id=eq.${encodeURIComponent(workspaceId)}&limit=1`,
       { headers: auth }
     );
     const branding = await brandRes.json();

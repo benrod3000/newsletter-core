@@ -29,7 +29,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     .from("campaigns")
     .select("id, title, status, public_slug, public_archive, published_at, editor_html, subject")
     .eq("id", campaignId)
-    .eq("client_id", workspaceId)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (fetchError || !campaign) {

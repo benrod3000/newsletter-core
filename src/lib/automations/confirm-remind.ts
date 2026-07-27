@@ -23,7 +23,7 @@ export async function runConfirmRemind() {
   try {
     // Step 1: Send reminder to subscribers who signed up ~48h ago and haven't confirmed
     const pendingRes = await fetch(
-      `${supabaseUrl}/rest/v1/subscribers?select=id,email,client_id,confirmation_token,created_at&confirmed=eq.false&created_at=lte.${encodeURIComponent(fortyEightHoursAgo)}&created_at=gt.${encodeURIComponent(sevenDaysAgo)}&reminded=is.false&limit=500`,
+      `${supabaseUrl}/rest/v1/subscribers?select=id,email,workspace_id,confirmation_token,created_at&confirmed=eq.false&created_at=lte.${encodeURIComponent(fortyEightHoursAgo)}&created_at=gt.${encodeURIComponent(sevenDaysAgo)}&reminded=is.false&limit=500`,
       { headers: auth }
     );
     const pending = await pendingRes.json();

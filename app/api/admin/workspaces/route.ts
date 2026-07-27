@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     supabase.from("clients").select("id, name, slug, created_at").order("created_at", { ascending: true }),
     supabase
       .from("admin_users")
-      .select("id, username, role, active, client_id, created_at")
+      .select("id, username, role, active, scoped_workspace_id, created_at")
       .order("created_at", { ascending: false }),
   ]);
 

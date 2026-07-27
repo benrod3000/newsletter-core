@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
       .select("id", { count: "exact", head: true })
       .eq("confirmed", false)
       .lt("created_at", cutoff);
-    if (clientId) countQuery = countQuery.eq("client_id", clientId);
+    if (clientId) countQuery = countQuery.eq("workspace_id", clientId);
 
     const { count } = await countQuery;
 
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
       .delete({ count: "exact" })
       .eq("confirmed", false)
       .lt("created_at", cutoff);
-    if (clientId) deleteQuery = deleteQuery.eq("client_id", clientId);
+    if (clientId) deleteQuery = deleteQuery.eq("workspace_id", clientId);
 
     const { count: deleted, error } = await deleteQuery;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
       .from("subscribers")
       .select("id", { count: "exact", head: true })
       .eq("suppressed", true);
-    if (clientId) countQuery = countQuery.eq("client_id", clientId);
+    if (clientId) countQuery = countQuery.eq("workspace_id", clientId);
 
     const { count } = await countQuery;
 
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
       .from("subscribers")
       .delete({ count: "exact" })
       .eq("suppressed", true);
-    if (clientId) deleteQuery = deleteQuery.eq("client_id", clientId);
+    if (clientId) deleteQuery = deleteQuery.eq("workspace_id", clientId);
 
     const { count: deleted, error } = await deleteQuery;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
       .select("id")
       .eq("confirmed", true)
       .lt("created_at", cutoff);
-    if (clientId) subQuery = subQuery.eq("client_id", clientId);
+    if (clientId) subQuery = subQuery.eq("workspace_id", clientId);
 
     const { data: allSubs } = await subQuery;
     if (!allSubs || allSubs.length === 0) {

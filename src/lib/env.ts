@@ -13,6 +13,11 @@
 const REQUIRED = [
   ["SUPABASE_URL", "Supabase project URL."],
   ["SUPABASE_SERVICE_ROLE_KEY", "Server-side Supabase key. Never expose to the browser."],
+  ["SUPABASE_ANON_KEY", "Public API key the workspace-scoped client presents. Identity comes from the minted token, not this key."],
+  [
+    "SUPABASE_JWT_SECRET",
+    "Signs workspace-scoped database tokens. Without it RLS cannot be enforced, so withWorkspace() routes fail closed rather than falling back to unscoped access.",
+  ],
   ["JWT_SECRET", "Signs client session tokens. Rotating it invalidates all sessions."],
   ["ADMIN_HMAC_SECRET", "Signs admin context headers. Without it admin headers cannot be verified."],
   ["CRON_SECRET", "Authenticates Vercel cron invocations."],

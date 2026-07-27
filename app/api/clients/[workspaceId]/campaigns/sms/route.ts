@@ -17,7 +17,7 @@ export async function GET(
 
   // Count SMS-reachable subscribers
   const countRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/subscribers?select=count&client_id=eq.${workspaceId}&sms_consent=is.true`,
+    `${SUPABASE_URL}/rest/v1/subscribers?select=count&workspace_id=eq.${workspaceId}&sms_consent=is.true`,
     { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
   );
   const countData = await countRes.json();
@@ -58,7 +58,7 @@ export async function POST(
 
   // Fetch subscribers with phone + SMS consent
   const subsRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/subscribers?select=id,phone,first_name&client_id=eq.${workspaceId}&sms_consent=is.true&not.phone=is.null&limit=500`,
+    `${SUPABASE_URL}/rest/v1/subscribers?select=id,phone,first_name&workspace_id=eq.${workspaceId}&sms_consent=is.true&not.phone=is.null&limit=500`,
     { headers: auth, signal: AbortSignal.timeout(15000) }
   );
   const subscribers = await subsRes.json();

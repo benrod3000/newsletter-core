@@ -17,14 +17,14 @@ interface SendGridEvent {
 
 interface ResolvedSubscriber {
   id: string;
-  client_id: string;
+  workspace_id: string;
 }
 
 /**
  * Identify the single subscriber row an event refers to.
  *
  * Suppression must never cross tenants. Since migration 024 the unique key is
- * (client_id, email), so one address can be a subscriber in several workspaces,
+ * (workspace_id, email), so one address can be a subscriber in several workspaces,
  * and a bounce in one says nothing about the others. Matching on the address
  * alone suppressed every workspace's copy at once - one tenant's stale list
  * silently stopped delivery for everyone else's engaged subscribers.
@@ -42,7 +42,7 @@ async function resolveSubscriber(
   if (event.subscriber_id) {
     const { data } = await supabase
       .from("subscribers")
-      .select("id, client_id")
+      .select("id, workspace_id")
       .eq("id", event.subscriber_id)
       .maybeSingle<ResolvedSubscriber>();
     if (data) return data;
@@ -51,16 +51,16 @@ async function resolveSubscriber(
   if (event.campaign_id) {
     const { data: campaign } = await supabase
       .from("campaigns")
-      .select("client_id")
+      .select("workspace_id")
       .eq("id", event.campaign_id)
-      .maybeSingle<{ client_id: string }>();
+      .maybeSingle<{ workspace_id: string }>();
 
-    if (campaign?.client_id) {
+    if (campaign?.workspace_id) {
       const { data } = await supabase
         .from("subscribers")
-        .select("id, client_id")
+        .select("id, workspace_id")
         .eq("email", email)
-        .eq("client_id", campaign.client_id)
+        .eq("workspace_id", campaign.workspace_id)
         .maybeSingle<ResolvedSubscriber>();
       if (data) return data;
     }
@@ -69,7 +69,7 @@ async function resolveSubscriber(
   // Address only: unambiguous exactly when it belongs to one workspace.
   const { data: matches } = await supabase
     .from("subscribers")
-    .select("id, client_id")
+    .select("id, workspace_id")
     .eq("email", email)
     .limit(2)
     .returns<ResolvedSubscriber[]>();

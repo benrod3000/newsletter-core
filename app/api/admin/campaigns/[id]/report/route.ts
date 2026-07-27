@@ -15,16 +15,16 @@ export async function GET(
   // Verify campaign access
   let campaignQuery = supabase
     .from("campaigns")
-    .select("id, client_id, title, subject, sent_count, last_sent_at")
+    .select("id, workspace_id, title, subject, sent_count, last_sent_at")
     .eq("id", campaignId)
     .single();
 
   if (admin.role !== "owner" && admin.clientId) {
     campaignQuery = supabase
       .from("campaigns")
-      .select("id, client_id, title, subject, sent_count, last_sent_at")
+      .select("id, workspace_id, title, subject, sent_count, last_sent_at")
       .eq("id", campaignId)
-      .eq("client_id", admin.clientId)
+      .eq("workspace_id", admin.clientId)
       .single();
   }
 

@@ -60,7 +60,7 @@ export async function buildDeliverabilityOverview(
   const { data: campaigns } = await supabase
     .from("campaigns")
     .select("id")
-    .eq("client_id", workspaceId);
+    .eq("workspace_id", workspaceId);
 
   const campaignIds = (campaigns || []).map((c: { id: string }) => c.id);
 
@@ -84,7 +84,7 @@ export async function buildDeliverabilityOverview(
   const { data: sentData } = await supabase
     .from("campaigns")
     .select("sent_count")
-    .eq("client_id", workspaceId)
+    .eq("workspace_id", workspaceId)
     .gte("last_sent_at", windowStart);
 
   const totalSends = (sentData || []).reduce(

@@ -70,7 +70,7 @@ export async function GET(
     const { count: totalSubscribers, error: subCountError } = await supabase
       .from("subscribers")
       .select("id", { count: "exact", head: true })
-      .eq("client_id", workspaceId);
+      .eq("workspace_id", workspaceId);
 
     if (subCountError) {
       console.error("Analytics subscriber count error:", subCountError);
@@ -80,7 +80,7 @@ export async function GET(
     const { data: windowSubscribers } = await supabase
       .from("subscribers")
       .select("created_at")
-      .eq("client_id", workspaceId)
+      .eq("workspace_id", workspaceId)
       .gte("created_at", priorStartDate.toISOString());
 
     let newSubscribers = 0;
@@ -109,7 +109,7 @@ export async function GET(
     const { data: campaignRows, error: campaignErr } = await supabase
       .from("campaigns")
       .select("id, title, sent_count, last_sent_at, created_at")
-      .eq("client_id", workspaceId)
+      .eq("workspace_id", workspaceId)
       .eq("status", "sent")
       .order("last_sent_at", { ascending: false })
       .limit(500);

@@ -43,7 +43,7 @@ export async function DELETE(
     .from("subscriber_lists")
     .select("id")
     .eq("id", id)
-    .eq("client_id", workspaceId)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (fetchError || !list) {
@@ -57,7 +57,7 @@ export async function DELETE(
     .from("subscriber_lists")
     .delete()
     .eq("id", id)
-    .eq("client_id", workspaceId);
+    .eq("workspace_id", workspaceId);
 
   if (deleteError) {
     console.error("List delete error:", deleteError);

@@ -30,7 +30,7 @@ export async function PATCH(
 
   try {
     // Verify campaign exists
-    const checkRes = await fetch(`${supabaseUrl}/rest/v1/campaigns?id=eq.${id}&client_id=eq.${workspaceId}&select=id,status&limit=1`, { headers: auth });
+    const checkRes = await fetch(`${supabaseUrl}/rest/v1/campaigns?id=eq.${id}&workspace_id=eq.${workspaceId}&select=id,status&limit=1`, { headers: auth });
     const campaigns = await checkRes.json();
     if (!Array.isArray(campaigns) || campaigns.length === 0) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404, headers: CORS });
@@ -54,7 +54,7 @@ export async function PATCH(
     // Scope the write to the workspace as well. The existence check above
     // already 404s for other workspaces, but that leaves correctness depending
     // on two statements staying in sync across future edits.
-    const res = await fetch(`${supabaseUrl}/rest/v1/campaigns?id=eq.${id}&client_id=eq.${workspaceId}`, {
+    const res = await fetch(`${supabaseUrl}/rest/v1/campaigns?id=eq.${id}&workspace_id=eq.${workspaceId}`, {
       method: "PATCH",
       headers: patchHeaders,
       body: JSON.stringify(updateData),
@@ -85,7 +85,7 @@ export async function DELETE(
   const auth = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` };
 
   try {
-    const res = await fetch(`${supabaseUrl}/rest/v1/campaigns?id=eq.${id}&client_id=eq.${workspaceId}`, {
+    const res = await fetch(`${supabaseUrl}/rest/v1/campaigns?id=eq.${id}&workspace_id=eq.${workspaceId}`, {
       method: "DELETE",
       headers: auth,
     });

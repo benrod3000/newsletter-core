@@ -22,11 +22,11 @@ export async function GET(req: NextRequest) {
   const supabase = getSupabaseClient();
   let query = supabase
     .from("subscriber_lists")
-    .select("id, name, description, opt_in_type, created_at, updated_at, client_id")
+    .select("id, name, description, opt_in_type, created_at, updated_at, workspace_id")
     .order("created_at", { ascending: false });
 
   if (admin.role !== "owner" && admin.clientId) {
-    query = query.eq("client_id", admin.clientId);
+    query = query.eq("workspace_id", admin.clientId);
   }
 
   const { data, error } = await query;
@@ -61,12 +61,12 @@ export async function POST(req: NextRequest) {
   const { data, error } = await supabase
     .from("subscriber_lists")
     .insert({
-      client_id: clientId,
+      workspace_id: clientId,
       name: name.trim(),
       description: description?.trim() ?? null,
       opt_in_type: finalOptInType,
     })
-    .select("id, name, description, opt_in_type, created_at, updated_at, client_id")
+    .select("id, name, description, opt_in_type, created_at, updated_at, workspace_id")
     .single();
 
   if (error) {

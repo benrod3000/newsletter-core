@@ -21,9 +21,9 @@ export async function GET(
 
   try {
     const [subsRes, campsRes, listsRes, widgetsRes, activityRes] = await Promise.all([
-      fetch(`${supabaseUrl}/rest/v1/subscribers?client_id=eq.${wId}&limit=10000`, { headers: auth }),
-      fetch(`${supabaseUrl}/rest/v1/campaigns?client_id=eq.${wId}&limit=1000`, { headers: auth }),
-      fetch(`${supabaseUrl}/rest/v1/subscriber_lists?client_id=eq.${wId}&limit=1000`, { headers: auth }),
+      fetch(`${supabaseUrl}/rest/v1/subscribers?workspace_id=eq.${wId}&limit=10000`, { headers: auth }),
+      fetch(`${supabaseUrl}/rest/v1/campaigns?workspace_id=eq.${wId}&limit=1000`, { headers: auth }),
+      fetch(`${supabaseUrl}/rest/v1/subscriber_lists?workspace_id=eq.${wId}&limit=1000`, { headers: auth }),
       fetch(`${supabaseUrl}/rest/v1/widgets?workspace_id=eq.${wId}&limit=100`, { headers: auth }),
       fetch(`${supabaseUrl}/rest/v1/clients?id=eq.${wId}&limit=1`, { headers: auth }),
     ]);

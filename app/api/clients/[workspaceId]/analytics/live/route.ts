@@ -22,7 +22,7 @@ export async function GET(
   try {
     // Get workspace campaign IDs
     const campsRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/campaigns?select=id,title&client_id=eq.${workspaceId}&limit=50`,
+      `${SUPABASE_URL}/rest/v1/campaigns?select=id,title&workspace_id=eq.${workspaceId}&limit=50`,
       { headers: auth }
     );
     if (!campsRes.ok) return NextResponse.json({ events: [] });

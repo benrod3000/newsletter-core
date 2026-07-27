@@ -36,7 +36,7 @@ export async function GET(
       .select(
         "email, first_name, last_name, phone_number, date_of_birth, country, region, city, timezone, locale, utm_source, utm_medium, utm_campaign, consent_email_marketing, consent_analytics_tracking, confirmed, suppressed, suppressed_reason, created_at"
       )
-      .eq("client_id", workspaceId);
+      .eq("workspace_id", workspaceId);
 
     if (status === "confirmed") {
       query = query.eq("confirmed", true);

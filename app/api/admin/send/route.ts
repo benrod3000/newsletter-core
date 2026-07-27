@@ -43,11 +43,11 @@ export async function POST(req: NextRequest) {
 
     // Resolve workspace from campaign
     if (campaignId) {
-      let q = supabase.from("campaigns").select("id, client_id").eq("id", campaignId);
-      if (admin.role !== "owner" && admin.clientId) q = q.eq("client_id", admin.clientId);
+      let q = supabase.from("campaigns").select("id, workspace_id").eq("id", campaignId);
+      if (admin.role !== "owner" && admin.clientId) q = q.eq("workspace_id", admin.clientId);
       const { data: camp } = await q.single();
       if (!camp) return apiNotFound("Campaign");
-      workspaceId = camp.client_id;
+      workspaceId = camp.workspace_id;
     }
 
     // Test send

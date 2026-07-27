@@ -18,7 +18,7 @@ export async function runSmartTags() {
   try {
     // Get all subscribers for tag evaluation
     const subsRes = await fetch(
-      `${supabaseUrl}/rest/v1/subscribers?select=id,client_id,email,user_agent&limit=10000`,
+      `${supabaseUrl}/rest/v1/subscribers?select=id,workspace_id,email,user_agent&limit=10000`,
       { headers: auth }
     );
     const subscribers = await subsRes.json();
@@ -46,7 +46,7 @@ export async function runSmartTags() {
     // Build per-subscriber engagement data
     const subData = new Map();
     for (const sub of subscribers) {
-      subData.set(sub.id, { opens: 0, clicks: 0, lastOpen: null, lastClick: null, userAgent: sub.user_agent, clientId: sub.client_id });
+      subData.set(sub.id, { opens: 0, clicks: 0, lastOpen: null, lastClick: null, userAgent: sub.user_agent, clientId: sub.workspace_id });
     }
     for (const e of events) {
       const d = subData.get(e.subscriber_id);
@@ -55,7 +55,7 @@ export async function runSmartTags() {
       if (e.event_type === "click") { d.clicks++; if (!d.lastClick || e.occurred_at > d.lastClick) d.lastClick = e.occurred_at; }
     }
 
-    const batchUpserts: Array<{ subscriber_id: string; client_id: string; tag: string }> = [];
+    const batchUpserts: Array<{ subscriber_id: string; workspace_id: string; tag: string }> = [];
 
     for (const [subId, d] of subData) {
       const tags = [];
@@ -69,7 +69,7 @@ export async function runSmartTags() {
       if (d.userAgent?.toLowerCase().includes("mobile")) tags.push("mobile");
 
       for (const tag of tags) {
-        batchUpserts.push({ subscriber_id: subId, client_id: d.clientId, tag });
+        batchUpserts.push({ subscriber_id: subId, workspace_id: d.clientId, tag });
         tagged++;
       }
     }
@@ -119,7 +119,7 @@ export async function runSmartTagsForWorkspace(workspaceId: string) {
   try {
     // Get subscribers for this workspace only
     const subsRes = await fetch(
-      `${supabaseUrl}/rest/v1/subscribers?select=id,client_id,email,user_agent&client_id=eq.${workspaceId}&limit=10000`,
+      `${supabaseUrl}/rest/v1/subscribers?select=id,workspace_id,email,user_agent&workspace_id=eq.${workspaceId}&limit=10000`,
       { headers: auth }
     );
     const subscribers = await subsRes.json();
@@ -158,7 +158,7 @@ export async function runSmartTagsForWorkspace(workspaceId: string) {
       if (e.event_type === "click") { d.clicks++; if (!d.lastClick || e.occurred_at > d.lastClick) d.lastClick = e.occurred_at; }
     }
 
-    const batchUpserts: Array<{ subscriber_id: string; client_id: string; tag: string }> = [];
+    const batchUpserts: Array<{ subscriber_id: string; workspace_id: string; tag: string }> = [];
 
     for (const [subId, d] of subData) {
       const tags = [];
@@ -172,7 +172,7 @@ export async function runSmartTagsForWorkspace(workspaceId: string) {
       if (d.userAgent?.toLowerCase().includes("mobile")) tags.push("mobile");
 
       for (const tag of tags) {
-        batchUpserts.push({ subscriber_id: subId, client_id: workspaceId, tag });
+        batchUpserts.push({ subscriber_id: subId, workspace_id: workspaceId, tag });
         tagged++;
       }
     }

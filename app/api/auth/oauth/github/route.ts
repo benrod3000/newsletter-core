@@ -18,7 +18,7 @@ export async function GET() {
   const state = generateOAuthState();
 
   const params = new URLSearchParams({
-    client_id: GITHUB_CLIENT_ID,
+    workspace_id: GITHUB_CLIENT_ID,
     redirect_uri: `${API_BASE}/api/auth/oauth/github/callback`,
     scope: "read:user user:email",
     state: state.value,

@@ -125,7 +125,7 @@ export async function POST(
     .from("subscribers")
     .select("id, confirmed")
     .eq("email", email)
-    .eq("client_id", workspaceId)
+    .eq("workspace_id", workspaceId)
     .maybeSingle();
 
   let subscriberId: string;
@@ -150,7 +150,7 @@ export async function POST(
     const { data: newSub, error: createError } = await supabase
       .from("subscribers")
       .insert({
-        client_id: workspaceId,
+        workspace_id: workspaceId,
         email,
         first_name: finalFirstName,
         last_name: finalLastName,

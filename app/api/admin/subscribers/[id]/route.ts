@@ -25,7 +25,7 @@ async function logGdprAuditEvent({
     action,
     subscriber_id: subscriberId,
     subscriber_email: subscriberEmail,
-    client_id: clientId,
+    workspace_id: clientId,
     admin_username: adminUsername,
     admin_role: adminRole,
     metadata: {
@@ -67,7 +67,7 @@ export async function GET(
       .from("subscribers")
       .select("*")
       .eq("id", id)
-      .eq("client_id", admin.clientId)
+      .eq("workspace_id", admin.clientId)
       .single();
   }
 
@@ -91,7 +91,7 @@ export async function GET(
     action: "export",
     subscriberId: subscriber.id,
     subscriberEmail: subscriber.email,
-    clientId: subscriber.client_id,
+    clientId: subscriber.workspace_id,
     adminUsername: admin.username,
     adminRole: admin.role,
   });
@@ -119,16 +119,16 @@ export async function DELETE(
   const supabase = getSupabaseClient();
   let subscriberQuery = supabase
     .from("subscribers")
-    .select("id, email, client_id")
+    .select("id, email, workspace_id")
     .eq("id", id)
     .single();
 
   if (admin.role !== "owner" && admin.clientId) {
     subscriberQuery = supabase
       .from("subscribers")
-      .select("id, email, client_id")
+      .select("id, email, workspace_id")
       .eq("id", id)
-      .eq("client_id", admin.clientId)
+      .eq("workspace_id", admin.clientId)
       .single();
   }
 
@@ -155,7 +155,7 @@ export async function DELETE(
 
   let deleteQuery = supabase.from("subscribers").delete().eq("id", id);
   if (admin.role !== "owner" && admin.clientId) {
-    deleteQuery = supabase.from("subscribers").delete().eq("id", id).eq("client_id", admin.clientId);
+    deleteQuery = supabase.from("subscribers").delete().eq("id", id).eq("workspace_id", admin.clientId);
   }
 
   const { error: deleteError } = await deleteQuery;
@@ -168,7 +168,7 @@ export async function DELETE(
     action: "delete",
     subscriberId: subscriber.id,
     subscriberEmail: subscriber.email,
-    clientId: subscriber.client_id,
+    clientId: subscriber.workspace_id,
     adminUsername: admin.username,
     adminRole: admin.role,
   });

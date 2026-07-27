@@ -66,7 +66,7 @@ export async function POST(
     }
 
     const subscriber: Record<string, unknown> = {
-      client_id: workspaceId,
+      workspace_id: workspaceId,
       email,
       confirmed,
     };

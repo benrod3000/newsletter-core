@@ -31,7 +31,7 @@ export async function GET(
     // Get campaign IDs for this workspace, then query events by campaign_id
     // (avoids URL overflow from 5,000 subscriber_id=eq.UUID conditions)
     const campaignsRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/campaigns?select=id&client_id=eq.${workspaceId}&limit=100`,
+      `${SUPABASE_URL}/rest/v1/campaigns?select=id&workspace_id=eq.${workspaceId}&limit=100`,
       { headers: auth }
     );
     if (!campaignsRes.ok) {

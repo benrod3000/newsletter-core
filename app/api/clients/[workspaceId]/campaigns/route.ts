@@ -35,14 +35,14 @@ export async function GET(
   const auth = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` };
 
   try {
-    const countRes = await fetch(`${supabaseUrl}/rest/v1/campaigns?client_id=eq.${workspaceId}&select=count`, {
+    const countRes = await fetch(`${supabaseUrl}/rest/v1/campaigns?workspace_id=eq.${workspaceId}&select=count`, {
       headers: { ...auth, Accept: "application/json" },
     });
     const countResult = await countRes.json();
     const total = countResult?.[0]?.count ?? 0;
 
     const res = await fetch(
-      `${supabaseUrl}/rest/v1/campaigns?client_id=eq.${workspaceId}&order=created_at.desc&limit=${limit}&offset=${offset}`,
+      `${supabaseUrl}/rest/v1/campaigns?workspace_id=eq.${workspaceId}&order=created_at.desc&limit=${limit}&offset=${offset}`,
       { headers: auth }
     );
 
@@ -109,7 +109,7 @@ export async function POST(
       method: "POST",
       headers: auth,
       body: JSON.stringify({
-        client_id: workspaceId,
+        workspace_id: workspaceId,
         title,
         subject,
         audience: audience || "confirmed",

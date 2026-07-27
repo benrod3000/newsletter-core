@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
 
       const { data: campaign } = await supabase
         .from("campaigns")
-        .select("id, client_id, subject, editor_html, editor_css, plain_text")
+        .select("id, workspace_id, subject, editor_html, editor_css, plain_text")
         .eq("id", job.campaign_id)
         .maybeSingle();
 
@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
       const { data: client } = await supabase
         .from("clients")
         .select("email_provider, fallback_provider, sandbox_mode, sendgrid_api_key, resend_api_key, sender_email, sender_name")
-        .eq("id", campaign.client_id)
+        .eq("id", campaign.workspace_id)
         .maybeSingle();
 
       const dispatchConfig = {
@@ -94,7 +94,7 @@ export async function GET(req: NextRequest) {
 
       const result = await drainCampaignJob({
         jobId: job.id,
-        workspaceId: campaign.client_id,
+        workspaceId: campaign.workspace_id,
         campaignId: campaign.id,
         subject: campaign.subject || "Newsletter update",
         message: campaign.plain_text || "",

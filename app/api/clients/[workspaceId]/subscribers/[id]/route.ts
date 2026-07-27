@@ -43,7 +43,7 @@ export async function DELETE(
     .from("subscribers")
     .select("id")
     .eq("id", id)
-    .eq("client_id", workspaceId)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (fetchError || !subscriber) {
@@ -57,7 +57,7 @@ export async function DELETE(
     .from("subscribers")
     .delete()
     .eq("id", id)
-    .eq("client_id", workspaceId);
+    .eq("workspace_id", workspaceId);
 
   if (deleteError) {
     console.error("Subscriber delete error:", deleteError);

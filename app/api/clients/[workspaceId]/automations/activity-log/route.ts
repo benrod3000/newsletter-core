@@ -17,7 +17,7 @@ export async function GET(
   try {
     // Get this workspace's subscriber IDs
     const subsRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/subscribers?select=id&client_id=eq.${workspaceId}`,
+      `${SUPABASE_URL}/rest/v1/subscribers?select=id&workspace_id=eq.${workspaceId}`,
       { headers: auth }
     );
     const subs = await subsRes.json();

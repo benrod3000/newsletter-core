@@ -28,7 +28,7 @@ export async function GET(
       .from("subscribers")
       .select("*")
       .eq("id", subscriberId)
-      .eq("client_id", workspaceId)
+      .eq("workspace_id", workspaceId)
       .maybeSingle();
 
     if (subError) {

@@ -18,7 +18,7 @@ export async function GET() {
   const state = generateOAuthState();
 
   const params = new URLSearchParams({
-    client_id: GOOGLE_CLIENT_ID,
+    workspace_id: GOOGLE_CLIENT_ID,
     redirect_uri: `${API_BASE}/api/auth/oauth/google/callback`,
     response_type: "code",
     scope: "openid email profile",

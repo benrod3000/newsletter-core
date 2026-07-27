@@ -18,11 +18,11 @@ export async function GET(
   const supabase = getSupabaseClient();
   let query = supabase
     .from("subscriber_lists")
-    .select("id, name, description, opt_in_type, created_at, updated_at, client_id")
+    .select("id, name, description, opt_in_type, created_at, updated_at, workspace_id")
     .eq("id", id);
 
   if (admin.role !== "owner" && admin.clientId) {
-    query = query.eq("client_id", admin.clientId);
+    query = query.eq("workspace_id", admin.clientId);
   }
 
   const { data: list, error: listError } = await query.single();
@@ -83,10 +83,10 @@ export async function PUT(
     .eq("id", id);
 
   if (admin.role !== "owner" && admin.clientId) {
-    query = query.eq("client_id", admin.clientId);
+    query = query.eq("workspace_id", admin.clientId);
   }
 
-  const { data, error } = await query.select("id, name, description, opt_in_type, created_at, updated_at, client_id").single();
+  const { data, error } = await query.select("id, name, description, opt_in_type, created_at, updated_at, workspace_id").single();
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -111,7 +111,7 @@ export async function DELETE(
   let query = supabase.from("subscriber_lists").delete().eq("id", id);
 
   if (admin.role !== "owner" && admin.clientId) {
-    query = query.eq("client_id", admin.clientId);
+    query = query.eq("workspace_id", admin.clientId);
   }
 
   const { error } = await query;

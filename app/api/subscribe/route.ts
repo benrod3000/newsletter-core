@@ -363,9 +363,9 @@ export async function POST(req: NextRequest) {
 
     // 7. Insert into Supabase, returning tokens for the email
     const supabase = getSupabaseClient();
-    const client_id = await resolveClientIdForSignup(supabase, client_slug);
+    const workspace_id = await resolveClientIdForSignup(supabase, client_slug);
 
-    if (!client_id) {
+    if (!workspace_id) {
       return NextResponse.json(
         { error: "Invalid or missing workspace identifier." },
         { status: 400, headers: CORS_HEADERS }
@@ -376,7 +376,7 @@ export async function POST(req: NextRequest) {
       .from("subscribers")
       .insert([
         {
-          client_id,
+          workspace_id,
           email,
           ip,
           country: geoCountry,
@@ -411,7 +411,7 @@ export async function POST(req: NextRequest) {
 
     if (dbError) {
       if (dbError.code === "23505") {
-        // Scoped to this workspace. The unique key is (client_id, email) since
+        // Scoped to this workspace. The unique key is (workspace_id, email) since
         // migration 024, so the same address legitimately exists in several
         // workspaces - an unscoped lookup here returned another workspace's
         // confirmation and unsubscribe tokens and mailed them to the subscriber.
@@ -419,7 +419,7 @@ export async function POST(req: NextRequest) {
           .from("subscribers")
           .select("confirmed, confirmation_token, unsubscribe_token")
           .eq("email", email)
-          .eq("client_id", client_id)
+          .eq("workspace_id", workspace_id)
           .maybeSingle();
 
         if (existingError || !existing) {
@@ -442,7 +442,7 @@ export async function POST(req: NextRequest) {
             consent_source: landing_path,
           })
           .eq("email", email)
-          .eq("client_id", client_id);
+          .eq("workspace_id", workspace_id);
 
         const resendResult = await sendConfirmationEmail({
           email,

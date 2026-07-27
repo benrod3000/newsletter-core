@@ -26,11 +26,11 @@ export async function POST(
   const supabase = getSupabaseClient();
   let listQuery = supabase
     .from("subscriber_lists")
-    .select("id, client_id")
+    .select("id, workspace_id")
     .eq("id", id);
 
   if (admin.role !== "owner" && admin.clientId) {
-    listQuery = listQuery.eq("client_id", admin.clientId);
+    listQuery = listQuery.eq("workspace_id", admin.clientId);
   }
 
   const { data: list, error: listError } = await listQuery.single();

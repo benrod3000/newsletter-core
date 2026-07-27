@@ -24,7 +24,7 @@ export async function POST(
   // Verify all subscriber IDs belong to this workspace
   const idsParam = subscriberIds.map((id: string) => `id=eq.${id}`).join(",");
   const verifyRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/subscribers?select=id&client_id=eq.${workspaceId}&or=(${idsParam})`,
+    `${SUPABASE_URL}/rest/v1/subscribers?select=id&workspace_id=eq.${workspaceId}&or=(${idsParam})`,
     { headers: auth }
   );
   const existing = await verifyRes.json();

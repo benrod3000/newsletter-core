@@ -13,7 +13,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const supabase = getSupabaseClient();
   const { data: campaign, error } = await supabase
     .from("campaigns")
-    .select("title, subject, editor_html, editor_css, published_at, client_id")
+    .select("title, subject, editor_html, editor_css, published_at, workspace_id")
     .eq("public_slug", slug)
     .eq("public_archive", true)
     .single();
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { data: client } = await supabase
     .from("clients")
     .select("sender_name")
-    .eq("id", campaign.client_id)
+    .eq("id", campaign.workspace_id)
     .single();
 
   const senderName = client?.sender_name || "Veloce";

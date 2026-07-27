@@ -29,7 +29,7 @@ export async function GET(
     const { data, error } = await supabase
       .from("subscriber_lists")
       .select("*")
-      .eq("client_id", workspaceId)
+      .eq("workspace_id", workspaceId)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -96,7 +96,7 @@ export async function POST(
     const { data, error } = await supabase
       .from("subscriber_lists")
       .insert({
-        client_id: workspaceId,
+        workspace_id: workspaceId,
         name,
         description: description || null,
         opt_in_type: validOptInType,

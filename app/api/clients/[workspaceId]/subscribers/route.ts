@@ -48,7 +48,7 @@ export async function GET(
   const auth = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, Accept: "application/json" };
 
   try {
-    let filters = `client_id=eq.${workspaceId}`;
+    let filters = `workspace_id=eq.${workspaceId}`;
     if (status === "confirmed") filters += `&confirmed=eq.true`;
     else if (status === "pending") filters += `&confirmed=eq.false`;
     else if (status === "unsubscribed") filters += `&unsubscribed=eq.true`;
@@ -166,7 +166,7 @@ export async function POST(
       method: "POST",
       headers: auth,
       body: JSON.stringify({
-        client_id: workspaceId,
+        workspace_id: workspaceId,
         email: email.toLowerCase().trim(),
         first_name: first_name || null,
         last_name: last_name || null,
@@ -241,7 +241,7 @@ export async function DELETE(
       .from("subscribers")
       .delete()
       .in("id", parsed.data.ids)
-      .eq("client_id", workspaceId)
+      .eq("workspace_id", workspaceId)
       .select("id");
 
     if (error) {
@@ -250,7 +250,7 @@ export async function DELETE(
     }
 
     // Report rows actually deleted. Returning ids.length counted ids belonging
-    // to other workspaces, which the client_id filter silently drops.
+    // to other workspaces, which the workspace_id filter silently drops.
     return NextResponse.json({ ok: true, deleted: data?.length ?? 0 });
   } catch (error) {
     logError(error, { route: "clients.subscribers.bulkDelete", workspaceId });

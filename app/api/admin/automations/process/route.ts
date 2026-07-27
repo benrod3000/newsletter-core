@@ -85,8 +85,8 @@ export async function POST(req: NextRequest) {
 
         const { data: subscribers } = await supabase
           .from("subscribers")
-          .select("id, email, first_name, last_name, client_id, confirmed, unsubscribe_token, country, region, city, date_of_birth, phone_number")
-          .eq("client_id", auto.workspace_id)
+          .select("id, email, first_name, last_name, workspace_id, confirmed, unsubscribe_token, country, region, city, date_of_birth, phone_number")
+          .eq("workspace_id", auto.workspace_id)
           .eq("confirmed", true)
           .eq("suppressed", false)
           .gte("created_at", cutoff.toISOString())
@@ -179,7 +179,7 @@ export async function POST(req: NextRequest) {
           const { data: subscribers } = await supabase
             .from("subscribers")
             .select("id, email, first_name, last_name")
-            .eq("client_id", auto.workspace_id)
+            .eq("workspace_id", auto.workspace_id)
             .eq("confirmed", true)
             .eq("suppressed", false)
             .limit(100);

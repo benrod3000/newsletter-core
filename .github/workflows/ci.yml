@@ -46,6 +46,8 @@ jobs:
         env:
           SUPABASE_URL: https://ci.invalid
           SUPABASE_SERVICE_ROLE_KEY: ci-not-a-real-key
+          SUPABASE_ANON_KEY: ci-not-a-real-key
+          SUPABASE_JWT_SECRET: ci-not-a-real-secret
           JWT_SECRET: ci-not-a-real-secret
           ADMIN_HMAC_SECRET: ci-not-a-real-secret
           CRON_SECRET: ci-not-a-real-secret

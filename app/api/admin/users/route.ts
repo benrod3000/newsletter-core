@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     p_username: username,
     p_password: password,
     p_role: role,
-    p_client_id: role === "owner" ? null : clientId,
+    p_scoped_workspace_id: role === "owner" ? null : clientId,
   });
 
   if (error) {
