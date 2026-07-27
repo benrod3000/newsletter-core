@@ -1,71 +1,52 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { isUuid } from "@/lib/route-params";
-import { getSupabaseClient } from "@/lib/supabase";
-import {
-  getClientContextFromJWT,
-  assertWorkspaceAccess,
-  canEditAsClient,
-} from "@/lib/client-context";
+import { withWorkspace } from "@/lib/with-workspace";
+import { logError } from "@/lib/logger";
 
 /**
  * DELETE /api/clients/[workspaceId]/subscriber-lists/[id]
- * Delete a subscriber list. JWT authenticated, requires edit permission.
+ * Delete a subscriber list. Requires edit permission.
  *
  * This only deletes the list container - subscriber records are not affected.
  * Memberships in subscriber_list_memberships are cleaned up by the DB cascade.
  */
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string; id: string }> }
-) {
-  const { workspaceId, id } = await params;
-  const context = getClientContextFromJWT(req);
+export const DELETE = withWorkspace<{ workspaceId: string; id: string }>(
+  async ({ ctx, db, params }) => {
+    const { id } = params;
 
-  if (!context || !assertWorkspaceAccess(context, workspaceId)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+    if (!isUuid(id)) {
+      return NextResponse.json({ error: "Invalid list ID" }, { status: 422 });
+    }
 
-  if (!canEditAsClient(context)) {
-    return NextResponse.json(
-      { error: "Insufficient permissions" },
-      { status: 403 }
-    );
-  }
+    // Verify the list exists and belongs to this workspace. The delete below is
+    // scoped too, so this exists to distinguish 404 from a silent no-op.
+    const { data: list, error: fetchError } = await db
+      .from("subscriber_lists")
+      .select("id")
+      .eq("id", id)
+      .eq("workspace_id", ctx.workspaceId)
+      .maybeSingle();
 
-  if (!isUuid(id)) {
-    return NextResponse.json({ error: "Invalid list ID" }, { status: 422 });
-  }
+    if (fetchError) {
+      logError(fetchError, { route: "clients.subscriber-lists.delete", workspaceId: ctx.workspaceId, id });
+      return NextResponse.json({ error: "Failed to delete list" }, { status: 500 });
+    }
+    if (!list) {
+      return NextResponse.json({ error: "List not found" }, { status: 404 });
+    }
 
-  const supabase = getSupabaseClient();
+    const { error: deleteError } = await db
+      .from("subscriber_lists")
+      .delete()
+      .eq("id", id)
+      .eq("workspace_id", ctx.workspaceId);
 
-  // Verify the list exists and belongs to this workspace.
-  const { data: list, error: fetchError } = await supabase
-    .from("subscriber_lists")
-    .select("id")
-    .eq("id", id)
-    .eq("workspace_id", workspaceId)
-    .single();
+    if (deleteError) {
+      logError(deleteError, { route: "clients.subscriber-lists.delete", workspaceId: ctx.workspaceId, id });
+      return NextResponse.json({ error: "Failed to delete list" }, { status: 500 });
+    }
 
-  if (fetchError || !list) {
-    return NextResponse.json(
-      { error: "List not found" },
-      { status: 404 }
-    );
-  }
-
-  const { error: deleteError } = await supabase
-    .from("subscriber_lists")
-    .delete()
-    .eq("id", id)
-    .eq("workspace_id", workspaceId);
-
-  if (deleteError) {
-    console.error("List delete error:", deleteError);
-    return NextResponse.json(
-      { error: "Failed to delete list" },
-      { status: 500 }
-    );
-  }
-
-  return NextResponse.json({ ok: true });
-}
+    return NextResponse.json({ ok: true });
+  },
+  { minRole: "editor" }
+);
