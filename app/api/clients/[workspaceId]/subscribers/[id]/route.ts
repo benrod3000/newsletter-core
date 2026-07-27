@@ -1,71 +1,56 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { isUuid } from "@/lib/route-params";
-import { getSupabaseClient } from "@/lib/supabase";
-import {
-  getClientContextFromJWT,
-  assertWorkspaceAccess,
-  canEditAsClient,
-} from "@/lib/client-context";
+import { withWorkspace } from "@/lib/with-workspace";
+import { logError } from "@/lib/logger";
 
 /**
  * DELETE /api/clients/[workspaceId]/subscribers/[id]
- * Remove a subscriber from the workspace. JWT authenticated, requires edit permission.
+ * Remove a subscriber from the workspace. Requires edit permission.
  *
  * This is a hard-delete - the subscriber row is removed entirely.
  * (Unsubscribing via the public /api/unsubscribe endpoint also hard-deletes.)
+ *
+ * Both are the compliance problem ARCHITECTURE.md invariant 5 names: nothing
+ * with compliance meaning should be deleted, it should be tombstoned. Suppression
+ * as a record is one of the two items accruing cost daily - every hard-delete
+ * loses the proof that consent was withdrawn, and the churn analytics with it.
+ * Phase 1 replaces this with ChannelIdentity + suppression state.
  */
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string; id: string }> }
-) {
-  const { workspaceId, id } = await params;
-  const context = getClientContextFromJWT(req);
+export const DELETE = withWorkspace<{ workspaceId: string; id: string }>(
+  async ({ ctx, db, params }) => {
+    const { id } = params;
 
-  if (!context || !assertWorkspaceAccess(context, workspaceId)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+    if (!isUuid(id)) {
+      return NextResponse.json({ error: "Invalid subscriber ID" }, { status: 422 });
+    }
 
-  if (!canEditAsClient(context)) {
-    return NextResponse.json(
-      { error: "Insufficient permissions" },
-      { status: 403 }
-    );
-  }
+    const { data: subscriber, error: fetchError } = await db
+      .from("subscribers")
+      .select("id")
+      .eq("id", id)
+      .eq("workspace_id", ctx.workspaceId)
+      .maybeSingle();
 
-  if (!isUuid(id)) {
-    return NextResponse.json({ error: "Invalid subscriber ID" }, { status: 422 });
-  }
+    if (fetchError) {
+      logError(fetchError, { route: "clients.subscribers.delete", workspaceId: ctx.workspaceId, id });
+      return NextResponse.json({ error: "Failed to delete subscriber" }, { status: 500 });
+    }
+    if (!subscriber) {
+      return NextResponse.json({ error: "Subscriber not found" }, { status: 404 });
+    }
 
-  const supabase = getSupabaseClient();
+    const { error: deleteError } = await db
+      .from("subscribers")
+      .delete()
+      .eq("id", id)
+      .eq("workspace_id", ctx.workspaceId);
 
-  // Verify the subscriber exists and belongs to this workspace.
-  const { data: subscriber, error: fetchError } = await supabase
-    .from("subscribers")
-    .select("id")
-    .eq("id", id)
-    .eq("workspace_id", workspaceId)
-    .single();
+    if (deleteError) {
+      logError(deleteError, { route: "clients.subscribers.delete", workspaceId: ctx.workspaceId, id });
+      return NextResponse.json({ error: "Failed to delete subscriber" }, { status: 500 });
+    }
 
-  if (fetchError || !subscriber) {
-    return NextResponse.json(
-      { error: "Subscriber not found" },
-      { status: 404 }
-    );
-  }
-
-  const { error: deleteError } = await supabase
-    .from("subscribers")
-    .delete()
-    .eq("id", id)
-    .eq("workspace_id", workspaceId);
-
-  if (deleteError) {
-    console.error("Subscriber delete error:", deleteError);
-    return NextResponse.json(
-      { error: "Failed to delete subscriber" },
-      { status: 500 }
-    );
-  }
-
-  return NextResponse.json({ ok: true });
-}
+    return NextResponse.json({ ok: true });
+  },
+  { minRole: "editor" }
+);
