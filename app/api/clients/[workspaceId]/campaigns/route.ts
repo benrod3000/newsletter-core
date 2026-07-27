@@ -1,69 +1,44 @@
-import { NextRequest, NextResponse } from "next/server";
-import {
-  getClientContextFromJWT,
-  assertWorkspaceAccess,
-  canEditAsClient,
-} from "@/lib/client-context";
+import { NextResponse } from "next/server";
+import { withWorkspace } from "@/lib/with-workspace";
+import { logError } from "@/lib/logger";
 
 /**
  * GET /api/clients/[workspaceId]/campaigns
- * Fetch campaigns for a workspace (JWT authenticated)
- * 
+ * Fetch campaigns for a workspace.
+ *
  * Query params:
  * - limit: number (default 50)
  * - offset: number (default 0)
- * 
+ *
  * Returns: { campaigns: [...], total: number, limit: number, offset: number }
  */
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> }
-) {
-  const { workspaceId } = await params;
-  const context = getClientContextFromJWT(req);
-
-  if (!context || !assertWorkspaceAccess(context, workspaceId)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+export const GET = withWorkspace(async ({ req, ctx, db }) => {
   const url = new URL(req.url);
   const limit = Math.min(parseInt(url.searchParams.get("limit") || "50"), 500);
   const offset = parseInt(url.searchParams.get("offset") || "0");
 
-  const supabaseUrl = process.env.SUPABASE_URL!;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  const auth = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` };
+  const { data, error, count } = await db
+    .from("campaigns")
+    .select("*", { count: "exact" })
+    .eq("workspace_id", ctx.workspaceId)
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
 
-  try {
-    const countRes = await fetch(`${supabaseUrl}/rest/v1/campaigns?workspace_id=eq.${workspaceId}&select=count`, {
-      headers: { ...auth, Accept: "application/json" },
-    });
-    const countResult = await countRes.json();
-    const total = countResult?.[0]?.count ?? 0;
-
-    const res = await fetch(
-      `${supabaseUrl}/rest/v1/campaigns?workspace_id=eq.${workspaceId}&order=created_at.desc&limit=${limit}&offset=${offset}`,
-      { headers: auth }
-    );
-
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error("Campaign fetch error:", res.status, errText);
-      return NextResponse.json({ error: "Failed to fetch campaigns" }, { status: 500 });
-    }
-
-    const data = await res.json();
-    return NextResponse.json({ campaigns: data || [], total, limit, offset }, { status: 200 });
-  } catch (error) {
-    console.error("Campaign endpoint error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  if (error) {
+    logError(error, { route: "clients.campaigns.list", workspaceId: ctx.workspaceId });
+    return NextResponse.json({ error: "Failed to fetch campaigns" }, { status: 500 });
   }
-}
+
+  return NextResponse.json(
+    { campaigns: data || [], total: count ?? 0, limit, offset },
+    { status: 200 }
+  );
+});
 
 /**
  * POST /api/clients/[workspaceId]/campaigns
- * Create a new campaign (JWT authenticated, requires edit permission)
- * 
+ * Create a new campaign. Requires edit permission.
+ *
  * Body: {
  *   title: string;
  *   subject: string;
@@ -72,44 +47,21 @@ export async function GET(
  *   editor_css?: string;
  * }
  */
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> }
-) {
-  const { workspaceId } = await params;
-  const context = getClientContextFromJWT(req);
+export const POST = withWorkspace(
+  async ({ req, ctx, db }) => {
+    const body = await req.json().catch(() => null);
+    if (!body) return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
 
-  if (!context || !assertWorkspaceAccess(context, workspaceId)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+    const { title, subject, audience, editor_html, editor_css } = body;
 
-  if (!canEditAsClient(context)) {
-    return NextResponse.json(
-      { error: "Insufficient permissions" },
-      { status: 403 }
-    );
-  }
+    if (!title || !subject) {
+      return NextResponse.json({ error: "Title and subject required" }, { status: 400 });
+    }
 
-  const body = await req.json();
-  const { title, subject, audience, editor_html, editor_css } = body;
-
-  if (!title || !subject) {
-    return NextResponse.json(
-      { error: "Title and subject required" },
-      { status: 400 }
-    );
-  }
-
-  try {
-    const supabaseUrl = process.env.SUPABASE_URL!;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-    const auth = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json", Prefer: "return=representation" };
-
-    const res = await fetch(`${supabaseUrl}/rest/v1/campaigns`, {
-      method: "POST",
-      headers: auth,
-      body: JSON.stringify({
-        workspace_id: workspaceId,
+    const { data, error } = await db
+      .from("campaigns")
+      .insert({
+        workspace_id: ctx.workspaceId,
         title,
         subject,
         audience: audience || "confirmed",
@@ -117,22 +69,16 @@ export async function POST(
         editor_css: editor_css || null,
         status: "draft",
         sent_count: 0,
-      }),
-    });
+      })
+      .select("*")
+      .single();
 
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error("Campaign create error:", res.status, errText);
+    if (error) {
+      logError(error, { route: "clients.campaigns.create", workspaceId: ctx.workspaceId });
       return NextResponse.json({ error: "Failed to create campaign" }, { status: 500 });
     }
 
-    const data = await res.json();
-    return NextResponse.json(data?.[0] || data, { status: 201 });
-  } catch (error) {
-    console.error("Campaign creation error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
-  }
-}
+    return NextResponse.json(data, { status: 201 });
+  },
+  { minRole: "editor" }
+);
