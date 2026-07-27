@@ -1,58 +1,83 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getClientContextFromJWT, assertWorkspaceAccess } from "@/lib/client-context";
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { withWorkspace } from "@/lib/with-workspace";
+import { logError } from "@/lib/logger";
 
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const auth = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" };
+const bulkTagSchema = z.object({
+  subscriberIds: z.array(z.string().uuid()).min(1).max(1000),
+  tag: z.string().trim().min(1).max(64),
+});
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> }
-) {
-  const { workspaceId } = await params;
-  const ctx = getClientContextFromJWT(req);
-  if (!ctx || !assertWorkspaceAccess(ctx, workspaceId))
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+/**
+ * POST /api/clients/[workspaceId]/subscribers/tags/bulk
+ * Apply one tag to many subscribers.
+ */
+export const POST = withWorkspace(
+  async ({ req, ctx, db }) => {
+    // The previous version built `or=(id=eq.<raw>,...)` by string concatenation
+    // straight from the request body, with no validation, on a service-role
+    // request. Validating as UUIDs and using .in() removes the injection surface
+    // rather than trying to escape it.
+    const parsed = bulkTagSchema.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "subscriberIds (1-1000 UUIDs) and tag (string) are required" },
+        { status: 400 }
+      );
+    }
 
-  const { subscriberIds, tag } = await req.json();
-  if (!Array.isArray(subscriberIds) || subscriberIds.length === 0 || !tag?.trim()) {
-    return NextResponse.json({ error: "subscriberIds (array) and tag (string) are required" }, { status: 400 });
-  }
+    const { subscriberIds } = parsed.data;
+    const normalizedTag = parsed.data.tag.toLowerCase();
 
-  const normalizedTag = tag.trim().toLowerCase();
+    const { data: existing, error: verifyError } = await db
+      .from("subscribers")
+      .select("id")
+      .eq("workspace_id", ctx.workspaceId)
+      .in("id", subscriberIds);
 
-  // Verify all subscriber IDs belong to this workspace
-  const idsParam = subscriberIds.map((id: string) => `id=eq.${id}`).join(",");
-  const verifyRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/subscribers?select=id&workspace_id=eq.${workspaceId}&or=(${idsParam})`,
-    { headers: auth }
-  );
-  const existing = await verifyRes.json();
-  if (!Array.isArray(existing)) {
-    return NextResponse.json({ error: "Failed to verify subscribers" }, { status: 500 });
-  }
+    if (verifyError) {
+      logError(verifyError, { route: "clients.subscribers.tags.bulk", workspaceId: ctx.workspaceId });
+      return NextResponse.json({ error: "Failed to verify subscribers" }, { status: 500 });
+    }
 
-  const validIds = existing.map((s: any) => s.id);
-  if (validIds.length === 0) {
-    return NextResponse.json({ error: "No valid subscribers found in this workspace" }, { status: 400 });
-  }
+    const validIds = (existing ?? []).map((s) => s.id);
+    if (validIds.length === 0) {
+      return NextResponse.json(
+        { error: "No valid subscribers found in this workspace" },
+        { status: 400 }
+      );
+    }
 
-  // Batch upsert tags (100 per batch, ignore duplicates)
-  const batchSize = 100;
-  const batchUpserts = validIds.map((subscriberId: string) => ({
-    subscriber_id: subscriberId,
-    workspace_id: workspaceId,
-    tag: normalizedTag,
-  }));
+    const rows = validIds.map((subscriberId) => ({
+      subscriber_id: subscriberId,
+      workspace_id: ctx.workspaceId,
+      tag: normalizedTag,
+    }));
 
-  for (let i = 0; i < batchUpserts.length; i += batchSize) {
-    const batch = batchUpserts.slice(i, i + batchSize);
-    await fetch(`${SUPABASE_URL}/rest/v1/subscriber_tags`, {
-      method: "POST",
-      headers: { ...auth, Prefer: "resolution=ignore-duplicates" },
-      body: JSON.stringify(batch),
-    });
-  }
+    // Batched so a large selection does not build one enormous statement. The
+    // previous version ignored the result of every batch, so a failure looked
+    // identical to success.
+    const batchSize = 100;
+    for (let i = 0; i < rows.length; i += batchSize) {
+      const { error } = await db
+        .from("subscriber_tags")
+        .upsert(rows.slice(i, i + batchSize), { ignoreDuplicates: true });
 
-  return NextResponse.json({ ok: true, tagged: validIds.length, tag: normalizedTag }, { status: 201 });
-}
+      if (error) {
+        logError(error, {
+          route: "clients.subscribers.tags.bulk",
+          workspaceId: ctx.workspaceId,
+          batchStart: i,
+        });
+        return NextResponse.json({ error: "Failed to apply tag" }, { status: 500 });
+      }
+    }
+
+    return NextResponse.json(
+      { ok: true, tagged: validIds.length, tag: normalizedTag },
+      { status: 201 }
+    );
+  },
+  // Tagging mutates audience data; a viewer could do it before.
+  { minRole: "editor" }
+);

@@ -1,52 +1,62 @@
-import { NextRequest, NextResponse } from "next/server";
-import {
-  getClientContextFromJWT,
-  assertWorkspaceAccess,
-} from "@/lib/client-context";
+import { NextResponse } from "next/server";
+import { withWorkspace } from "@/lib/with-workspace";
+import { logError } from "@/lib/logger";
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> }
-) {
-  const { workspaceId } = await params;
-  const context = getClientContextFromJWT(req);
-  if (!context || !assertWorkspaceAccess(context, workspaceId)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+/**
+ * Columns of the workspace row that are safe to hand back.
+ *
+ * This used to be `select=*`, which meant a full workspace export included
+ * ses_access_key, ses_secret_key and twilio_auth_token - the workspace's sending
+ * credentials, downloadable as JSON by any member, with no role gate at all.
+ *
+ * Migration 049 makes that unreachable anyway: `authenticated` holds SELECT on
+ * named columns of `clients` only, so a `select=*` through the scoped client now
+ * fails outright rather than succeeding quietly. The explicit list here is the
+ * same decision stated where a reader will actually see it.
+ */
+const WORKSPACE_COLUMNS =
+  "id, org_id, name, slug, created_at, logo_url, brand_colors, custom_domain, " +
+  "sender_name, sender_email, email_provider, fallback_provider, sandbox_mode, " +
+  "sending_limit_monthly, sending_limit_total, sent_this_month, sent_total";
 
-  const supabaseUrl = process.env.SUPABASE_URL!;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  const auth = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` };
-  const wId = encodeURIComponent(workspaceId);
-
-  try {
-    const [subsRes, campsRes, listsRes, widgetsRes, activityRes] = await Promise.all([
-      fetch(`${supabaseUrl}/rest/v1/subscribers?workspace_id=eq.${wId}&limit=10000`, { headers: auth }),
-      fetch(`${supabaseUrl}/rest/v1/campaigns?workspace_id=eq.${wId}&limit=1000`, { headers: auth }),
-      fetch(`${supabaseUrl}/rest/v1/subscriber_lists?workspace_id=eq.${wId}&limit=1000`, { headers: auth }),
-      fetch(`${supabaseUrl}/rest/v1/widgets?workspace_id=eq.${wId}&limit=100`, { headers: auth }),
-      fetch(`${supabaseUrl}/rest/v1/clients?id=eq.${wId}&limit=1`, { headers: auth }),
+export const GET = withWorkspace(
+  async ({ ctx, db }) => {
+    const [subsRes, campsRes, listsRes, widgetsRes, workspaceRes] = await Promise.all([
+      db.from("subscribers").select("*").eq("workspace_id", ctx.workspaceId).limit(10000),
+      db.from("campaigns").select("*").eq("workspace_id", ctx.workspaceId).limit(1000),
+      db.from("subscriber_lists").select("*").eq("workspace_id", ctx.workspaceId).limit(1000),
+      db.from("widgets").select("*").eq("workspace_id", ctx.workspaceId).limit(100),
+      db.from("clients").select(WORKSPACE_COLUMNS).eq("id", ctx.workspaceId).maybeSingle(),
     ]);
 
-    const [subscribers, campaigns, lists, widgets, workspace] = await Promise.all([
-      subsRes.json(), campsRes.json(), listsRes.json(), widgetsRes.json(), activityRes.json(),
-    ]);
+    const failed = [subsRes, campsRes, listsRes, widgetsRes, workspaceRes].find((r) => r.error);
+    if (failed?.error) {
+      // The previous version swallowed every failure into an empty array, so a
+      // partial export was indistinguishable from an empty workspace - the worst
+      // possible outcome for something a user may be relying on for a backup or
+      // a data-portability request.
+      logError(failed.error, { route: "clients.export", workspaceId: ctx.workspaceId });
+      return NextResponse.json({ error: "Export failed" }, { status: 500 });
+    }
 
-    return NextResponse.json({
-      exported_at: new Date().toISOString(),
-      workspace: Array.isArray(workspace) ? workspace[0] : null,
-      subscribers: Array.isArray(subscribers) ? subscribers : [],
-      campaigns: Array.isArray(campaigns) ? campaigns : [],
-      lists: Array.isArray(lists) ? lists : [],
-      widgets: Array.isArray(widgets) ? widgets : [],
-    }, {
-      status: 200,
-      headers: {
-        "Content-Type": "application/json",
-        "Content-Disposition": `attachment; filename="veloce-export-${workspaceId}.json"`,
+    return NextResponse.json(
+      {
+        exported_at: new Date().toISOString(),
+        workspace: workspaceRes.data ?? null,
+        subscribers: subsRes.data ?? [],
+        campaigns: campsRes.data ?? [],
+        lists: listsRes.data ?? [],
+        widgets: widgetsRes.data ?? [],
       },
-    });
-  } catch (e: any) {
-    return NextResponse.json({ error: "Export failed" }, { status: 500 });
-  }
-}
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Disposition": `attachment; filename="veloce-export-${ctx.workspaceId}.json"`,
+        },
+      }
+    );
+  },
+  // A full-audience export is not a read a viewer should be able to perform.
+  { minRole: "editor" }
+);
