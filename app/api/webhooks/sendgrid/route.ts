@@ -144,11 +144,15 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // Record the event for reporting
-      if (campaignId) {
+      // Record the event for reporting. This needs the workspace as well as the
+      // campaign now: campaign_events.workspace_id is NOT NULL as of migration
+      // 048, and filing an unattributable event under a guessed workspace would
+      // be a cross-tenant leak. Same reasoning as the suppression skip above.
+      if (campaignId && subscriber?.workspace_id) {
         await supabase.from("campaign_events").insert({
           campaign_id: campaignId,
           subscriber_id: resolvedSubscriberId,
+          workspace_id: subscriber.workspace_id,
           email,
           event_type: reason === "bounce" ? "bounce" : "complaint",
           metadata: { reason: event.reason ?? null, type: event.type ?? null },
@@ -157,10 +161,11 @@ export async function POST(req: NextRequest) {
       }
 
       processed++;
-    } else if (event.event === "unsubscribe" && campaignId) {
+    } else if (event.event === "unsubscribe" && campaignId && subscriber?.workspace_id) {
       await supabase.from("campaign_events").insert({
         campaign_id: campaignId,
         subscriber_id: resolvedSubscriberId,
+        workspace_id: subscriber.workspace_id,
         email,
         event_type: "unsubscribe",
         occurred_at: occurredAt,

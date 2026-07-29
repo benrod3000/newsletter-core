@@ -194,19 +194,27 @@ export async function POST(
       .maybeSingle();
 
     if (!existingMembership) {
-      await supabase
+      const { error } = await supabase
         .from("subscriber_list_memberships")
         .insert({
           subscriber_id: subscriberId,
           list_id: listId,
+          // NOT NULL since migration 048.
+          workspace_id: workspaceId,
         });
+
+      if (error) {
+        console.error("[forms/submit] Failed to add list membership:", error.message);
+      }
     }
   }
 
   // Record the submission
-  await supabase.from("widget_submissions").insert({
+  const { error: submissionError } = await supabase.from("widget_submissions").insert({
     widget_id: widget.id,
     subscriber_id: subscriberId,
+    // NOT NULL since migration 048.
+    workspace_id: workspaceId,
     email,
     ip_address: ip,
     user_agent: userAgent,
@@ -215,6 +223,10 @@ export async function POST(
     longitude: finalLongitude,
     postal_code: finalPostalCode,
   });
+
+  if (submissionError) {
+    console.error("[forms/submit] Failed to record submission:", submissionError.message);
+  }
 
   // Fire subscriber_joined automation (send download email)
   await triggerSubscriberJoined(supabase, workspaceId, subscriberId, email, downloadUrl, slug);
@@ -260,6 +272,8 @@ async function triggerSubscriberJoined(
       await supabase.from("automation_logs").insert({
         automation_id: automation.id,
         subscriber_id: subscriberId,
+        // NOT NULL since migration 048.
+        workspace_id: workspaceId,
         trigger_event: {
           email,
           subscriber_id: subscriberId,

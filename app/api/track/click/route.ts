@@ -62,13 +62,16 @@ export async function GET(req: NextRequest) {
       const supabase = getSupabaseClient();
       const geo = getGeoData(req);
 
+      // workspace_id comes off the subscriber row: this endpoint is public and
+      // has no session to derive a workspace from, and campaign_events.workspace_id
+      // is NOT NULL as of migration 048.
       const { data: subscriber } = await supabase
         .from("subscribers")
-        .select("email")
+        .select("email, workspace_id")
         .eq("id", subscriberId)
         .single();
 
-      if (subscriber?.email) {
+      if (subscriber?.email && subscriber.workspace_id) {
         if (geo.country || geo.region || geo.city || geo.latitude !== null || geo.longitude !== null) {
           await supabase
             .from("subscribers")
@@ -82,9 +85,10 @@ export async function GET(req: NextRequest) {
             .eq("id", subscriberId);
         }
 
-        await supabase.from("campaign_events").insert({
+        const { error } = await supabase.from("campaign_events").insert({
           campaign_id: campaignId,
           subscriber_id: subscriberId,
+          workspace_id: subscriber.workspace_id,
           email: subscriber.email,
           event_type: "click",
           url: destination,
@@ -98,6 +102,13 @@ export async function GET(req: NextRequest) {
             longitude: geo.longitude,
           },
         });
+
+        // supabase-js resolves errors rather than throwing, so the catch below
+        // never sees them. Without this check a failed insert leaves clicks
+        // silently unrecorded and analytics reading zero.
+        if (error) {
+          console.error("[track/click] Failed to record click:", error.message);
+        }
       }
     } catch (err) {
       console.error('[track/click] Failed to record click:', err instanceof Error ? err.message : err);

@@ -40,6 +40,12 @@ export interface SendParams {
   /** For sandbox mode: campaign and subscriber context for synthetic event generation */
   campaignId?: string;
   subscriberId?: string;
+  /**
+   * Owning workspace. Only the sandbox transport reads it, to stamp the
+   * synthetic campaign_events it writes - that column is NOT NULL as of
+   * migration 048. Real transports hand off to a provider and never write rows.
+   */
+  workspaceId?: string;
 }
 
 export interface SendResult {

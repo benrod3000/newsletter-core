@@ -141,6 +141,8 @@ export async function POST(req: NextRequest) {
             subscribers.map((s) => ({
               automation_id: auto.id,
               subscriber_id: s.id,
+              // NOT NULL since migration 048.
+              workspace_id: auto.workspace_id,
               trigger_event: { trigger: "subscriber_joined", subscriber_email: s.email },
               status: "success",
               executed_at: now.toISOString(),
@@ -153,6 +155,8 @@ export async function POST(req: NextRequest) {
           const memberRows = subscribers.map((s) => ({
             list_id: listId,
             subscriber_id: s.id,
+            // NOT NULL since migration 048.
+            workspace_id: auto.workspace_id,
           }));
           await supabase.from("subscriber_list_memberships").insert(memberRows);
           results.push(`${auto.name}: added ${subscribers.length} to list`);

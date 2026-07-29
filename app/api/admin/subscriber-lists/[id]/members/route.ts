@@ -41,6 +41,9 @@ export async function POST(
   const inserts = subscriberIds.map((sid: string) => ({
     list_id: id,
     subscriber_id: sid,
+    // NOT NULL since migration 048. Taken from the list rather than the request
+    // so a membership can never be filed under a workspace that does not own it.
+    workspace_id: list.workspace_id,
   }));
 
   const { error } = await supabase.from("subscriber_list_memberships").insert(inserts);

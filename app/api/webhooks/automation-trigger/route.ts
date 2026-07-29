@@ -71,6 +71,9 @@ export async function POST(req: NextRequest) {
           .insert({
             automation_id: automation.id,
             subscriber_id: subscriber_id || null,
+            // NOT NULL since migration 048. Already validated above and used to
+            // select the automations being logged here.
+            workspace_id: workspace_id,
             trigger_event: event_data,
             status: "pending",
           })

@@ -124,6 +124,10 @@ export async function enqueueCampaignJob(
     .insert([
       {
         campaign_id: params.campaignId,
+        // Required since migration 048. campaign_jobs.workspace_id is NOT NULL
+        // with a foreign key, so omitting it fails the insert and throws below,
+        // which takes down every campaign send.
+        workspace_id: params.workspaceId,
         batch: 0,
         total: 0,
         status: "sending",
@@ -318,6 +322,7 @@ export async function drainCampaignJob(params: DrainParams): Promise<DrainResult
           listUnsubscribe: unsubApiUrl,
           campaignId: campaignId ?? undefined,
           subscriberId: sub.subscriber_id,
+          workspaceId,
         },
         dispatchConfig
       );

@@ -25,13 +25,16 @@ export async function GET(req: NextRequest) {
     try {
       const supabase = getSupabaseClient();
 
+      // workspace_id comes off the subscriber row: this endpoint is public and
+      // has no session to derive a workspace from, and campaign_events.workspace_id
+      // is NOT NULL as of migration 048.
       const { data: subscriber } = await supabase
         .from("subscribers")
-        .select("email")
+        .select("email, workspace_id")
         .eq("id", subscriberId)
         .single();
 
-      if (subscriber?.email) {
+      if (subscriber?.email && subscriber.workspace_id) {
         // Only record the first open per subscriber per campaign
         const { count } = await supabase
           .from("campaign_events")
@@ -41,12 +44,20 @@ export async function GET(req: NextRequest) {
           .eq("event_type", "open");
 
         if (!count || count === 0) {
-          await supabase.from("campaign_events").insert({
+          const { error } = await supabase.from("campaign_events").insert({
             campaign_id: campaignId,
             subscriber_id: subscriberId,
+            workspace_id: subscriber.workspace_id,
             email: subscriber.email,
             event_type: "open",
           });
+
+          // supabase-js resolves errors rather than throwing, so the catch below
+          // never sees them. Without this check a failed insert leaves opens
+          // silently unrecorded and analytics reading zero.
+          if (error) {
+            console.error("[track/open] Failed to record open:", error.message);
+          }
         }
       }
     } catch (err) {

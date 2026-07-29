@@ -31,9 +31,17 @@ export class SandboxTransport implements EmailTransport {
   async send(params: SendParams): Promise<SendResult> {
     const messageId = `sandbox_${crypto.randomUUID()}`;
 
-    // Generate synthetic open/click events for analytics
-    if (params.campaignId && params.subscriberId) {
-      await this.generateSyntheticEvents(params.campaignId, params.subscriberId, params.to);
+    // Generate synthetic open/click events for analytics. workspaceId is
+    // required now that campaign_events.workspace_id is NOT NULL (migration
+    // 048); without it there is nothing to attribute the events to, so skip
+    // rather than write rows that cannot be isolated.
+    if (params.campaignId && params.subscriberId && params.workspaceId) {
+      await this.generateSyntheticEvents(
+        params.campaignId,
+        params.subscriberId,
+        params.to,
+        params.workspaceId
+      );
     }
 
     console.log(`[sandbox] Simulated send to ${params.to}: ${params.subject}`);
@@ -48,7 +56,8 @@ export class SandboxTransport implements EmailTransport {
   private async generateSyntheticEvents(
     campaignId: string,
     subscriberId: string,
-    email: string
+    email: string,
+    workspaceId: string
   ): Promise<void> {
     try {
       const supabase = getSupabaseClient();
@@ -60,6 +69,7 @@ export class SandboxTransport implements EmailTransport {
         await supabase.from("campaign_events").insert({
           campaign_id: campaignId,
           subscriber_id: subscriberId,
+          workspace_id: workspaceId,
           email,
           event_type: "open",
           occurred_at: openTime.toISOString(),
@@ -71,6 +81,7 @@ export class SandboxTransport implements EmailTransport {
           await supabase.from("campaign_events").insert({
             campaign_id: campaignId,
             subscriber_id: subscriberId,
+            workspace_id: workspaceId,
             email,
             event_type: "click",
             occurred_at: clickTime.toISOString(),
