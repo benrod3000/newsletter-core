@@ -87,27 +87,53 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "An account with this email already exists." }, { status: 409, headers: CORS_HEADERS });
     }
 
-    // Create workspace via REST API (slug includes a random suffix, so collisions are near-impossible)
-    let workspaceId: string | null = null;
+    // Self-serve signup creates Organization + Workspace + Membership. The org is
+    // invisible in the UI today, but it is the billing, SSO and data-residency
+    // boundary (ARCHITECTURE.md section 2), and clients.org_id is NOT NULL as of
+    // migration 047 - so the workspace insert below cannot succeed without it.
+    let orgId: string | null = null;
 
     try {
-      const wsRes = await supabaseFetch("/clients", {
+      const orgRes = await supabaseFetch("/organizations", {
         method: "POST",
-        body: JSON.stringify({ name: workspaceName, slug }),
+        body: JSON.stringify({ name: workspaceName }),
         headers: { "Prefer": "return=representation" },
       });
-      const wsData = await wsRes.json();
-      workspaceId = wsData?.[0]?.id || null;
+      const orgData = await orgRes.json();
+      orgId = orgData?.[0]?.id || null;
     } catch (err) {
-      console.error("Workspace creation failed:", err);
+      console.error("Organization creation failed:", err);
+    }
+
+    if (!orgId) {
       return NextResponse.json(
         { error: "Unable to create workspace. Please try again." },
         { status: 500, headers: CORS_HEADERS }
       );
     }
 
+    // Create workspace via REST API (slug includes a random suffix, so collisions are near-impossible)
+    let workspaceId: string | null = null;
+
+    try {
+      const wsRes = await supabaseFetch("/clients", {
+        method: "POST",
+        body: JSON.stringify({ name: workspaceName, slug, org_id: orgId }),
+        headers: { "Prefer": "return=representation" },
+      });
+      const wsData = await wsRes.json();
+      workspaceId = wsData?.[0]?.id || null;
+    } catch (err) {
+      console.error("Workspace creation failed:", err);
+    }
+
     // If Supabase returned no data despite a 2xx response, fail safely
     if (!workspaceId) {
+      // Drop the organization we just created rather than leaving one behind for
+      // every failed signup attempt. Nothing references it yet, so this is safe.
+      await supabaseFetch(`/organizations?id=eq.${orgId}`, { method: "DELETE" })
+        .catch(err => console.error("Orphan organization cleanup failed:", err));
+
       console.error("Workspace creation returned no ID");
       return NextResponse.json(
         { error: "Unable to set up workspace. Please try again." },

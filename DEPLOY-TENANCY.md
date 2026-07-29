@@ -58,11 +58,25 @@ migrates this project to asymmetric signing keys only, minting stops working and
 Strictly sequential. Each depends on the one before it.
 
 ```
-047  organizations           SAFE ALONE - purely additive, nothing reads org_id yet
+047  organizations           BREAKS SIGNUP unless the code deploys with it - see below
 048  tenancy columns         BREAKS RUNNING CODE - deploy with it
 049  grants + policies       depends on 048 (its policies reference workspace_id)
 050  stored functions        depends on 048 - MUST go with it, see below
 ```
+
+**047 is not safe alone, despite being additive.** It ends with
+`ALTER TABLE clients ALTER COLUMN org_id SET NOT NULL`, and the column has no
+default and no trigger behind it. Two code paths insert into `clients` without
+supplying `org_id`:
+
+- `app/api/auth/signup/route.ts` - every self-serve signup
+- `app/api/admin/demo/seed/route.ts` - demo workspace creation
+
+Both fail closed (a 500, no partial rows), but signup is fully down between
+applying 047 and deploying the code that sets `org_id`. Both are fixed on
+`phase0/tenancy-rls`: signup now creates the Organization first and rolls it back
+if the workspace insert fails. **Apply 047 in the same batch as the rest, not
+ahead of the deploy.**
 
 **049 cannot be applied ahead of 048.** Its policies are written against
 `workspace_id`, which does not exist on eight of the tables until 048 runs.
@@ -76,13 +90,12 @@ after the rename and fail at runtime instead. One of them is
 ### Recommended sequence
 
 1. Set both environment variables in Vercel.
-2. Apply **047** now. It is additive and safe with the current code running.
-3. Merge `phase0/tenancy-rls` and let Vercel build, but do not promote yet.
-4. Apply **048**, **049**, **050** back to back via the Supabase MCP
+2. Merge `phase0/tenancy-rls` and let Vercel build, but do not promote yet.
+3. Apply **047**, **048**, **049**, **050** back to back via the Supabase MCP
    `apply_migration` tool - one call each, in that order.
-5. Promote the deployment immediately.
+4. Promote the deployment immediately.
 
-Steps 4 and 5 are the outage window. With two demo workspaces and no customers it
+Steps 3 and 4 are the outage window. With two demo workspaces and no customers it
 is measured in seconds and costs nothing. It will not be free later.
 
 > Use `apply_migration`, not the CLI. The CLI is deliberately left unlinked after
@@ -159,10 +172,19 @@ and it fails immediately and loudly. That is the whole token path verified.
 
 ## What is NOT done yet
 
-- **35 of 41 workspace routes still use the old pattern.** They keep working
+- **14 of 41 workspace routes still use the old pattern.** They keep working
   unchanged - they are on `service_role` and bypass RLS. Isolation for those is
   still convention, exactly as before. Converting them is mechanical; the pattern
-  is in `segments/route.ts`.
+  is in `segments/route.ts`. They do not block this deploy and are best shipped
+  as ordinary follow-up PRs, since none of them needs a migration:
+
+  ```
+  analytics/route.ts          analytics/heatmap    analytics/live    analytics/sms
+  automations/activity-log    automations/smart-tags/history         .../run
+  campaigns/[id]/test         campaigns/sms        sms/test
+  deliverability/dns          deliverability/overview
+  subscribers/import          test-provider
+  ```
 - **`subscribe_attempts`, `admin_users`, `organizations`** are system tables:
   RLS on, no policy, no grant to `authenticated`. Reachable only as
   `service_role`. That is intentional and stated in 049.

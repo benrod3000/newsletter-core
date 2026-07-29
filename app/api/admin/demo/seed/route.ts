@@ -37,11 +37,22 @@ export async function POST(req: NextRequest) {
     const demoPasswordHash = await hashPassword(getDemoPassword());
 
     if (!Array.isArray(users) || users.length === 0) {
+      // Every workspace belongs to an organization (clients.org_id is NOT NULL as
+      // of migration 047), so the demo workspace needs one too.
+      const createOrg = await fetch(`${suUrl}/rest/v1/organizations`, {
+        method: "POST",
+        headers: { ...auth, Prefer: "return=representation" },
+        body: JSON.stringify({ name: "Demo Organization" }),
+      });
+      const orgData = await createOrg.json();
+      const orgId = orgData?.[0]?.id;
+      if (!orgId) throw new Error("Failed to create demo organization");
+
       // Create workspace
       const createWs = await fetch(`${suUrl}/rest/v1/clients`, {
         method: "POST",
         headers: { ...auth, Prefer: "return=representation" },
-        body: JSON.stringify({ name: "Demo Workspace", slug: `demo-${crypto.randomUUID().split("-")[0]}`, sandbox_mode: true }),
+        body: JSON.stringify({ name: "Demo Workspace", slug: `demo-${crypto.randomUUID().split("-")[0]}`, sandbox_mode: true, org_id: orgId }),
       });
       const wsData = await createWs.json();
       workspaceId = wsData?.[0]?.id;
