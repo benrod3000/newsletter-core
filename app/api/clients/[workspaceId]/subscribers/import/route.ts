@@ -49,8 +49,29 @@ export async function POST(
   }
 
   const supabase = getSupabaseClient();
-  let processed = 0;
   const skipped: string[] = [];
+
+  const mappableFields: [string, string][] = [
+    ["first_name", "first_name"],
+    ["last_name", "last_name"],
+    ["phone_number", "phone_number"],
+    ["date_of_birth", "date_of_birth"],
+    ["country", "country"],
+    ["region", "region"],
+    ["city", "city"],
+    ["timezone", "timezone"],
+    ["locale", "locale"],
+    ["utm_source", "utm_source"],
+    ["utm_medium", "utm_medium"],
+    ["utm_campaign", "utm_campaign"],
+  ];
+
+  // Keyed by email so a CSV containing the same address twice collapses to one
+  // row. Without this, a single upsert statement hitting the same conflict
+  // target twice fails the whole batch with 21000 "ON CONFLICT DO UPDATE
+  // command cannot affect row a second time", which real exports trigger often.
+  const byEmail = new Map<string, Record<string, unknown>>();
+  let duplicates = 0;
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
@@ -59,7 +80,9 @@ export async function POST(
       if (row[idx]) record[h] = row[idx];
     });
 
-    const email = record.email;
+    // Lowercased because the uniqueness key is (workspace_id, email); mixed
+    // case in the source file would otherwise create two rows for one person.
+    const email = record.email?.toLowerCase().trim();
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       skipped.push(`Row ${i + 2}: invalid or missing email`);
       continue;
@@ -71,42 +94,68 @@ export async function POST(
       confirmed,
     };
 
-    const mappableFields: [string, string][] = [
-      ["first_name", "first_name"],
-      ["last_name", "last_name"],
-      ["phone_number", "phone_number"],
-      ["date_of_birth", "date_of_birth"],
-      ["country", "country"],
-      ["region", "region"],
-      ["city", "city"],
-      ["timezone", "timezone"],
-      ["locale", "locale"],
-      ["utm_source", "utm_source"],
-      ["utm_medium", "utm_medium"],
-      ["utm_campaign", "utm_campaign"],
-    ];
-
     for (const [key, header] of mappableFields) {
-      if (record[header]) subscriber[key] = record[header];
-    }
+      if (!record[header]) continue;
 
-    try {
-      const { error } = await supabase
-        .from("subscribers")
-        .upsert(subscriber, { onConflict: "email" });
-
-      if (error) {
-        skipped.push(`Row ${i + 2}: ${error.message}`);
-      } else {
-        processed++;
+      // date_of_birth is the only non-text column here, so it is the only value
+      // Postgres can reject. That matters now the upsert is batched and fails
+      // loudly: one "N/A" or "01/15/1990" in a spreadsheet would abort all 100
+      // rows in its batch with a 500, after earlier batches had already
+      // committed. Drop the unparseable value, keep the subscriber, say so.
+      if (key === "date_of_birth" && !isIsoDate(record[header])) {
+        skipped.push(`Row ${i + 2}: ignored date_of_birth "${record[header]}" (expected YYYY-MM-DD)`);
+        continue;
       }
-    } catch {
-      skipped.push(`Row ${i + 2}: unexpected error`);
+
+      subscriber[key] = record[header];
     }
+
+    if (byEmail.has(email)) duplicates++;
+    byEmail.set(email, subscriber);
+  }
+
+  const toUpsert = [...byEmail.values()];
+
+  if (toUpsert.length === 0) {
+    return NextResponse.json(
+      {
+        error: "No valid rows found.",
+        skipped: skipped.length,
+        skippedDetails: skipped.slice(0, 20),
+      },
+      { status: 422 }
+    );
+  }
+
+  // Batched rather than one round trip per row. The previous version awaited a
+  // separate Supabase call for every line, so a 1000-row file meant 1000
+  // sequential requests - slow enough to risk the function timeout by itself.
+  let processed = 0;
+  const BATCH = 100;
+
+  for (let i = 0; i < toUpsert.length; i += BATCH) {
+    const batch = toUpsert.slice(i, i + BATCH);
+    const { data, error } = await supabase
+      .from("subscribers")
+      .upsert(batch, { onConflict: "workspace_id,email" })
+      .select("id");
+
+    // Fail loudly. This previously collected per-row errors into `skipped` and
+    // still returned 200, so a total failure was indistinguishable from a
+    // successful import that happened to process nothing.
+    if (error) {
+      return NextResponse.json(
+        { error: `Import failed: ${error.message}`, processed },
+        { status: 500 }
+      );
+    }
+
+    processed += data?.length ?? 0;
   }
 
   return NextResponse.json({
     processed,
+    duplicates,
     skipped: skipped.length,
     skippedDetails: skipped.slice(0, 20),
   });
@@ -143,6 +192,17 @@ function parseCSVLine(line: string): string[] {
   }
   result.push(current.trim());
   return result;
+}
+
+/**
+ * Strict YYYY-MM-DD. Deliberately not `new Date(v)`, which accepts almost
+ * anything and would happily turn "1/2/3" into a date Postgres then stores as
+ * something nobody typed.
+ */
+function isIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(value);
 }
 
 function normalizeHeader(h: string): string {
