@@ -8,12 +8,18 @@
 
 import { Redis } from "@upstash/redis";
 import { logError, logWarn } from "./logger";
+import { resolveRedisCredentials } from "./env";
 
-const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
-  ? new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
-    })
+/**
+ * Credential names come from env.ts so the startup warning and this client
+ * cannot disagree about which variables count. See the note there: KV_URL and
+ * REDIS_URL show up alongside these but are TCP connection strings, and this
+ * client speaks REST only.
+ */
+const { url: redisUrl, token: redisToken } = resolveRedisCredentials();
+
+const redis = redisUrl && redisToken
+  ? new Redis({ url: redisUrl, token: redisToken })
   : null;
 
 const TTL_SECONDS = 3600; // buckets expire after 1h of inactivity

@@ -23,17 +23,46 @@ const REQUIRED = [
   ["CRON_SECRET", "Authenticates Vercel cron invocations."],
 ] as const;
 
-const RECOMMENDED = [
-  ["UPSTASH_REDIS_REST_URL", "Rate limiting is inactive without this."],
-  ["UPSTASH_REDIS_REST_TOKEN", "Rate limiting is inactive without this."],
+/**
+ * The same Upstash database is provisioned under two naming conventions:
+ * KV_REST_API_* by Vercel's Marketplace integration, UPSTASH_REDIS_REST_* by
+ * Upstash's own dashboard. Both are credentials for the same REST API.
+ *
+ * These live here, and the limiter imports them, so the startup check and the
+ * client can never disagree about which names count. They previously did:
+ * installing the Vercel integration set KV_* while the limiter read only
+ * UPSTASH_*, so rate limiting stayed inactive in production and the only
+ * evidence was a startup warning naming variables nobody had heard of.
+ */
+export const REDIS_URL_VARS = ["KV_REST_API_URL", "UPSTASH_REDIS_REST_URL"] as const;
+export const REDIS_TOKEN_VARS = ["KV_REST_API_TOKEN", "UPSTASH_REDIS_REST_TOKEN"] as const;
+
+/** First value found for each, under either convention. */
+export function resolveRedisCredentials(): { url?: string; token?: string } {
+  return {
+    url: REDIS_URL_VARS.map((name) => process.env[name]).find(Boolean),
+    token: REDIS_TOKEN_VARS.map((name) => process.env[name]).find(Boolean),
+  };
+}
+
+/**
+ * Recommended rather than required: absent, a feature quietly does nothing
+ * instead of the app failing to boot. Each entry lists every name that
+ * satisfies it.
+ */
+const RECOMMENDED: readonly (readonly [readonly string[], string])[] = [
+  [REDIS_URL_VARS, "Rate limiting is inactive without a Redis REST URL."],
+  [REDIS_TOKEN_VARS, "Rate limiting is inactive without a Redis REST token."],
 ] as const;
 
 export function assertRequiredEnv(): void {
   const missingRequired = REQUIRED.filter(([name]) => !process.env[name]);
-  const missingRecommended = RECOMMENDED.filter(([name]) => !process.env[name]);
+  const missingRecommended = RECOMMENDED.filter(
+    ([names]) => !names.some((name) => process.env[name])
+  );
 
-  for (const [name, why] of missingRecommended) {
-    console.warn(`[env] ${name} is not set - ${why}`);
+  for (const [names, why] of missingRecommended) {
+    console.warn(`[env] none of ${names.join(" / ")} is set - ${why}`);
   }
 
   if (missingRequired.length === 0) return;
