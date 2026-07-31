@@ -44,3 +44,7 @@ next-env.d.ts
 # supabase local dev
 supabase/.branches
 supabase/.temp
+
+# Symlinks into .agents/skills, recreated locally by the skills installer.
+# The pinned content itself and skills-lock.json are committed.
+.claude/skills/
