@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isUuid } from "@/lib/route-params";
 import { withWorkspace } from "@/lib/with-workspace";
 import { logError } from "@/lib/logger";
+import { isWidgetSize, WIDGET_SIZES } from "@/lib/widget-config";
 
 const ALLOWED_FIELDS = [
   "name", "headline", "description", "download_url",
@@ -41,6 +42,13 @@ export const PATCH = withWorkspace<{ workspaceId: string; id: string }>(
     }
     if (!existing) {
       return NextResponse.json({ error: "Widget not found" }, { status: 404 });
+    }
+
+    if (body.size !== undefined && !isWidgetSize(body.size)) {
+      return NextResponse.json(
+        { error: `Size must be one of: ${WIDGET_SIZES.join(", ")}` },
+        { status: 400 }
+      );
     }
 
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };

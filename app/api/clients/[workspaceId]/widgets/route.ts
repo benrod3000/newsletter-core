@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withWorkspace } from "@/lib/with-workspace";
 import { logError } from "@/lib/logger";
+import { isWidgetSize, WIDGET_SIZES } from "@/lib/widget-config";
 
 /**
  * GET /api/clients/[workspaceId]/widgets
@@ -79,6 +80,12 @@ export const POST = withWorkspace(
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
       return NextResponse.json(
         { error: "Slug must contain only lowercase letters, numbers, and hyphens" },
+        { status: 400 }
+      );
+    }
+    if (size !== undefined && !isWidgetSize(size)) {
+      return NextResponse.json(
+        { error: `Size must be one of: ${WIDGET_SIZES.join(", ")}` },
         { status: 400 }
       );
     }
