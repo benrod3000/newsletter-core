@@ -7,6 +7,33 @@ import {
 } from "@/lib/client-context";
 
 /**
+ * Rows accepted in a single request.
+ *
+ * This is a payload-size limit, not a throughput one. The CSV arrives as a JSON
+ * string, and Vercel rejects bodies over roughly 4.5 MB at the edge with
+ * FUNCTION_PAYLOAD_TOO_LARGE - measured, 4 MB passes and 4.5 MB does not - so
+ * the request never reaches this function. A 50,000-contact file is around that
+ * size, which is why the answer to "1,000 is too low" is not simply a bigger
+ * number here: raising it alone would swap a clear error for an opaque 413.
+ *
+ * 5,000 rows is roughly 0.5-1 MB of CSV, comfortably clear of the ceiling, and
+ * the dashboard splits anything larger into consecutive requests of this size.
+ */
+const MAX_ROWS_PER_REQUEST = 5000;
+
+/**
+ * Rows per upsert statement. 5,000 rows is 10 round trips at this size rather
+ * than 50, and Postgres handles a 500-row ON CONFLICT comfortably.
+ */
+const BATCH = 500;
+
+/**
+ * The default function timeout is not enough for a full-size chunk once every
+ * row has been geocoded into place, so ask for headroom explicitly.
+ */
+export const maxDuration = 60;
+
+/**
  * POST /api/clients/[workspaceId]/subscribers/import
  * Import subscribers from CSV. JWT authenticated, requires edit permission.
  *
@@ -44,8 +71,15 @@ export async function POST(
   const headers = parseCSVLine(lines[0]).map(normalizeHeader);
   const rows = lines.slice(1).map(parseCSVLine);
 
-  if (rows.length > 1000) {
-    return NextResponse.json({ error: "Maximum 1000 rows per import" }, { status: 400 });
+  if (rows.length > MAX_ROWS_PER_REQUEST) {
+    return NextResponse.json(
+      {
+        error:
+          `Maximum ${MAX_ROWS_PER_REQUEST.toLocaleString()} rows per request. ` +
+          `Larger files are uploaded in chunks by the dashboard.`,
+      },
+      { status: 400 }
+    );
   }
 
   const supabase = getSupabaseClient();
@@ -99,9 +133,8 @@ export async function POST(
 
       // date_of_birth is the only non-text column here, so it is the only value
       // Postgres can reject. That matters now the upsert is batched and fails
-      // loudly: one "N/A" or "01/15/1990" in a spreadsheet would abort all 100
-      // rows in its batch with a 500, after earlier batches had already
-      // committed. Drop the unparseable value, keep the subscriber, say so.
+      // loudly: one "N/A" or "01/15/1990" in a spreadsheet would abort every row
+      // in its batch with a 500, after earlier batches had already committed. Drop the unparseable value, keep the subscriber, say so.
       if (key === "date_of_birth" && !isIsoDate(record[header])) {
         skipped.push(`Row ${i + 2}: ignored date_of_birth "${record[header]}" (expected YYYY-MM-DD)`);
         continue;
@@ -128,10 +161,9 @@ export async function POST(
   }
 
   // Batched rather than one round trip per row. The previous version awaited a
-  // separate Supabase call for every line, so a 1000-row file meant 1000
-  // sequential requests - slow enough to risk the function timeout by itself.
+  // separate Supabase call for every line, so a full file meant one sequential
+  // request per contact - slow enough to risk the function timeout by itself.
   let processed = 0;
-  const BATCH = 100;
 
   for (let i = 0; i < toUpsert.length; i += BATCH) {
     const batch = toUpsert.slice(i, i + BATCH);
