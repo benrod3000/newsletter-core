@@ -7,7 +7,7 @@
  * problem, rather than passing it through to Postgres and surfacing a
  * constraint violation as a 500.
  */
-export const WIDGET_SIZES = ["small", "medium", "large"] as const;
+export const WIDGET_SIZES = ["slim", "small", "medium", "large"] as const;
 
 export type WidgetSize = (typeof WIDGET_SIZES)[number];
 
