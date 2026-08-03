@@ -112,7 +112,15 @@ export const GET = withWorkspace(async ({ ctx }) => {
     return NextResponse.json(status, { headers: CORS });
   }
 
-  status.configured = true;
+  // A valid key is not sufficient to send. With no sender_email the dispatcher
+  // falls back to noreply@veloce.app, which is not a verified sender on the
+  // workspace's own provider account, so the send is rejected at the provider
+  // with an error that says nothing about this page. Reporting "connected" on
+  // the strength of the key alone is how that trap gets set.
+  status.sender_verified = Boolean(client.sender_email);
+  if (!client.sender_email) status.missing_fields.push("Sender Email");
+
+  status.configured = Boolean(client.sender_email);
   status.platform_key = !workspaceKey;
 
   const endpoint =
@@ -127,34 +135,37 @@ export const GET = withWorkspace(async ({ ctx }) => {
     // succeeded, authorisation for this particular endpoint did not. Reporting
     // that as "key rejected" would tell a correctly-configured workspace to go
     // replace a key that works, so the two cases are separated here.
-    if (isResend && res.status === 401) {
-      const body = await res.text();
-      if (body.includes("restricted_api_key")) {
-        status.key_valid = true;
-        status.details = status.platform_key
-          ? `Sending uses the shared platform ${providerLabel} account (send-only key).`
-          : `Verified against this workspace's own ${providerLabel} key (send-only, which is the right scope).`;
-        return NextResponse.json(status, { headers: CORS });
-      }
-    }
+    const sendOnly =
+      isResend && res.status === 401 && (await res.text()).includes("restricted_api_key");
+    const whose = status.platform_key
+      ? `the shared platform ${providerLabel} account`
+      : `this workspace's own ${providerLabel} key`;
 
-    status.key_valid = res.ok;
-    if (!res.ok) {
+    if (sendOnly) {
+      status.key_valid = true;
+      status.details = `Verified against ${whose} (send-only, which is the right scope).`;
+    } else if (res.ok) {
+      status.key_valid = true;
+      status.details = status.platform_key
+        ? `Sending uses ${whose}, not a key belonging to this workspace. Add your own key to send on your own sender reputation.`
+        : `Verified against ${whose}.`;
+    } else {
+      status.key_valid = false;
       status.details =
         res.status === 401 || res.status === 403
           ? `${providerLabel} rejected this key (${res.status}). Check it was copied whole and has not been revoked.`
           : `${providerLabel} key check failed: ${res.status}.`;
-    } else if (status.platform_key) {
-      status.details =
-        `Sending uses the shared platform ${providerLabel} account, not a key belonging to ` +
-        `this workspace. Add your own key to send on your own sender reputation.`;
-    } else {
-      status.details = `Verified against this workspace's own ${providerLabel} key.`;
     }
   } catch (err) {
     logError(err, { route: "clients.provider-status", workspaceId: ctx.workspaceId, provider });
     status.key_valid = null;
     status.details = `Could not reach ${providerLabel} to validate the key.`;
+  }
+
+  // Appended at the single exit rather than in each branch above, so it cannot
+  // be missed by whichever path the key check happened to take.
+  if (!client.sender_email) {
+    status.details += " No sender email is set, so sending will fail regardless of the key.";
   }
 
   return NextResponse.json(status, { headers: CORS });
