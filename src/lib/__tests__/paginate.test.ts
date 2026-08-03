@@ -1,10 +1,15 @@
 import { describe, it, expect, vi } from "vitest";
-import { fetchAllRows, PaginationCapExceeded } from "../paginate";
+import { fetchAllRows, PaginationCapExceeded, MAX_ROWS } from "../paginate";
 
 /**
- * The bug this guards against was silent: at 10,300 subscribers a flat
- * `.limit(10000)` returned 10,000 rows and no error, so an export used as a
- * backup was short by 300 people with nothing to indicate it.
+ * The bug this guards against was silent, and worse than it looked.
+ *
+ * The call sites asked for `.limit(10000)` against 10,300 subscribers, so the
+ * obvious reading is that they lost 300 rows. Measured against the real project,
+ * PostgREST's `max-rows` is 1,000 and caps every request regardless of `limit` -
+ * so those exports actually returned **1,000 of 10,300**, with no error. The
+ * nightly smart-tags run left exactly 1,000 tagged subscribers, which is how the
+ * real ceiling was found.
  */
 
 /** A fake table of `n` rows with sortable uuid-ish ids. */
@@ -68,6 +73,23 @@ describe("fetchAllRows", () => {
 
     // Half an export is worse than a failed one, because it looks complete.
     await expect(fetchAllRows(fetchPage, { pageSize: 1000 })).rejects.toThrow("42501");
+  });
+
+  it("clamps an oversized page size to the server ceiling", async () => {
+    // The original bug in one line: ask for 10,000, get 1,000, believe it.
+    // Without clamping, the helper would read that short page as the end and
+    // truncate at 1,000 - the exact failure it exists to prevent.
+    const serverCapped = vi.fn(async (afterId: string | null, _requested: number) => ({
+      data: rows(10_300)
+        .filter((r) => (afterId ? r.id > afterId : true))
+        .slice(0, MAX_ROWS),
+      error: null,
+    }));
+
+    const result = await fetchAllRows(serverCapped, { pageSize: 10_000 });
+
+    expect(result).toHaveLength(10_300);
+    expect(serverCapped.mock.calls.every(([, size]) => size <= MAX_ROWS)).toBe(true);
   });
 
   it("throws rather than looping forever when a caller never converges", async () => {

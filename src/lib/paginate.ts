@@ -18,6 +18,19 @@
  * which is the behaviour this helper exists to remove.
  */
 
+/**
+ * PostgREST's server-side row ceiling (`db-max-rows`), measured against this
+ * project: a request for 10,000 rows returns 1,000, with no error and no
+ * indication the answer was cut short.
+ *
+ * That is the actual mechanism behind the truncation this module fixes. The
+ * `.limit(10000)` call sites were never the binding constraint - they only made
+ * the intent look deliberate. Verify with:
+ *
+ *   curl "$SUPABASE_URL/rest/v1/subscribers?select=id&limit=10000" -H apikey:...
+ */
+export const MAX_ROWS = 1000;
+
 export interface PageResult<T> {
   data: T[] | null;
   error: { message: string } | null;
@@ -42,7 +55,17 @@ export async function fetchAllRows<T extends { id: string }>(
   fetchPage: (afterId: string | null, pageSize: number) => PromiseLike<PageResult<T>>,
   opts: { pageSize?: number; hardCap?: number } = {}
 ): Promise<T[]> {
-  const pageSize = opts.pageSize ?? 1000;
+  // Clamped, and this is load-bearing rather than tidiness.
+  //
+  // The walk below ends when a page comes back shorter than requested. PostgREST
+  // enforces its own `max-rows` ceiling (1,000 on this project, measured) and
+  // silently returns that many whatever `limit` asks for - which is exactly how
+  // the original bug worked: `?limit=10000` returned 1,000 rows and no error.
+  //
+  // So a caller passing pageSize > MAX_ROWS would receive 1,000, read that as a
+  // short page, and stop - reintroducing the silent truncation inside the helper
+  // written to remove it. Clamping keeps "short page" a truthful end signal.
+  const pageSize = Math.min(opts.pageSize ?? MAX_ROWS, MAX_ROWS);
   const hardCap = opts.hardCap ?? 500_000;
 
   const all: T[] = [];
