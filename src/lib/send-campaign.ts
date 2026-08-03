@@ -24,7 +24,7 @@ async function getWorkspaceSender(
   supabase: ReturnType<typeof getSupabaseClient>,
   workspaceId: string
 ): Promise<{ fromEmail: string; fromName: string; dispatchConfig: DispatchConfig }> {
-  const { data: client } = await supabase
+  const { data: client, error } = await supabase
     .from("clients")
     .select(
       "email_provider, fallback_provider, sandbox_mode, ses_from_email, sender_email, sender_name, sendgrid_api_key, resend_api_key"
@@ -32,17 +32,35 @@ async function getWorkspaceSender(
     .eq("id", workspaceId)
     .maybeSingle();
 
+  // This error was discarded until migration 055. supabase-js resolves failures
+  // as { error } rather than throwing, so a rejected select left `client` null and
+  // every field below fell through to its default - which silently rewrote the
+  // workspace's provider to "sendgrid" and its from-address to noreply@veloce.app.
+  // A workspace that picked Resend would have been dispatched through SendGrid.
+  // Failing loudly is correct: sending with the wrong provider and the wrong
+  // sender is worse than not sending.
+  if (error || !client) {
+    throw new Error(
+      `Could not load sending configuration for workspace ${workspaceId}: ${
+        error?.message ?? "workspace not found"
+      }`
+    );
+  }
+
   return {
     fromEmail:
-      client?.sender_email || client?.ses_from_email || process.env.SENDGRID_FROM_EMAIL || "noreply@veloce.app",
-    fromName: client?.sender_name || "Veloce",
+      client.sender_email || client.ses_from_email || process.env.SENDGRID_FROM_EMAIL || "noreply@veloce.app",
+    fromName: client.sender_name || "Veloce",
     dispatchConfig: {
-      provider: client?.email_provider || "sendgrid",
-      fallbackProvider: client?.fallback_provider || undefined,
-      sandbox: client?.sandbox_mode === true,
+      provider: client.email_provider || "sendgrid",
+      fallbackProvider: client.fallback_provider || undefined,
+      sandbox: client.sandbox_mode === true,
       credentials: {
-        sendgrid: client?.sendgrid_api_key || process.env.SENDGRID_API_KEY,
-        resend: client?.resend_api_key || process.env.RESEND_API_KEY,
+        // Workspace key first, platform key as fallback. The fallback is what
+        // makes every tenant share one sender reputation, so it is a migration
+        // aid rather than the intended steady state.
+        sendgrid: client.sendgrid_api_key || process.env.SENDGRID_API_KEY,
+        resend: client.resend_api_key || process.env.RESEND_API_KEY,
       },
     },
   };
@@ -123,7 +141,21 @@ export async function sendCampaignBlast(
     throw err;
   }
 
-  const { fromEmail, fromName, dispatchConfig } = await getWorkspaceSender(supabase, workspaceId);
+  // Same reasoning as the sending-limit check above, and the same handling: this
+  // now throws rather than silently defaulting the provider, and the job is
+  // already 'sending' with recipient rows written. Left open, the recovery cron
+  // would pick it up and hit the identical failure 15 minutes later, forever.
+  let sender: Awaited<ReturnType<typeof getWorkspaceSender>>;
+  try {
+    sender = await getWorkspaceSender(supabase, workspaceId);
+  } catch (err) {
+    await supabase
+      .from("campaign_jobs")
+      .update({ status: "failed", completed_at: new Date().toISOString() })
+      .eq("id", jobId);
+    throw err;
+  }
+  const { fromEmail, fromName, dispatchConfig } = sender;
 
   const result = await drainCampaignJob({
     jobId,

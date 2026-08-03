@@ -69,13 +69,21 @@ export async function POST(req: NextRequest) {
       };
       const sampleData = { html: sampleValues, text: sampleValues };
 
-      const { data: client } = await supabase.from("clients")
+      const { data: client, error: clientError } = await supabase.from("clients")
         .select("email_provider, sendgrid_api_key, resend_api_key, sender_email, sender_name")
         .eq("id", workspaceId).maybeSingle();
 
-      const config = buildDispatcherConfig(client || {});
-      const fromEmail = client?.sender_email || process.env.SENDGRID_FROM_EMAIL || "noreply@veloce.app";
-      const fromName = client?.sender_name || "Veloce";
+      // Before migration 055 this select always failed on the two key columns and
+      // the error was dropped, so `buildDispatcherConfig({})` decided the provider.
+      // A test send is meant to prove the workspace's real configuration works;
+      // one that quietly uses different settings proves nothing.
+      if (clientError || !client) {
+        return apiError(500, "CONFIG_ERROR", "Could not load workspace sending configuration.");
+      }
+
+      const config = buildDispatcherConfig(client);
+      const fromEmail = client.sender_email || process.env.SENDGRID_FROM_EMAIL || "noreply@veloce.app";
+      const fromName = client.sender_name || "Veloce";
 
       await dispatchEmail({
         to: testEmail,

@@ -17,7 +17,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const supabase = getSupabaseClient();
   const { data: client, error: fetchError } = await supabase
     .from("clients")
-    .select("email_provider, sendgrid_api_key, ses_access_key, ses_secret_key, ses_region, ses_from_email, resend_api_key, sender_email, from_email")
+    // `from_email` was in this list and has never existed on `clients` - a third
+    // phantom column alongside the two that migration 055 adds. Adding the key
+    // columns alone would have left this route returning 500 forever.
+    .select("email_provider, sendgrid_api_key, ses_access_key, ses_secret_key, ses_region, ses_from_email, resend_api_key, sender_email")
     .eq("id", workspaceId)
     .single();
 
@@ -26,7 +29,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 
   const provider = client.email_provider || "sendgrid";
-  const fromEmail = client.ses_from_email || client.from_email || client.sender_email || "test@veloce.app";
+  const fromEmail = client.ses_from_email || client.sender_email || "test@veloce.app";
 
   let config: ProviderConfig;
 

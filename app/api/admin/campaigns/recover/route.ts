@@ -81,15 +81,30 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
-      const { data: client } = await supabase
+      const { data: client, error: clientError } = await supabase
         .from("clients")
         .select("email_provider, fallback_provider, sandbox_mode, sendgrid_api_key, resend_api_key, sender_email, sender_name")
         .eq("id", campaign.workspace_id)
         .maybeSingle();
 
+      // Discarded until migration 055, which is what made this survivable: the
+      // select referenced two columns that did not exist, so `client` was always
+      // null and recovery re-sent through whatever buildDispatcherConfig({})
+      // defaults to. Recovering a campaign onto the wrong provider and the wrong
+      // from-address is worse than leaving it for a human.
+      if (clientError || !client) {
+        logError(clientError ?? new Error("workspace not found"), {
+          scope: "recover.loadWorkspace",
+          workspaceId: campaign.workspace_id,
+          jobId: job.id,
+        });
+        await closeJob(supabase, job.id, "failed");
+        continue;
+      }
+
       const dispatchConfig = {
         ...buildDispatcherConfig(client),
-        sandbox: client?.sandbox_mode === true,
+        sandbox: client.sandbox_mode === true,
       };
 
       const result = await drainCampaignJob({
@@ -101,8 +116,8 @@ export async function GET(req: NextRequest) {
         messageHtml: campaign.editor_html || "",
         messageCss: campaign.editor_css || "",
         baseUrl: process.env.NEXT_PUBLIC_APP_URL || "",
-        fromEmail: client?.sender_email || process.env.SENDGRID_FROM_EMAIL || "noreply@veloce.app",
-        fromName: client?.sender_name || "Veloce",
+        fromEmail: client.sender_email || process.env.SENDGRID_FROM_EMAIL || "noreply@veloce.app",
+        fromName: client.sender_name || "Veloce",
         dispatchConfig,
         timeBudgetMs: Math.max(10_000, DRAIN_BUDGET_MS - (Date.now() - startedAt)),
       });
