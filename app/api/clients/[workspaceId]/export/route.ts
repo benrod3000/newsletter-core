@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withWorkspace } from "@/lib/with-workspace";
 import { logError } from "@/lib/logger";
+import { fetchAllRows } from "@/lib/paginate";
 
 /**
  * Columns of the workspace row that are safe to hand back.
@@ -21,8 +22,26 @@ const WORKSPACE_COLUMNS =
 
 export const GET = withWorkspace(
   async ({ ctx, db }) => {
+    // Subscribers page rather than taking a flat .limit(10000). At 10,300 rows
+    // that limit was already dropping ~300 people from every export, silently.
+    // The other three tables keep a bounded read: none is anywhere near its cap,
+    // and a workspace with 1,000+ campaigns is a different conversation.
+    const subscribersPromise = fetchAllRows<{ id: string }>((afterId, pageSize) => {
+      let q = db
+        .from("subscribers")
+        .select("*")
+        .eq("workspace_id", ctx.workspaceId)
+        .order("id", { ascending: true })
+        .limit(pageSize);
+      if (afterId) q = q.gt("id", afterId);
+      return q;
+    }).then(
+      (data) => ({ data, error: null as null | { message: string } }),
+      (err: Error) => ({ data: [] as { id: string }[], error: { message: err.message } })
+    );
+
     const [subsRes, campsRes, listsRes, widgetsRes, workspaceRes] = await Promise.all([
-      db.from("subscribers").select("*").eq("workspace_id", ctx.workspaceId).limit(10000),
+      subscribersPromise,
       db.from("campaigns").select("*").eq("workspace_id", ctx.workspaceId).limit(1000),
       db.from("subscriber_lists").select("*").eq("workspace_id", ctx.workspaceId).limit(1000),
       db.from("widgets").select("*").eq("workspace_id", ctx.workspaceId).limit(100),
