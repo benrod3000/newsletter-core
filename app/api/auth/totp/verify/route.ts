@@ -42,11 +42,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: { code: "NO_2FA", message: "2FA is not enabled" } }, { status: 400 });
     }
 
-    // Check recovery codes first
-    const recoveryIndex = (user.recovery_codes || []).findIndex((rc: string) => rc === code.trim().toUpperCase());
+    // Check recovery codes first. Hoisted so the null case is handled once:
+    // recovery_codes is nullable, and the spread below assumed it was not.
+    // Unreachable in practice (findIndex on [] returns -1) but only by accident.
+    const recoveryCodes = user.recovery_codes ?? [];
+    const recoveryIndex = recoveryCodes.findIndex((rc: string) => rc === code.trim().toUpperCase());
     if (recoveryIndex >= 0) {
       // Remove used recovery code
-      const updatedCodes = [...user.recovery_codes];
+      const updatedCodes = [...recoveryCodes];
       updatedCodes.splice(recoveryIndex, 1);
       await supabase.from("workspace_users").update({ recovery_codes: updatedCodes }).eq("id", payload.userId);
     } else if (!verifyTOTP(code, user.totp_secret)) {

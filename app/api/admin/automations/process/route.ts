@@ -4,6 +4,35 @@ import { requireCronSecret } from "@/lib/cron-auth";
 import { sendEmail } from "@/lib/email-sender";
 import { buildHtmlFromEditor } from "@/lib/campaign-personalization";
 import { checkSendingLimit, SendingLimitError } from "@/lib/sending-limits";
+import { asEmailProvider } from "@/lib/email-sender";
+import type { ProviderConfig } from "@/lib/email-sender";
+
+/**
+ * Provider credentials for an automation send.
+ *
+ * This used to be built inline, twice, and read `process.env.SENDGRID_API_KEY`
+ * directly while never passing a Resend key at all. So a workspace configured
+ * for Resend had its automation emails attempted on the platform SendGrid
+ * account instead, and per-workspace keys were ignored on this path entirely.
+ * Workspace key first, platform key as fallback, same order as send-campaign.
+ */
+function providerConfigFor(workspace: {
+  email_provider: string | null;
+  sendgrid_api_key: string | null;
+  resend_api_key: string | null;
+  ses_access_key: string | null;
+  ses_secret_key: string | null;
+  ses_region: string | null;
+}): ProviderConfig {
+  return {
+    provider: asEmailProvider(workspace.email_provider),
+    sendgridApiKey: workspace.sendgrid_api_key ?? process.env.SENDGRID_API_KEY,
+    resendApiKey: workspace.resend_api_key ?? process.env.RESEND_API_KEY,
+    sesAccessKey: workspace.ses_access_key ?? undefined,
+    sesSecretKey: workspace.ses_secret_key ?? undefined,
+    sesRegion: workspace.ses_region ?? undefined,
+  };
+}
 
 /**
  * Consume one email of sending quota. Returns false when the workspace is out,
@@ -68,7 +97,7 @@ export async function POST(req: NextRequest) {
       // Get workspace email config
       const { data: workspace } = await supabase
         .from("clients")
-        .select("sender_name, sender_email, email_provider, ses_access_key, ses_secret_key, ses_region, ses_from_email")
+        .select("sender_name, sender_email, email_provider, ses_access_key, ses_secret_key, ses_region, ses_from_email, sendgrid_api_key, resend_api_key")
         .eq("id", auto.workspace_id)
         .single();
 
@@ -121,13 +150,7 @@ export async function POST(req: NextRequest) {
                   subject: campaign.subject,
                   html,
                 },
-                {
-                  provider: workspace.email_provider || "sendgrid",
-                  sendgridApiKey: process.env.SENDGRID_API_KEY,
-                  sesAccessKey: workspace.ses_access_key,
-                  sesSecretKey: workspace.ses_secret_key,
-                  sesRegion: workspace.ses_region,
-                }
+                providerConfigFor(workspace)
               );
 
               processed++;
@@ -203,13 +226,7 @@ export async function POST(req: NextRequest) {
                   subject: campaign.subject,
                   html: campaign.editor_html || "",
                 },
-                {
-                  provider: workspace.email_provider || "sendgrid",
-                  sendgridApiKey: process.env.SENDGRID_API_KEY,
-                  sesAccessKey: workspace.ses_access_key,
-                  sesSecretKey: workspace.ses_secret_key,
-                  sesRegion: workspace.ses_region,
-                }
+                providerConfigFor(workspace)
               );
               processed++;
             } catch { /* skip failures */ }
@@ -219,11 +236,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Refresh analytics materialized views
-    try {
-      const { error: refreshErr } = await supabase.rpc("refresh_analytics_views");
-      if (refreshErr) console.error("[automations] Analytics refresh failed:", refreshErr.message);
-    } catch { /* views may not exist yet */ }
+    // Removed: a call to refresh_analytics_views(), which does not exist in this
+    // database and never has. It logged a failure on every run and refreshed
+    // nothing. The materialized views it was named for were dropped as unused;
+    // nothing reads them, so there is nothing to refresh here.
 
     return NextResponse.json({
       processed,

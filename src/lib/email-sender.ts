@@ -10,6 +10,19 @@ import type { DispatchConfig } from "@/lib/email/dispatcher";
 
 export type EmailProvider = "sendgrid" | "ses" | "resend";
 
+/**
+ * Narrow a free-form provider string from the database to the union.
+ *
+ * `clients.email_provider` is a plain text column with no CHECK constraint, so
+ * the generated type is `string | null`. Falling back to "sendgrid" matches what
+ * every other read of this column already does; the value is validated here
+ * rather than trusted so an unrecognised provider degrades predictably instead
+ * of reaching a registry lookup that returns undefined.
+ */
+export function asEmailProvider(value: string | null | undefined): EmailProvider {
+  return value === "ses" || value === "resend" ? value : "sendgrid";
+}
+
 export interface SendEmailParams {
   to: string;
   from: string;

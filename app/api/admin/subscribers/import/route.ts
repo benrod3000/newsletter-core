@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
 import { getAdminContextFromHeaders } from "@/lib/admin-context";
+import type { TablesInsert } from "@/lib/database.types";
 
 function parseCsvLine(line: string): string[] {
   const result: string[] = [];
@@ -137,7 +138,11 @@ export async function POST(req: NextRequest) {
     const batch = rows.slice(i, i + BATCH);
     const { data, error } = await supabase
       .from("subscribers")
-      .upsert(batch, { onConflict: "email", ignoreDuplicates: false })
+      // onConflict is "workspace_id,email" because that is the unique key
+      // (migration 024). Conflicting on "email" alone matched, or failed
+      // against, rows belonging to other workspaces - the same cross-tenant
+      // mistake already fixed in /api/subscribe and the SendGrid webhook.
+      .upsert(batch as TablesInsert<"subscribers">[], { onConflict: "workspace_id,email", ignoreDuplicates: false })
       .select("id");
     if (error) {
       return NextResponse.json({ error: `Import failed at row ${i + 1}: ${error.message}` }, { status: 500 });

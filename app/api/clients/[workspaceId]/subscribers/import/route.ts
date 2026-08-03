@@ -5,6 +5,7 @@ import {
   assertWorkspaceAccess,
   canEditAsClient,
 } from "@/lib/client-context";
+import type { TablesInsert } from "@/lib/database.types";
 
 /**
  * Rows accepted in a single request.
@@ -169,7 +170,9 @@ export async function POST(
     const batch = toUpsert.slice(i, i + BATCH);
     const { data, error } = await supabase
       .from("subscribers")
-      .upsert(batch, { onConflict: "workspace_id,email" })
+      // Rows are built field by field from the CSV header allowlist, which is
+      // what keeps the keys valid; that mapping is what loses the static type.
+      .upsert(batch as TablesInsert<"subscribers">[], { onConflict: "workspace_id,email" })
       .select("id");
 
     // Fail loudly. This previously collected per-row errors into `skipped` and

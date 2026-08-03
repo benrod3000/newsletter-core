@@ -2,6 +2,7 @@ import { withWorkspace } from "@/lib/with-workspace";
 import { getSupabaseClient } from "@/lib/supabase";
 import { apiSuccess, apiError, apiNotFound, apiInternalError } from "@/lib/api-response";
 import { logError } from "@/lib/logger";
+import type { TablesUpdate } from "@/lib/database.types";
 
 /**
  * Branding and provider settings.
@@ -118,7 +119,11 @@ export const PUT = withWorkspace(
 
     const { data, error } = await getSupabaseClient()
       .from("clients")
-      .update(updateData)
+      // Cast, not a widened type: the runtime guarantee here is the field
+      // allowlist above, which is stricter than the column type. Building
+      // the payload by dynamic key is what loses the type, so it is
+      // reasserted at the one point it reaches the database.
+      .update(updateData as TablesUpdate<"clients">)
       .eq("id", ctx.workspaceId)
       .select(READABLE_FIELDS)
       .single();
