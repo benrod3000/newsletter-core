@@ -3,6 +3,7 @@ import { getSupabaseClient } from "@/lib/supabase";
 import { apiSuccess, apiError, apiNotFound, apiInternalError } from "@/lib/api-response";
 import { logError } from "@/lib/logger";
 import type { TablesUpdate } from "@/lib/database.types";
+import { logAudit, extractRequestMeta, AUDIT_ACTIONS } from "@/lib/audit-log";
 
 /**
  * Branding and provider settings.
@@ -135,6 +136,30 @@ export const PUT = withWorkspace(
       logError(error, { route: "clients.branding.put", workspaceId: ctx.workspaceId });
       return apiInternalError("Failed to update branding");
     }
+
+    // Which fields changed, never their values: this table holds the sending
+    // credentials, and an audit log that quotes a secret has just moved the
+    // secret somewhere with weaker access control than the column it came from.
+    // Names alone answer the question an owner is actually asking, which is
+    // "who touched the provider keys, and when".
+    const changed = Object.keys(updateData);
+    const credentialFields = changed.filter((f) =>
+      (SECRET_FIELDS as readonly string[]).includes(f)
+    );
+
+    const { ip, ua } = extractRequestMeta(req);
+    await logAudit({
+      workspace_id: ctx.workspaceId,
+      user_id: ctx.userId,
+      action: credentialFields.length ? AUDIT_ACTIONS.CREDENTIALS_CHANGED : AUDIT_ACTIONS.SETTINGS_CHANGED,
+      details: {
+        fields: changed,
+        credentials: credentialFields,
+        cleared: credentialFields.filter((f) => updateData[f] === null),
+      },
+      ip_address: ip,
+      user_agent: ua,
+    });
 
     return apiSuccess(data);
   },

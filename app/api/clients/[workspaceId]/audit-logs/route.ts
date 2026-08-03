@@ -25,4 +25,9 @@ export const GET = withWorkspace(async ({ req, ctx, db }) => {
   }
 
   return apiSuccess({ logs: data, total: count, limit, offset });
-});
+},
+// Owner only. The log records who did what, from which IP, with which browser,
+// across every member of the workspace - including the ids of contacts someone
+// deleted. That is the right thing to show an account owner and the wrong thing
+// to hand to a viewer, who can otherwise read their colleagues' movements.
+{ minRole: "owner" });

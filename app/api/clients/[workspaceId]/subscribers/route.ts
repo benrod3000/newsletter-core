@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { withWorkspace } from "@/lib/with-workspace";
 import { logError } from "@/lib/logger";
+import { logAudit, extractRequestMeta, AUDIT_ACTIONS } from "@/lib/audit-log";
 
 /** Subscriber ids are uuid primary keys (migration 001). */
 const bulkDeleteSchema = z.object({
@@ -192,6 +193,19 @@ export const DELETE = withWorkspace(
       logError(error, { route: "clients.subscribers.bulkDelete", workspaceId: ctx.workspaceId });
       return NextResponse.json({ error: "Failed to delete subscribers" }, { status: 500 });
     }
+
+    // Destructive and irreversible, so it is recorded with the ids rather than
+    // just a count: after the fact a count cannot tell an owner which contacts
+    // went, and the rows are gone.
+    const { ip, ua } = extractRequestMeta(req);
+    await logAudit({
+      workspace_id: ctx.workspaceId,
+      user_id: ctx.userId,
+      action: AUDIT_ACTIONS.SUBSCRIBER_DELETED,
+      details: { deleted: data?.length ?? 0, requested: parsed.data.ids.length, ids: data?.map((r) => r.id) ?? [] },
+      ip_address: ip,
+      user_agent: ua,
+    });
 
     // Report rows actually deleted. Returning ids.length counted ids belonging
     // to other workspaces, which the workspace filter silently drops.
