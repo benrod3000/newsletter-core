@@ -6,18 +6,20 @@ import { logError } from "@/lib/logger";
 /**
  * Branding and provider settings.
  *
- * PRE-EXISTING BREAKAGE, found while converting: the select list named
- * resend_api_key and sendgrid_api_key, and neither column exists on `clients`.
- * PostgREST rejected the select, the result was not an array, and GET returned
- * 404 "Workspace not found" every single time. PUT had the same two fields in its
- * allowlist, so saving settings failed outright whenever either input was filled.
+ * Migration 055 added clients.sendgrid_api_key and clients.resend_api_key, so the
+ * per-workspace key inputs the Settings page has always shown now persist. Before
+ * it, those two fields were absent from the allowlist below and were silently
+ * dropped on write, while the endpoint still answered 200 and the UI still said
+ * "Branding updated successfully!".
  *
- * The Settings page offers per-workspace SendGrid and Resend key inputs, and the
- * dispatcher reads client.sendgrid_api_key, so per-workspace keys are clearly the
- * intended design - the columns were simply never added. Adding them is a
- * decision about where provider credentials live (the Connection entity,
- * ARCHITECTURE.md section 2), so it is flagged rather than done here. Until then
- * those two inputs cannot persist anything.
+ * They are SECRET_FIELDS, not WRITABLE_FIELDS. That buys three things: the value
+ * is never returned (only has_sendgrid_api_key / has_resend_api_key), an empty
+ * string means "leave unchanged" rather than "clear", and the columns stay
+ * withheld from `authenticated` at the database level.
+ *
+ * Clearing a saved key therefore cannot be done by blanking the input. That is
+ * deliberate - see the SECRET_FIELDS note below - and is why sending falls back
+ * to the platform env key only when the column is genuinely null.
  */
 
 /** Columns that exist and are safe to return. */
@@ -35,7 +37,13 @@ const READABLE_FIELDS =
  * would let simply opening the page and pressing Save wipe the workspace's
  * sending credentials.
  */
-const SECRET_FIELDS = ["ses_access_key", "ses_secret_key", "twilio_auth_token"] as const;
+const SECRET_FIELDS = [
+  "ses_access_key",
+  "ses_secret_key",
+  "twilio_auth_token",
+  "sendgrid_api_key",
+  "resend_api_key",
+] as const;
 
 /** Non-secret columns a caller may write. */
 const WRITABLE_FIELDS = [
@@ -85,8 +93,21 @@ export const PUT = withWorkspace(
     }
 
     for (const f of SECRET_FIELDS) {
-      // Only write a secret when a non-empty value was actually supplied.
-      if (typeof body[f] === "string" && body[f].trim()) {
+      // Three distinct inputs, because two of them used to be one:
+      //   "value"    -> set it
+      //   "" or absent -> leave unchanged
+      //   null       -> clear it
+      //
+      // The empty-means-unchanged rule exists so that opening Settings, which
+      // initialises every secret input to "", and pressing Save cannot wipe a
+      // workspace's sending credentials. That rule also made a saved key
+      // impossible to remove, which matters for the provider keys specifically:
+      // clearing one is how a workspace falls back to the platform key, and how
+      // a leaked key gets revoked. An explicit null is unambiguous and cannot be
+      // produced by an untouched form field.
+      if (body[f] === null) {
+        updateData[f] = null;
+      } else if (typeof body[f] === "string" && body[f].trim()) {
         updateData[f] = body[f].trim();
       }
     }
