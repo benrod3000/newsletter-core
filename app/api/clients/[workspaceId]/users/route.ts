@@ -3,6 +3,7 @@ import { withWorkspace } from "@/lib/with-workspace";
 import { getSupabaseClient } from "@/lib/supabase";
 import { hashPassword } from "@/lib/jwt";
 import { logError } from "@/lib/logger";
+import { logAudit, extractRequestMeta, AUDIT_ACTIONS } from "@/lib/audit-log";
 
 /**
  * GET /api/clients/[workspaceId]/users
@@ -76,6 +77,19 @@ export const POST = withWorkspace(
         logError(error, { route: "clients.users.create", workspaceId: ctx.workspaceId });
         return NextResponse.json({ error: "Failed to create user" }, { status: 500 });
       }
+
+      // Granting someone access to the workspace is the highest-consequence
+      // action available here, since the new member inherits whatever the role
+      // allows from that moment on.
+      const { ip, ua } = extractRequestMeta(req);
+      await logAudit({
+        workspace_id: ctx.workspaceId,
+        user_id: ctx.userId,
+        action: AUDIT_ACTIONS.MEMBER_INVITED,
+        details: { invited_user_id: data.id, invited_email: data.email, role: data.role },
+        ip_address: ip,
+        user_agent: ua,
+      });
 
       return NextResponse.json(data, { status: 201 });
     } catch (err) {

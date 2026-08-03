@@ -6,6 +6,7 @@ import {
   canEditAsClient,
 } from "@/lib/client-context";
 import type { TablesInsert } from "@/lib/database.types";
+import { logAudit, extractRequestMeta, AUDIT_ACTIONS } from "@/lib/audit-log";
 
 /**
  * Rows accepted in a single request.
@@ -187,6 +188,18 @@ export async function POST(
 
     processed += data?.length ?? 0;
   }
+
+  // Bulk-adding contacts is one of the few actions that changes who this
+  // workspace can mail, so it belongs in the audit trail next to exports.
+  const { ip, ua } = extractRequestMeta(req);
+  await logAudit({
+    workspace_id: workspaceId,
+    user_id: context.userId,
+    action: AUDIT_ACTIONS.SUBSCRIBER_IMPORTED,
+    details: { processed, duplicates, skipped: skipped.length },
+    ip_address: ip,
+    user_agent: ua,
+  });
 
   return NextResponse.json({
     processed,

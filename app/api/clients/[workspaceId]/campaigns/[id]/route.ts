@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isUuid } from "@/lib/route-params";
 import { withWorkspace } from "@/lib/with-workspace";
 import { logError } from "@/lib/logger";
+import { logAudit, extractRequestMeta, AUDIT_ACTIONS } from "@/lib/audit-log";
 
 const CORS = { "Access-Control-Allow-Origin": "*" };
 
@@ -64,6 +65,27 @@ export const PATCH = withWorkspace<{ workspaceId: string; id: string }>(
     if (error) {
       logError(error, { route: "clients.campaigns.update", workspaceId: ctx.workspaceId, id });
       return NextResponse.json({ error: "Failed to update campaign" }, { status: 500, headers: CORS });
+    }
+
+    // Only the scheduling transition is audited, not every keystroke-driven
+    // draft save. Committing a campaign to an audience is irreversible; editing
+    // the subject line is not, and recording both would bury the one that
+    // matters under hundreds of the one that does not.
+    if (body.schedule_now) {
+      const { ip, ua } = extractRequestMeta(req);
+      await logAudit({
+        workspace_id: ctx.workspaceId,
+        user_id: ctx.userId,
+        action: AUDIT_ACTIONS.CAMPAIGN_SCHEDULED,
+        details: {
+          campaign_id: id,
+          subject: data.subject,
+          audience: data.audience,
+          scheduled_for: updateData.scheduled_for,
+        },
+        ip_address: ip,
+        user_agent: ua,
+      });
     }
 
     return NextResponse.json(data, { status: 200, headers: CORS });
