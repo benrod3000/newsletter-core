@@ -6,6 +6,7 @@ import { isDisposableEmail } from "@/lib/disposable-emails";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { logError } from "@/lib/logger";
 import { getClientIp } from "@/lib/client-ip";
+import type { TablesUpdate } from "@/lib/database.types";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -393,7 +394,7 @@ async function resolveSubscriber({
   if (Object.keys(updates).length > 0) {
     const { error: updateError } = await supabase
       .from("subscribers")
-      .update(updates)
+      .update(updates as TablesUpdate<"subscribers">)
       .eq("id", current.id);
 
     if (updateError) {

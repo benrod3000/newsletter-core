@@ -1,5 +1,6 @@
 import { getSupabaseClient } from "./supabase";
 import { getClientIp } from "./client-ip";
+import type { Json } from "./database.types";
 
 const AUDIT_ACTIONS = {
   LOGIN: "login",
@@ -40,7 +41,12 @@ export async function logAudit(entry: AuditLogEntry): Promise<void> {
       workspace_id: entry.workspace_id,
       user_id: entry.user_id || null,
       action: entry.action,
-      details: entry.details || {},
+      // Cast at the boundary rather than widening the caller-facing type: the
+      // column is jsonb, `Record<string, unknown>` is what callers naturally
+      // build, and anything that survives JSON.stringify is valid here. The
+      // insert is inside the try, so an unserialisable value degrades to a
+      // logged failure rather than breaking the operation being audited.
+      details: (entry.details ?? {}) as Json,
       ip_address: entry.ip_address || null,
       user_agent: entry.user_agent || null,
     });

@@ -147,13 +147,17 @@ export async function enqueueCampaignJob(
       p_job_id: job.id,
       p_workspace: params.workspaceId,
       p_audience: audience,
-      p_list_id: listId,
-      p_country: params.geo.country,
-      p_regions: params.geo.regions,
-      p_cities: params.geo.cities,
-      p_center_lat: params.geo.center_lat,
-      p_center_lng: params.geo.center_lng,
-      p_radius_km: params.geo.radius_km,
+      // `?? undefined` rather than null: these RPC args have SQL defaults, and
+      // omitting one takes that default. The generated signature makes them
+      // optional, so an explicit null is a type error and, for p_list_id, a
+      // different query than "no list filter".
+      p_list_id: listId ?? undefined,
+      p_country: params.geo.country ?? undefined,
+      p_regions: params.geo.regions ?? undefined,
+      p_cities: params.geo.cities ?? undefined,
+      p_center_lat: params.geo.center_lat ?? undefined,
+      p_center_lng: params.geo.center_lng ?? undefined,
+      p_radius_km: params.geo.radius_km ?? undefined,
     }
   );
 
@@ -345,7 +349,7 @@ export async function drainCampaignJob(params: DrainParams): Promise<DrainResult
       p_job_id: jobId,
       p_sent: sentIds,
       p_failed: failedIds,
-      p_error: lastError ?? null,
+      p_error: lastError ?? undefined,
     });
 
     if (completeError) {

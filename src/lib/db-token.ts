@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "./database.types";
 
 /**
  * Workspace-scoped database credentials.
@@ -103,7 +104,7 @@ export function mintWorkspaceDbToken(workspaceId: string, userId: string): strin
 export function getWorkspaceScopedClient(
   workspaceId: string,
   userId: string
-): SupabaseClient {
+): SupabaseClient<Database> {
   const url = process.env.SUPABASE_URL;
   const anonKey = process.env.SUPABASE_ANON_KEY;
 
@@ -117,7 +118,7 @@ export function getWorkspaceScopedClient(
 
   const token = mintWorkspaceDbToken(workspaceId, userId);
 
-  return createClient(url, anonKey, {
+  return createClient<Database>(url, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: { headers: { Authorization: `Bearer ${token}` } },
   });

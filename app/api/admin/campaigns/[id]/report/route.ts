@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
 import { getAdminContextFromHeaders } from "@/lib/admin-context";
+import { jsonString } from "@/lib/json";
 
 export async function GET(
   req: NextRequest,
@@ -66,7 +67,7 @@ export async function GET(
 
   const cityCounts: Record<string, number> = {};
   for (const row of rows.filter((r) => r.event_type === "click")) {
-    const city = typeof row.metadata?.city === "string" ? row.metadata.city.trim() : "";
+    const city = jsonString(row.metadata, "city")?.trim() ?? "";
     if (!city) continue;
     cityCounts[city] = (cityCounts[city] ?? 0) + 1;
   }

@@ -6,6 +6,7 @@ import SubscriberTable from "./SubscriberTable";
 import DashboardNav from "./DashboardNav";
 import ImportSubscribers from "./ImportSubscribers";
 import HousekeepingPanel from "./HousekeepingPanel";
+import { jsonString } from "@/lib/json";
 import SubscriberListsPanel from "./SubscriberListsPanel";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +39,12 @@ export default async function AdminPage() {
     .order("created_at", { ascending: false });
 
   if (role !== "owner" && clientId) {
-    query = query.eq("client_id", clientId);
+    // `client_id` until the generated types caught it: migration 048 renamed this
+    // column to `workspace_id` and this call site was missed. PostgREST rejected
+    // the filter with 42703, so `data` came back null and a scoped admin saw an
+    // empty list. Fails closed rather than leaking, but it has been broken since
+    // the tenancy rename shipped.
+    query = query.eq("workspace_id", clientId);
   }
 
   const { data, error } = await query;
@@ -56,7 +62,7 @@ export default async function AdminPage() {
 
     claimedLeadMagnetIds = new Set(
       (clickEvents ?? [])
-        .filter((event) => event.subscriber_id && event.metadata?.tracking_kind === "lead_magnet")
+        .filter((event) => event.subscriber_id && jsonString(event.metadata, "tracking_kind") === "lead_magnet")
         .map((event) => event.subscriber_id as string)
     );
   }

@@ -10,6 +10,7 @@
 
 import { bus, DomainEvent } from "@/lib/events";
 import { getSupabaseClient } from "@/lib/supabase";
+import type { Json } from "../database.types";
 
 const ACTIVITY_TABLE = "campaign_activity_log";
 
@@ -53,7 +54,8 @@ async function writeLog(event: DomainEvent): Promise<void> {
       workspace_id: event.workspaceId || null,
       event_type: event.type,
       description: describe(event),
-      details: event.data,
+      // Same reasoning as audit-log.ts: jsonb column, caller-shaped object.
+      details: (event.data ?? {}) as Json,
       subscriber_id: event.subscriberId || null,
       created_at: new Date(event.timestamp).toISOString(),
     });

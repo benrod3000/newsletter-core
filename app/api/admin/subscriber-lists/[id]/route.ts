@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isUuid } from "@/lib/route-params";
 import { getSupabaseClient } from "@/lib/supabase";
 import { getAdminContextFromHeaders } from "@/lib/admin-context";
+import type { TablesUpdate } from "@/lib/database.types";
 
 export async function GET(
   req: NextRequest,
@@ -79,7 +80,8 @@ export async function PUT(
   const supabase = getSupabaseClient();
   let query = supabase
     .from("subscriber_lists")
-    .update(updateData)
+    // Allowlisted above; see branding/route.ts for the same reasoning.
+    .update(updateData as TablesUpdate<"subscriber_lists">)
     .eq("id", id);
 
   if (admin.role !== "owner" && admin.clientId) {

@@ -11,7 +11,8 @@
     "//lint:ci": "Capped baseline - see eslint.config.mjs. Lower this number as warnings are fixed; never raise it.",
     "lint:ci": "eslint app src --max-warnings=80",
     "test": "vitest run",
-    "geo:backfill": "node scripts/backfill-subscriber-geo.mjs"
+    "geo:backfill": "node scripts/backfill-subscriber-geo.mjs",
+    "types:generate": "supabase gen types typescript --project-id jdmtvkytidxpcyhnhgdo > src/lib/database.types.ts"
   },
   "dependencies": {
     "@aws-sdk/client-ses": "^3.1085.0",
