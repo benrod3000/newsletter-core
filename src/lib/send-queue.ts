@@ -32,6 +32,7 @@ import { injectTracking } from "@/lib/campaign-tracking";
 import { dispatchEmail, type DispatchConfig } from "@/lib/email/dispatcher";
 import { bus } from "@/lib/events";
 import { logError, logWarn } from "@/lib/logger";
+import type { Branding } from "@/lib/branding";
 
 /** Recipients sent per claim. Bounds memory and the size of a lost batch. */
 const BATCH_SIZE = 100;
@@ -71,6 +72,8 @@ export interface DrainParams {
   baseUrl: string;
   fromEmail: string;
   fromName: string;
+  /** Workspace branding for the email shell. Defaults applied if omitted. */
+  branding?: Branding;
   dispatchConfig: DispatchConfig;
   timeBudgetMs?: number;
 }
@@ -242,15 +245,15 @@ export async function drainCampaignJob(params: DrainParams): Promise<DrainResult
   const supabase = getSupabaseClient();
   const {
     jobId, workspaceId, campaignId, subject, message, messageHtml, messageCss,
-    baseUrl, fromEmail, fromName, dispatchConfig,
+    baseUrl, fromEmail, fromName, dispatchConfig, branding,
   } = params;
 
   const timeBudgetMs = params.timeBudgetMs ?? DEFAULT_TIME_BUDGET_MS;
   const startedAt = Date.now();
   const from = `${fromName} <${fromEmail}>`;
   const baseHtml = messageHtml
-    ? buildHtmlFromEditor(messageHtml, messageCss)
-    : buildHtmlFromEditor(message.replace(/\n/g, "<br>"));
+    ? buildHtmlFromEditor(messageHtml, messageCss, branding)
+    : buildHtmlFromEditor(message.replace(/\n/g, "<br>"), "", branding);
 
   let sentCount = 0;
   let failedCount = 0;

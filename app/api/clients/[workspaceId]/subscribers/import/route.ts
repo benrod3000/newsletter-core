@@ -30,8 +30,12 @@ const MAX_ROWS_PER_REQUEST = 5000;
 const BATCH = 500;
 
 /**
- * The default function timeout is not enough for a full-size chunk once every
- * row has been geocoded into place, so ask for headroom explicitly.
+ * The default function timeout is not enough for a full-size chunk, so ask for
+ * headroom explicitly.
+ *
+ * (This comment used to claim rows were "geocoded into place" during import.
+ * Nothing in this route has ever geocoded anything - see the geo note in the
+ * field map below for why it does not.)
  */
 export const maxDuration = 60;
 
@@ -100,7 +104,26 @@ export async function POST(
     ["utm_source", "utm_source"],
     ["utm_medium", "utm_medium"],
     ["utm_campaign", "utm_campaign"],
+    // Geo. Accepted from the file rather than looked up, because looking up is
+    // not possible here at any useful scale: ip-api allows 45 requests a minute,
+    // this endpoint accepts 5,000 rows, and the function budget is 60 seconds -
+    // a full chunk would need roughly two hours. Most platforms people migrate
+    // from export coordinates or a postcode, so taking them from the CSV is both
+    // cheaper and more accurate than inferring them.
+    //
+    // Rows without coordinates simply do not appear in radius searches. Signups
+    // through the hosted form still geocode by IP, so new organic subscribers
+    // get coordinates without any of this.
+    ["postal_code", "postal_code"],
+    ["latitude", "latitude"],
+    ["longitude", "longitude"],
   ];
+
+  /** A finite coordinate in range, or null. Text columns tolerate junk; these do not. */
+  function parseCoordinate(value: string, max: number): number | null {
+    const n = Number.parseFloat(value);
+    return Number.isFinite(n) && Math.abs(n) <= max ? n : null;
+  }
 
   // Keyed by email so a CSV containing the same address twice collapses to one
   // row. Without this, a single upsert statement hitting the same conflict
@@ -139,6 +162,19 @@ export async function POST(
       // in its batch with a 500, after earlier batches had already committed. Drop the unparseable value, keep the subscriber, say so.
       if (key === "date_of_birth" && !isIsoDate(record[header])) {
         skipped.push(`Row ${i + 2}: ignored date_of_birth "${record[header]}" (expected YYYY-MM-DD)`);
+        continue;
+      }
+
+      // latitude/longitude are double precision, so unlike the text columns they
+      // can abort the whole batch. Same treatment as date_of_birth: drop the bad
+      // value, keep the subscriber, say what happened.
+      if (key === "latitude" || key === "longitude") {
+        const parsed = parseCoordinate(record[header], key === "latitude" ? 90 : 180);
+        if (parsed === null) {
+          skipped.push(`Row ${i + 2}: ignored ${key} "${record[header]}" (expected a number)`);
+          continue;
+        }
+        subscriber[key] = parsed;
         continue;
       }
 

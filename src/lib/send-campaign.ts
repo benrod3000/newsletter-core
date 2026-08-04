@@ -7,6 +7,7 @@ import {
 } from "@/lib/send-queue";
 import type { GeoFilter } from "@/lib/geo-utils";
 import type { DispatchConfig } from "@/lib/email/dispatcher";
+import { resolveBranding, type Branding } from "@/lib/branding";
 
 /**
  * Audience selector.
@@ -23,11 +24,11 @@ export type Audience = "all" | "confirmed" | "pending" | "claimed_offer" | `list
 async function getWorkspaceSender(
   supabase: ReturnType<typeof getSupabaseClient>,
   workspaceId: string
-): Promise<{ fromEmail: string; fromName: string; dispatchConfig: DispatchConfig }> {
+): Promise<{ fromEmail: string; fromName: string; dispatchConfig: DispatchConfig; branding: Branding }> {
   const { data: client, error } = await supabase
     .from("clients")
     .select(
-      "email_provider, fallback_provider, sandbox_mode, ses_from_email, sender_email, sender_name, sendgrid_api_key, resend_api_key"
+      "email_provider, fallback_provider, sandbox_mode, ses_from_email, sender_email, sender_name, sendgrid_api_key, resend_api_key, brand_colors, logo_url, name"
     )
     .eq("id", workspaceId)
     .maybeSingle();
@@ -48,6 +49,7 @@ async function getWorkspaceSender(
   }
 
   return {
+    branding: resolveBranding(client),
     fromEmail:
       client.sender_email || client.ses_from_email || process.env.SENDGRID_FROM_EMAIL || "noreply@veloce.app",
     fromName: client.sender_name || "Veloce",
@@ -155,7 +157,7 @@ export async function sendCampaignBlast(
       .eq("id", jobId);
     throw err;
   }
-  const { fromEmail, fromName, dispatchConfig } = sender;
+  const { fromEmail, fromName, dispatchConfig, branding } = sender;
 
   const result = await drainCampaignJob({
     jobId,
@@ -169,6 +171,7 @@ export async function sendCampaignBlast(
     fromEmail,
     fromName,
     dispatchConfig,
+    branding,
     timeBudgetMs: params.timeBudgetMs ?? DEFAULT_TIME_BUDGET_MS,
   });
 
