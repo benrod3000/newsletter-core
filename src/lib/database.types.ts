@@ -1481,6 +1481,63 @@ export type Database = {
           remaining: number
         }[]
       }
+      nearby_subscribers: {
+        Args: {
+          center_lat: number
+          center_lng: number
+          p_workspace_id: string
+          radius_km: number
+        }
+        Returns: {
+          city: string | null
+          confirmation_token: string
+          confirmed: boolean
+          consent_analytics_tracking: boolean
+          consent_email_marketing: boolean
+          consent_source: string | null
+          consent_text: string | null
+          consent_version: string | null
+          consented_at: string | null
+          country: string | null
+          created_at: string
+          date_of_birth: string | null
+          email: string
+          first_name: string | null
+          health_score: string | null
+          id: string
+          ip: string | null
+          job_title: string | null
+          landing_path: string | null
+          last_name: string | null
+          latitude: number | null
+          locale: string | null
+          longitude: number | null
+          phone: string | null
+          phone_number: string | null
+          postal_code: string | null
+          referrer: string | null
+          region: string | null
+          reminded: boolean
+          sms_consent: boolean | null
+          sms_consented_at: string | null
+          suppressed: boolean
+          suppressed_at: string | null
+          suppressed_reason: string | null
+          timezone: string | null
+          unsubscribe_token: string
+          user_agent: string | null
+          utm_campaign: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          workspace_id: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "subscribers"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       reset_admin_user_password: {
         Args: { p_password: string; p_user_id: string }
         Returns: undefined

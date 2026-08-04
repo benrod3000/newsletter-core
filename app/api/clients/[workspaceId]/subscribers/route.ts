@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { withWorkspace } from "@/lib/with-workspace";
+import { getSupabaseClient } from "@/lib/supabase";
 import { logError } from "@/lib/logger";
 import { logAudit, extractRequestMeta, AUDIT_ACTIONS } from "@/lib/audit-log";
 
@@ -51,16 +52,19 @@ export const GET = withWorkspace(async ({ req, ctx, db }) => {
   const radius = url.searchParams.get("radius") || "10";
 
   if (nearLat && nearLng) {
-    // KNOWN BROKEN, PRE-EXISTING: there is no nearby_subscribers function in the
-    // database. This path has been returning 500 for every radius search. Left
-    // calling the same RPC rather than silently changing behaviour in a tenancy
-    // change - the fix is a migration adding the function (the haversine in
-    // enqueue_campaign_recipients is the model) and is tracked separately.
-    const { data, error } = await db.rpc("nearby_subscribers", {
+    // `radius` arrives in miles, which is what the UI offers. The function takes
+    // kilometres, because that is what campaigns.geo_filter stores and what
+    // enqueue_campaign_recipients uses - previously this passed `radius_miles`
+    // to a km-based world, so filtering the list and sending to the same radius
+    // could select different people. Converted here, at the one boundary where
+    // the unit changes.
+    const radiusKm = parseFloat(radius) * 1.609344;
+
+    const { data, error } = await getSupabaseClient().rpc("nearby_subscribers", {
       p_workspace_id: ctx.workspaceId,
       center_lat: parseFloat(nearLat),
       center_lng: parseFloat(nearLng),
-      radius_miles: parseFloat(radius),
+      radius_km: radiusKm,
     });
 
     if (error) {
