@@ -4,6 +4,7 @@ import { apiSuccess, apiError, apiNotFound, apiInternalError } from "@/lib/api-r
 import { logError } from "@/lib/logger";
 import type { TablesUpdate } from "@/lib/database.types";
 import { logAudit, extractRequestMeta, AUDIT_ACTIONS } from "@/lib/audit-log";
+import { safeColor, safeLogoUrl } from "@/lib/branding";
 
 /**
  * Branding and provider settings.
@@ -89,6 +90,32 @@ export const PUT = withWorkspace(
     if (!body) return apiError(400, "BAD_REQUEST", "Invalid JSON body");
 
     const updateData: Record<string, unknown> = {};
+
+    // Validated on write as well as on read.
+    //
+    // resolveBranding() already falls back on anything unusable, so a bad value
+    // cannot reach rendered HTML either way. The reason to check here too is
+    // feedback: silently storing "rebeccapurple" and then quietly rendering
+    // amber is precisely the "I set it and nothing happened" experience these
+    // fields had for their entire existence.
+    if (body.brand_colors !== undefined) {
+      const colors = body.brand_colors;
+      if (colors === null || typeof colors !== "object" || Array.isArray(colors)) {
+        return apiError(400, "BAD_REQUEST", "brand_colors must be an object");
+      }
+      for (const key of ["primary", "secondary"] as const) {
+        const value = (colors as Record<string, unknown>)[key];
+        if (value !== undefined && safeColor(value, "") === "") {
+          return apiError(400, "BAD_REQUEST", `brand_colors.${key} must be a hex colour like #ff8800`);
+        }
+      }
+    }
+
+    if (body.logo_url !== undefined && body.logo_url !== null && body.logo_url !== "") {
+      if (!safeLogoUrl(body.logo_url)) {
+        return apiError(400, "BAD_REQUEST", "logo_url must be an https URL");
+      }
+    }
 
     for (const f of WRITABLE_FIELDS) {
       if (body[f] !== undefined) updateData[f] = body[f];

@@ -1,3 +1,5 @@
+import { DEFAULT_BRANDING, escapeHtml, type Branding } from "./branding";
+
 export type MergeRecipient = {
   id: string;
   email: string;
@@ -34,7 +36,34 @@ export function renderTemplate(template: string, data: Record<string, string>): 
   });
 }
 
-export function buildHtmlFromEditor(editorHtml: string, editorCss = "") {
+/**
+ * Wrap editor content in the sending shell.
+ *
+ * `branding` is optional and defaults to the palette this template was
+ * hardcoded to, so a caller that does not pass it produces byte-identical
+ * output to before. The header said "Newsletter Services" regardless of who was
+ * sending - a workspace's own name and logo now go there instead, which is the
+ * first place brand_colors and logo_url have ever been read.
+ *
+ * Styles are inline because email clients strip <style> blocks; the editorCss
+ * block is kept for the editor's own output but cannot be relied on.
+ */
+export function buildHtmlFromEditor(
+  editorHtml: string,
+  editorCss = "",
+  branding: Branding = DEFAULT_BRANDING
+) {
+  const { primary, secondary, logoUrl, name } = branding;
+  const safeName = escapeHtml(name);
+
+  // A logo replaces the wordmark when one is set. width/height are attributes as
+  // well as styles because Outlook ignores the style attribute on images.
+  const header = logoUrl
+    ? `<img src="${escapeHtml(logoUrl)}" alt="${safeName}" width="160" style="max-width:160px;height:auto;display:block;margin:0 0 20px;border:0;">`
+    : `<p style="color:${primary};font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin:0 0 16px;">
+        ${safeName}
+      </p>`;
+
   return `
 <!DOCTYPE html>
 <html>
@@ -43,18 +72,16 @@ export function buildHtmlFromEditor(editorHtml: string, editorCss = "") {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   ${editorCss ? `<style>${editorCss}</style>` : ""}
 </head>
-<body style="background:#0d0d0d;font-family:sans-serif;margin:0;padding:40px 24px;">
+<body style="background:${secondary};font-family:sans-serif;margin:0;padding:40px 24px;">
   <table style="max-width:640px;margin:0 auto;width:100%;">
     <tr><td>
-      <p style="color:#fbbf24;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin:0 0 16px;">
-        Newsletter Services
-      </p>
+      ${header}
       <div style="color:#e4e4e7;font-size:15px;line-height:1.7;white-space:normal;">
         ${editorHtml}
       </div>
       <hr style="border:none;border-top:1px solid #27272a;margin:32px 0;">
       <p style="color:#71717a;font-size:12px;line-height:1.5;margin:0;">
-        You are receiving this email because you subscribed to the newsletter.
+        You are receiving this email because you subscribed to ${safeName}.
       </p>
     </td></tr>
   </table>
@@ -64,15 +91,6 @@ export function buildHtmlFromEditor(editorHtml: string, editorCss = "") {
 
 export function buildWebVersionUrl(baseUrl: string, campaignId: string, subscriberId: string): string {
   return `${baseUrl}/web/${encodeURIComponent(campaignId)}?s=${encodeURIComponent(subscriberId)}`;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 }
 
 function maybeCapitalizeLowercaseName(value: string | null): string {

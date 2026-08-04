@@ -3,6 +3,7 @@ import { getSupabaseClient } from "@/lib/supabase";
 import { buildHtmlFromEditor, buildWebVersionUrl, mergeDataForRecipient, renderTemplate, type MergeRecipient } from "@/lib/campaign-personalization";
 import { injectTracking } from "@/lib/campaign-tracking";
 import { sanitizeCampaignHtml, sanitizeCampaignCss } from "@/lib/sanitize-campaign-html";
+import { resolveBranding, BRANDING_COLUMNS } from "@/lib/branding";
 
 type WebCampaign = {
   id: string;
@@ -10,6 +11,7 @@ type WebCampaign = {
   status: "draft" | "scheduled" | "sent";
   editor_html: string;
   editor_css: string | null;
+  workspace_id: string;
 };
 
 
@@ -27,7 +29,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { data: campaign } = await supabase
     .from("campaigns")
-    .select("id, subject, status, editor_html, editor_css")
+    .select("id, subject, status, editor_html, editor_css, workspace_id")
     .eq("id", id)
     .maybeSingle<WebCampaign>();
 
@@ -35,12 +37,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return new NextResponse("Not found", { status: 404 });
   }
 
+  // Same branding the emailed copy carries, so the web version is recognisably
+  // from the same sender rather than the product's default palette.
+  const { data: workspace } = await supabase
+    .from("clients")
+    .select(BRANDING_COLUMNS)
+    .eq("id", campaign.workspace_id)
+    .maybeSingle();
+
   // This is the browser-rendered copy of the campaign, so the body is sanitised
   // here even though the emailed copy is not: mail clients do not execute
   // script, a browser does.
   const baseHtml = buildHtmlFromEditor(
     sanitizeCampaignHtml(campaign.editor_html),
-    sanitizeCampaignCss(campaign.editor_css)
+    sanitizeCampaignCss(campaign.editor_css),
+    resolveBranding(workspace)
   );
 
   if (!subscriberId) {
