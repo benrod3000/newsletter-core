@@ -1377,6 +1377,22 @@ export type Database = {
           username: string
         }[]
       }
+      campaign_audience: {
+        Args: {
+          p_audience?: string
+          p_center_lat?: number
+          p_center_lng?: number
+          p_cities?: string[]
+          p_country?: string
+          p_list_id?: string
+          p_radius_km?: number
+          p_regions?: string[]
+          p_workspace: string
+        }
+        Returns: {
+          subscriber_id: string
+        }[]
+      }
       campaign_job_progress: {
         Args: { p_job_id: string }
         Returns: {
@@ -1413,6 +1429,20 @@ export type Database = {
           p_sent?: string[]
         }
         Returns: undefined
+      }
+      count_campaign_recipients: {
+        Args: {
+          p_audience?: string
+          p_center_lat?: number
+          p_center_lng?: number
+          p_cities?: string[]
+          p_country?: string
+          p_list_id?: string
+          p_radius_km?: number
+          p_regions?: string[]
+          p_workspace: string
+        }
+        Returns: number
       }
       create_admin_user: {
         Args: {

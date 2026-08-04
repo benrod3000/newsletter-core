@@ -101,8 +101,15 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Audience strings of the form "list:<uuid>" select an explicit list. */
-function parseAudience(audience: string): { audience: string; listId: string | null } {
+/**
+ * Audience strings of the form "list:<uuid>" select an explicit list.
+ *
+ * Exported so the pre-send recipient estimate parses the audience exactly as the
+ * send does. Duplicating this would let the count shown to a user and the set
+ * actually mailed disagree over what "list:..." means, which is precisely the
+ * class of bug the shared SQL predicate exists to prevent.
+ */
+export function parseAudience(audience: string): { audience: string; listId: string | null } {
   if (audience.startsWith("list:")) {
     return { audience: "all", listId: audience.slice(5) || null };
   }
