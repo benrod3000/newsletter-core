@@ -48,11 +48,11 @@ export const GET = withWorkspace<{ workspaceId: string; id: string }>(
       db.from("subscriber_tags").select("tag").eq("subscriber_id", id),
     ]);
 
-    // KNOWN BROKEN, PRE-EXISTING: there is no subscriber_notes table. supabase-js
-    // reports that as { error }, and the `?? []` below swallows it, so this has
-    // been returning an empty notes list forever rather than failing. Logged now
-    // so it stops being invisible; whether the table should exist is a product
-    // decision tracked separately.
+    // The table exists as of migration 059. Before that it did not, supabase-js
+    // reported the missing relation as { error }, and the `?? []` below swallowed
+    // it - so this returned an empty list forever while the UI showed a working
+    // notes panel. The error check stays: an empty list and a failed read still
+    // look identical from the outside, which is what made it invisible.
     if (notesRes.error) {
       logError(notesRes.error, {
         route: "clients.subscribers.notes.get",
@@ -92,7 +92,15 @@ export const POST = withWorkspace<{ workspaceId: string; id: string }>(
     if (typeof note === "string" && note.trim()) {
       const { data, error } = await db
         .from("subscriber_notes")
-        .insert({ subscriber_id: id, workspace_id: ctx.workspaceId, note: note.trim() })
+        // created_by records who wrote it. The column is nullable and set to
+        // null if that person is later removed, because a note stays useful
+        // without its author.
+        .insert({
+          subscriber_id: id,
+          workspace_id: ctx.workspaceId,
+          note: note.trim(),
+          created_by: ctx.userId,
+        })
         .select()
         .single();
 
