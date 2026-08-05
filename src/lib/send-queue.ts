@@ -28,7 +28,7 @@ import {
   mergeDataForRecipient,
   renderTemplate,
 } from "@/lib/campaign-personalization";
-import { injectTracking } from "@/lib/campaign-tracking";
+import { buildRecipientEmail } from "@/lib/email/recipient-email";
 import { dispatchEmail, type DispatchConfig } from "@/lib/email/dispatcher";
 import { bus } from "@/lib/events";
 import { logError, logWarn } from "@/lib/logger";
@@ -294,14 +294,16 @@ export async function drainCampaignJob(params: DrainParams): Promise<DrainResult
     let lastError: string | undefined;
 
     const outcomes = await mapWithConcurrency(batch, CONCURRENCY, async (sub) => {
-      const unsubUrl = `${baseUrl}/unsubscribe?token=${sub.unsubscribe_token}`;
-      const unsubApiUrl = `${baseUrl}/api/unsubscribe?token=${sub.unsubscribe_token}`;
-      const webVersionUrl = campaignId
-        ? buildWebVersionUrl(baseUrl, campaignId, sub.subscriber_id)
-        : "";
-
-      const mergeData = mergeDataForRecipient(
-        {
+      // Shared with the automation sender, so neither can quietly drift from the
+      // other on unsubscribe links, merge tags or tracking.
+      const email = buildRecipientEmail({
+        baseHtml,
+        subject,
+        message,
+        from,
+        baseUrl,
+        campaignId,
+        subscriber: {
           id: sub.subscriber_id,
           email: sub.email,
           unsubscribe_token: sub.unsubscribe_token,
@@ -313,27 +315,11 @@ export async function drainCampaignJob(params: DrainParams): Promise<DrainResult
           date_of_birth: sub.date_of_birth,
           phone_number: sub.phone_number,
         },
-        unsubUrl,
-        webVersionUrl
-      );
-
-      const html = campaignId
-        ? injectTracking(
-            renderTemplate(baseHtml, mergeData.html),
-            campaignId,
-            sub.subscriber_id,
-            baseUrl
-          )
-        : renderTemplate(baseHtml, mergeData.html);
+      });
 
       const result = await sendWithRetry(
         {
-          to: sub.email,
-          from,
-          subject: renderTemplate(subject, mergeData.text),
-          text: renderTemplate(message, mergeData.text),
-          html,
-          listUnsubscribe: unsubApiUrl,
+          ...email,
           campaignId: campaignId ?? undefined,
           subscriberId: sub.subscriber_id,
           workspaceId,

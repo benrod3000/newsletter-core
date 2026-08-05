@@ -47,8 +47,8 @@ export const GET = withWorkspace<{ workspaceId: string; id: string }>(
         .eq("subscriber_id", id)
         .order("created_at", { ascending: true })
         .limit(100),
-      // subscriber_notes does not exist in the database; this resolves as
-      // { error } and contributes nothing to the timeline. See the notes route.
+      // subscriber_notes exists as of migration 059; before that this resolved
+      // as { error } and notes never appeared on the timeline.
       db.from("subscriber_notes")
         .select("note, created_at")
         .eq("subscriber_id", id)

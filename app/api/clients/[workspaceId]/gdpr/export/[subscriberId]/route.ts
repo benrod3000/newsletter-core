@@ -50,10 +50,12 @@ export const GET = withWorkspace<{ workspaceId: string; subscriberId: string }>(
       db.from("subscriber_list_memberships").select("list_id").eq("subscriber_id", subscriberId).limit(50),
     ]);
 
-    // NOTE: subscriber_notes does not exist in the database. supabase-js reports
-    // that as { error }, and `?? []` swallows it, so a GDPR export silently omits
-    // notes rather than failing. Tracked separately - the fix is a decision about
-    // whether the notes feature exists at all, not a change to this route.
+    // subscriber_notes exists as of migration 059. Before that it did not,
+    // supabase-js reported the missing relation as { error }, and `?? []`
+    // swallowed it - so this export silently omitted notes rather than failing.
+    // A subject-access response that quietly drops a category of personal data
+    // is the worst place for that, which is why every read is checked below
+    // rather than trusted.
     for (const [name, res] of Object.entries({
       campaign_events: eventsRes,
       subscriber_tags: tagsRes,
