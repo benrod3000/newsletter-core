@@ -48,6 +48,20 @@ import type { Json } from "@/lib/database.types";
 const BATCH = 100;
 
 /**
+ * How far back a subscriber_joined trigger looks.
+ *
+ * Must comfortably exceed the gap between runs, or signups fall between them and
+ * are never seen. The cron is daily - Vercel's Hobby plan does not permit more
+ * frequent than that, and a shorter expression fails the deploy outright rather
+ * than being rejected at runtime - so this is a day plus an hour of overlap.
+ *
+ * Overlap is free because recipients are claimed before sending: seeing the same
+ * person on two consecutive runs costs one no-op insert, whereas missing them
+ * costs the email entirely. When the schedule changes, change this with it.
+ */
+const LOOKBACK_MINUTES = 25 * 60;
+
+/**
  * Provider credentials for an automation send.
  *
  * This used to be built inline, twice, reading process.env.SENDGRID_API_KEY
@@ -222,8 +236,11 @@ export async function POST(req: NextRequest) {
       // has to avoid reaching indefinitely far back on a cold start.
       if (auto.trigger_type === "subscriber_joined") {
         const delayMinutes = Number(triggerConfig.delay_minutes) || 0;
-        const notBefore = new Date(now.getTime() - Math.max(delayMinutes, 60) * 60 * 1000);
+        // The upper bound is the delay: a subscriber is only eligible once
+        // `delay_minutes` have passed since they joined. The lower bound just
+        // stops the query reaching indefinitely far back.
         const joinedBefore = new Date(now.getTime() - delayMinutes * 60 * 1000);
+        const notBefore = new Date(joinedBefore.getTime() - LOOKBACK_MINUTES * 60 * 1000);
 
         if (auto.action_type === "send_email" && campaignId) {
           const { data: campaign } = await supabase
