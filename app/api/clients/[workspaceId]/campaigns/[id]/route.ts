@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { isUuid } from "@/lib/route-params";
 import { withWorkspace } from "@/lib/with-workspace";
 import { logError } from "@/lib/logger";
-import { logAudit, extractRequestMeta, AUDIT_ACTIONS } from "@/lib/audit-log";
+import { logAudit, extractRequestMeta, audit, AUDIT_ACTIONS } from "@/lib/audit-log";
 
 const CORS = { "Access-Control-Allow-Origin": "*" };
 
@@ -94,7 +94,7 @@ export const PATCH = withWorkspace<{ workspaceId: string; id: string }>(
 );
 
 export const DELETE = withWorkspace<{ workspaceId: string; id: string }>(
-  async ({ ctx, db, params }) => {
+  async ({ req, ctx, db, params }) => {
     const { id } = params;
 
     // PATCH validated the id and DELETE did not, even though both interpolated it
@@ -113,6 +113,8 @@ export const DELETE = withWorkspace<{ workspaceId: string; id: string }>(
       logError(error, { route: "clients.campaigns.delete", workspaceId: ctx.workspaceId, id });
       return NextResponse.json({ error: "Failed to delete campaign" }, { status: 500, headers: CORS });
     }
+
+    await audit(req, ctx, AUDIT_ACTIONS.CAMPAIGN_DELETED, { campaign_id: id });
 
     return NextResponse.json({ ok: true }, { status: 200, headers: CORS });
   },

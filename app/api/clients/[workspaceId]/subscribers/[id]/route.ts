@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isUuid } from "@/lib/route-params";
 import { withWorkspace } from "@/lib/with-workspace";
 import { logError } from "@/lib/logger";
+import { audit, AUDIT_ACTIONS } from "@/lib/audit-log";
 
 /**
  * DELETE /api/clients/[workspaceId]/subscribers/[id]
@@ -17,7 +18,7 @@ import { logError } from "@/lib/logger";
  * Phase 1 replaces this with ChannelIdentity + suppression state.
  */
 export const DELETE = withWorkspace<{ workspaceId: string; id: string }>(
-  async ({ ctx, db, params }) => {
+  async ({ req, ctx, db, params }) => {
     const { id } = params;
 
     if (!isUuid(id)) {
@@ -49,6 +50,8 @@ export const DELETE = withWorkspace<{ workspaceId: string; id: string }>(
       logError(deleteError, { route: "clients.subscribers.delete", workspaceId: ctx.workspaceId, id });
       return NextResponse.json({ error: "Failed to delete subscriber" }, { status: 500 });
     }
+
+    await audit(req, ctx, AUDIT_ACTIONS.SUBSCRIBER_DELETED, { deleted: 1, ids: [id], source: "single" });
 
     return NextResponse.json({ ok: true });
   },

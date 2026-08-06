@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withWorkspace } from "@/lib/with-workspace";
 import { isUuid } from "@/lib/route-params";
 import { logError } from "@/lib/logger";
+import { audit, AUDIT_ACTIONS } from "@/lib/audit-log";
 
 function slugify(text: string): string {
   return text
@@ -17,7 +18,7 @@ function slugify(text: string): string {
  * Auto-generates a slug from the campaign title on first publish.
  */
 export const POST = withWorkspace<{ workspaceId: string; id: string }>(
-  async ({ ctx, db, params }) => {
+  async ({ req, ctx, db, params }) => {
     const campaignId = params.id;
 
     if (!isUuid(campaignId)) {
@@ -106,6 +107,10 @@ export const POST = withWorkspace<{ workspaceId: string; id: string }>(
       logError(error, { route: "clients.campaigns.publish", workspaceId: ctx.workspaceId, campaignId });
       return NextResponse.json({ error: "Failed to publish campaign" }, { status: 500 });
     }
+
+    // Publishing puts campaign content on a public URL, so it leaves the
+    // workspace boundary. That is worth recording even though nothing is sent.
+    await audit(req, ctx, AUDIT_ACTIONS.CAMPAIGN_PUBLISHED, { campaign_id: campaignId, slug });
 
     return NextResponse.json({ public: true, slug });
   },

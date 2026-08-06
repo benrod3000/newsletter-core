@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withWorkspace } from "@/lib/with-workspace";
 import { logError } from "@/lib/logger";
+import { audit, AUDIT_ACTIONS } from "@/lib/audit-log";
 
 /**
  * GET /api/clients/[workspaceId]/campaigns
@@ -77,6 +78,12 @@ export const POST = withWorkspace(
       logError(error, { route: "clients.campaigns.create", workspaceId: ctx.workspaceId });
       return NextResponse.json({ error: "Failed to create campaign" }, { status: 500 });
     }
+
+    await audit(req, ctx, AUDIT_ACTIONS.CAMPAIGN_CREATED, {
+      campaign_id: data.id,
+      title: data.title,
+      subject: data.subject,
+    });
 
     return NextResponse.json(data, { status: 201 });
   },

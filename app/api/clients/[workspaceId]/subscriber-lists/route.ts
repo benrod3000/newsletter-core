@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withWorkspace } from "@/lib/with-workspace";
 import { logError } from "@/lib/logger";
+import { audit, AUDIT_ACTIONS } from "@/lib/audit-log";
 
 /**
  * GET /api/clients/[workspaceId]/subscriber-lists
@@ -61,6 +62,8 @@ export const POST = withWorkspace(
       logError(error, { route: "clients.subscriber-lists.create", workspaceId: ctx.workspaceId });
       return NextResponse.json({ error: "Failed to create list" }, { status: 500 });
     }
+
+    await audit(req, ctx, AUDIT_ACTIONS.LIST_CREATED, { list_id: data.id, name: data.name });
 
     return NextResponse.json(data, { status: 201 });
   },
