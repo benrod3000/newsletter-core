@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withWorkspace } from "@/lib/with-workspace";
 import { logError } from "@/lib/logger";
 import { isWidgetSize, WIDGET_SIZES } from "@/lib/widget-config";
+import { audit, AUDIT_ACTIONS } from "@/lib/audit-log";
 
 /**
  * GET /api/clients/[workspaceId]/widgets
@@ -134,6 +135,9 @@ export const POST = withWorkspace(
       logError(error, { route: "clients.widgets.create", workspaceId: ctx.workspaceId });
       return NextResponse.json({ error: "Failed to create widget" }, { status: 500 });
     }
+
+    // A widget is a publicly reachable form that writes into the audience.
+    await audit(req, ctx, AUDIT_ACTIONS.WIDGET_CREATED, { widget_id: data.id, name: data.name });
 
     return NextResponse.json({ widget: data }, { status: 201 });
   },

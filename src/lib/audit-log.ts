@@ -27,6 +27,27 @@ const AUDIT_ACTIONS = {
   MEMBER_REMOVED: "member_removed",
   MEMBER_ROLE_CHANGED: "member_role_changed",
   AUTOMATION_CHANGED: "automation_changed",
+
+  /**
+   * Content and audience changes. Creation and deletion are discrete events
+   * worth recording; edits are not, because a draft is autosaved continuously
+   * and logging every keystroke would bury everything above.
+   */
+  CAMPAIGN_CREATED: "campaign_created",
+  CAMPAIGN_DELETED: "campaign_deleted",
+  CAMPAIGN_PUBLISHED: "campaign_published",
+  CAMPAIGN_TEST_SENT: "campaign_test_sent",
+  SMS_SENT: "sms_sent",
+  SUBSCRIBER_CREATED: "subscriber_created",
+  SUBSCRIBER_TAGS_CHANGED: "subscriber_tags_changed",
+  LIST_CREATED: "list_created",
+  LIST_DELETED: "list_deleted",
+  LIST_MEMBERS_ADDED: "list_members_added",
+  WIDGET_CREATED: "widget_created",
+  WIDGET_UPDATED: "widget_updated",
+  WIDGET_DELETED: "widget_deleted",
+  SAVED_FILTER_CREATED: "saved_filter_created",
+  SAVED_FILTER_DELETED: "saved_filter_deleted",
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
@@ -88,3 +109,31 @@ export function extractRequestMeta(req: Request): { ip: string; ua: string } {
 }
 
 export { AUDIT_ACTIONS };
+
+/**
+ * Record an action from inside a withWorkspace handler.
+ *
+ * Thin wrapper over logAudit + extractRequestMeta, which together were eight
+ * lines at every call site. That friction is why most mutations went
+ * uninstrumented for so long: the vocabulary existed, the table existed, and
+ * adding an entry was just tedious enough to skip.
+ *
+ * Never throws. Audit logging observes an operation; it does not get to be the
+ * reason that operation fails.
+ */
+export async function audit(
+  req: Request,
+  ctx: { workspaceId: string; userId?: string },
+  action: AuditAction,
+  details?: Record<string, unknown>
+): Promise<void> {
+  const { ip, ua } = extractRequestMeta(req);
+  await logAudit({
+    workspace_id: ctx.workspaceId,
+    user_id: ctx.userId,
+    action,
+    details,
+    ip_address: ip,
+    user_agent: ua,
+  });
+}
