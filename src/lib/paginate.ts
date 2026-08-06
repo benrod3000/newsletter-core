@@ -51,8 +51,13 @@ export class PaginationCapExceeded extends Error {
  *   the caller owns the query so this stays usable with any table, any filter
  *   and either client.
  */
-export async function fetchAllRows<T extends { id: string }>(
-  fetchPage: (afterId: string | null, pageSize: number) => PromiseLike<PageResult<T>>,
+/**
+ * `id` may be a string or a number: uuid primary keys dominate this schema, but
+ * subscriber_tags, automation_logs and gdpr_audit_events use bigint. Both order
+ * monotonically, which is all the cursor needs.
+ */
+export async function fetchAllRows<T extends { id: string | number }>(
+  fetchPage: (afterId: string | number | null, pageSize: number) => PromiseLike<PageResult<T>>,
   opts: { pageSize?: number; hardCap?: number } = {}
 ): Promise<T[]> {
   // Clamped, and this is load-bearing rather than tidiness.
@@ -69,7 +74,7 @@ export async function fetchAllRows<T extends { id: string }>(
   const hardCap = opts.hardCap ?? 500_000;
 
   const all: T[] = [];
-  let afterId: string | null = null;
+  let afterId: string | number | null = null;
 
   for (;;) {
     const { data, error } = await fetchPage(afterId, pageSize);

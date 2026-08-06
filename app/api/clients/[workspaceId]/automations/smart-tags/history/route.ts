@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClientContextFromJWT, assertWorkspaceAccess } from "@/lib/client-context";
-
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const auth = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` };
+import { getSupabaseClient } from "@/lib/supabase";
+import { fetchAllRows } from "@/lib/paginate";
+import { logError } from "@/lib/logger";
 
 export async function GET(
   req: NextRequest,
@@ -14,33 +13,34 @@ export async function GET(
   if (!ctx || !assertWorkspaceAccess(ctx, workspaceId))
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const supabase = getSupabaseClient();
+
   try {
-    // Get subscriber IDs for this workspace
-    const subsRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/subscribers?select=id&workspace_id=eq.${workspaceId}`,
-      { headers: auth }
-    );
-    const subs = await subsRes.json();
-    if (!Array.isArray(subs)) {
-      return NextResponse.json({ error: "Failed to fetch subscribers" }, { status: 500 });
-    }
-
-    if (subs.length === 0) {
-      return NextResponse.json({ tags: [] });
-    }
-
-    const subIds = subs.map((s: any) => s.id);
-    // Supabase REST supports `in` filter: comma-separated values in parentheses
-    const subIdsParam = subIds.map((id: string) => `subscriber_id=eq.${id}`).join(",");
-
-    // Fetch all tags for this workspace's subscribers
-    const tagsRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/subscriber_tags?select=tag,subscriber_id,created_at&limit=5000&or=(${subIdsParam})&order=created_at.desc`,
-      { headers: auth }
-    );
-    const tags = await tagsRes.json();
-    if (!Array.isArray(tags)) {
-      return NextResponse.json({ tags: [] });
+    // One workspace-scoped query, rather than fetching every subscriber id and
+    // building an `or=(subscriber_id=eq.…)` filter from them. That shape was
+    // truncated twice over: the subscriber read had no limit and so took
+    // PostgREST's 1,000-row default, and the tag read asked for 5,000 and got
+    // the same 1,000 back. A workspace with more than 1,000 subscribers saw tag
+    // counts computed from an arbitrary subset, presented as totals.
+    //
+    // subscriber_tags.workspace_id is NOT NULL, so the id list was never needed.
+    let tags: { tag: string; created_at: string | null }[];
+    try {
+      tags = await fetchAllRows<{ id: number; tag: string; created_at: string | null }>(
+        (afterId, pageSize) => {
+          let q = supabase
+            .from("subscriber_tags")
+            .select("id, tag, created_at")
+            .eq("workspace_id", workspaceId)
+            .order("id", { ascending: true })
+            .limit(pageSize);
+          if (afterId) q = q.gt("id", afterId);
+          return q;
+        }
+      );
+    } catch (err) {
+      logError(err, { route: "clients.smart-tags.history", workspaceId });
+      return NextResponse.json({ error: "Failed to load tag history" }, { status: 500 });
     }
 
     // Group by tag with counts and last applied date
@@ -51,7 +51,7 @@ export async function GET(
       }
       const entry = tagMap.get(t.tag)!;
       entry.count++;
-      if (!entry.lastApplied || t.created_at > entry.lastApplied) {
+      if (t.created_at && (!entry.lastApplied || t.created_at > entry.lastApplied)) {
         entry.lastApplied = t.created_at;
       }
     }

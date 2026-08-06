@@ -19,7 +19,7 @@ function rows(n: number) {
 
 /** Serves `all` through keyset pagination, the way PostgREST would. */
 function pager(all: { id: string }[]) {
-  return vi.fn(async (afterId: string | null, pageSize: number) => ({
+  return vi.fn(async (afterId: string | number | null, pageSize: number) => ({
     data: all.filter((r) => (afterId ? r.id > afterId : true)).slice(0, pageSize),
     error: null,
   }));
@@ -79,7 +79,7 @@ describe("fetchAllRows", () => {
     // The original bug in one line: ask for 10,000, get 1,000, believe it.
     // Without clamping, the helper would read that short page as the end and
     // truncate at 1,000 - the exact failure it exists to prevent.
-    const serverCapped = vi.fn(async (afterId: string | null, _requested: number) => ({
+    const serverCapped = vi.fn(async (afterId: string | number | null, _requested: number) => ({
       data: rows(10_300)
         .filter((r) => (afterId ? r.id > afterId : true))
         .slice(0, MAX_ROWS),
@@ -94,7 +94,7 @@ describe("fetchAllRows", () => {
 
   it("throws rather than looping forever when a caller never converges", async () => {
     // A pager that ignores the cursor: always a full page, never advancing.
-    const stuck = vi.fn(async (_afterId: string | null, pageSize: number) => ({
+    const stuck = vi.fn(async (_afterId: string | number | null, pageSize: number) => ({
       data: rows(pageSize),
       error: null,
     }));

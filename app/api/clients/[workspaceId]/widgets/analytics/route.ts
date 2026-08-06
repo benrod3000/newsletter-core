@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withWorkspace } from "@/lib/with-workspace";
 import { logError } from "@/lib/logger";
+import { fetchAllRows } from "@/lib/paginate";
 
 interface WidgetRow {
   id: string;
@@ -19,12 +20,28 @@ export const GET = withWorkspace(async ({ ctx, db }) => {
   // rather than obviously missing. The fix is an incremental rollup keyed by
   // (workspace, widget, event_type), which is Phase 1 work against the new
   // events table so it only gets written once. Left as-is here on purpose.
+  // `.limit(50000)` here was not the constraint it looked like: PostgREST caps a
+  // response at 1,000 rows whatever is asked for, so this returned 1,000 events
+  // and reported the resulting counts as if complete. The widget with the most
+  // traffic would have been the one most understated.
+  const eventsPromise = fetchAllRows<{ id: string; widget_id: string; event_type: string }>(
+    (afterId, pageSize) => {
+      let q = db
+        .from("widget_events")
+        .select("id,widget_id,event_type")
+        .eq("workspace_id", ctx.workspaceId)
+        .order("id", { ascending: true })
+        .limit(pageSize);
+      if (afterId) q = q.gt("id", afterId);
+      return q;
+    }
+  ).then(
+    (data) => ({ data, error: null as null | { message: string } }),
+    (err: Error) => ({ data: [] as { id: string; widget_id: string; event_type: string }[], error: { message: err.message } })
+  );
+
   const [eventsRes, widgetsRes] = await Promise.all([
-    db
-      .from("widget_events")
-      .select("widget_id,event_type")
-      .eq("workspace_id", ctx.workspaceId)
-      .limit(50000),
+    eventsPromise,
     db
       .from("widgets")
       .select("id,name,slug")
