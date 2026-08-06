@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClientContextFromJWT, assertWorkspaceAccess } from "@/lib/client-context";
-
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const auth = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` };
+import { getSupabaseClient } from "@/lib/supabase";
+import { fetchAllRows } from "@/lib/paginate";
+import { logError } from "@/lib/logger";
 
 export async function GET(
   req: NextRequest,
@@ -27,44 +26,45 @@ export async function GET(
   const tzRaw = parseInt(url.searchParams.get("tzOffset") || "", 10);
   const tzOffsetMin = Number.isFinite(tzRaw) ? Math.min(Math.max(tzRaw, -840), 840) : 0;
 
+  const supabase = getSupabaseClient();
+
   try {
-    // Get campaign IDs for this workspace, then query events by campaign_id
-    // (avoids URL overflow from 5,000 subscriber_id=eq.UUID conditions)
-    const campaignsRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/campaigns?select=id&workspace_id=eq.${workspaceId}&limit=100`,
-      { headers: auth }
-    );
-    if (!campaignsRes.ok) {
-      return NextResponse.json({ hours: [], days: [], matrix: [], totalOpens: 0, bestHour: -1, bestDay: -1 }, { status: 200 });
+    // Queried by workspace_id directly rather than by collecting campaign ids
+    // and filtering on those. The old shape had three separate truncations
+    // stacked on top of each other, none of which produced an error:
+    //
+    //   campaigns   limit=100    events from a workspace's 101st campaign
+    //                            onward were simply absent
+    //   events      limit=10000  PostgREST caps a response at 1,000 rows
+    //                            regardless, so each batch was short
+    //   accumulator 20,000 cap   silently truncated whatever survived
+    //
+    // A busy workspace therefore got a heatmap built from a fraction of its
+    // opens and no indication that "best hour to send" was computed from a
+    // sample. campaign_events.workspace_id is NOT NULL, so none of it was needed.
+    let events: { occurred_at: string }[];
+    try {
+      events = await fetchAllRows<{ id: string; occurred_at: string }>((afterId, pageSize) => {
+        let q = supabase
+          .from("campaign_events")
+          .select("id, occurred_at")
+          .eq("workspace_id", workspaceId)
+          .eq("event_type", "open")
+          .order("id", { ascending: true })
+          .limit(pageSize);
+        if (since) q = q.gte("occurred_at", since);
+        if (afterId) q = q.gt("id", afterId);
+        return q;
+      });
+    } catch (err) {
+      logError(err, { route: "clients.analytics.heatmap", workspaceId });
+      return NextResponse.json({ error: "Failed to load heatmap" }, { status: 500 });
     }
-    const campaigns = await campaignsRes.json();
-    if (!Array.isArray(campaigns) || campaigns.length === 0) {
+
+    if (events.length === 0) {
       return NextResponse.json({ hours: [], days: [], matrix: [], totalOpens: 0, bestHour: -1, bestDay: -1 });
     }
 
-    const campaignIds = campaigns.map((c: any) => c.id);
-    const BATCH_SIZE = 50;
-    let allEvents: { occurred_at: string }[] = [];
-
-    for (let i = 0; i < campaignIds.length; i += BATCH_SIZE) {
-      const batch = campaignIds.slice(i, i + BATCH_SIZE);
-      const idFilters = batch.map((id: string) => `campaign_id=eq.${id}`).join(",");
-      const sinceFilter = since ? `&occurred_at=gte.${since}` : "";
-      const eventsRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/campaign_events?select=occurred_at&event_type=eq.open&or=(${idFilters})${sinceFilter}&limit=10000`,
-        { headers: auth }
-      );
-      if (!eventsRes.ok) {
-        continue;
-      }
-      const batchEvents = await eventsRes.json();
-      if (Array.isArray(batchEvents)) {
-        allEvents = allEvents.concat(batchEvents);
-        if (allEvents.length >= 20000) { allEvents = allEvents.slice(0, 20000); break; }
-      }
-    }
-
-    const events = allEvents;
 
     // Build hour-of-day counts (24 hours), day-of-week counts (7 days), and a
     // day x hour matrix so the client can filter one axis by a selection on
