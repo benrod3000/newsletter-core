@@ -62,21 +62,72 @@ export async function sendEmail(
   return result.success;
 }
 
-/** Send a system transactional email using the platform SendGrid key. */
+/**
+ * Raised when platform email is not configured. Named so callers can tell a
+ * misconfiguration apart from a provider rejecting a message.
+ */
+export class TransactionalEmailNotConfigured extends Error {
+  constructor(missing: string[]) {
+    super(`Platform email is not configured. Missing: ${missing.join(", ")}.`);
+    this.name = "TransactionalEmailNotConfigured";
+  }
+}
+
+/** Platform email credentials, or the list of what is missing. */
+export function resolveTransactionalConfig():
+  | { ok: true; from: string; config: ProviderConfig }
+  | { ok: false; missing: string[] } {
+  const resendKey = process.env.RESEND_API_KEY;
+  const sendgridKey = process.env.SENDGRID_API_KEY;
+  const from = process.env.TRANSACTIONAL_FROM_EMAIL || process.env.SENDGRID_FROM_EMAIL;
+  const fromName = process.env.TRANSACTIONAL_FROM_NAME || "Veloce";
+
+  const missing: string[] = [];
+  if (!resendKey && !sendgridKey) missing.push("RESEND_API_KEY or SENDGRID_API_KEY");
+  if (!from) missing.push("TRANSACTIONAL_FROM_EMAIL");
+  if (missing.length) return { ok: false, missing };
+
+  // Resend preferred when both are present: it is the provider this platform
+  // actually uses. SENDGRID_* is still honoured so nothing regresses if it is
+  // ever set.
+  const config: ProviderConfig = resendKey
+    ? { provider: "resend", resendApiKey: resendKey }
+    : { provider: "sendgrid", sendgridApiKey: sendgridKey };
+
+  return { ok: true, from: `${fromName} <${from}>`, config };
+}
+
+/**
+ * Send a platform email: password resets, signup welcome. Not campaign mail.
+ *
+ * THIS HAS NEVER SENT ANYTHING. It required SENDGRID_API_KEY and
+ * SENDGRID_FROM_EMAIL, neither of which has ever existed in this project's
+ * Vercel environment, so it threw on its first line every time. Both callers
+ * invoked it fire-and-forget with `.catch(console.error)` and then returned
+ * success, so users were told a reset link was on its way and nothing was sent.
+ *
+ * Deliberately independent of any workspace's provider settings. Platform email
+ * is from Veloce, not from a customer, and the signup welcome fires before a
+ * workspace has been configured at all - so borrowing a workspace's credentials
+ * would fail in exactly the case it is most needed.
+ */
 export async function sendTransactionalEmail(params: {
   to: string;
   subject: string;
   text?: string;
   html?: string;
 }): Promise<boolean> {
-  const apiKey = process.env.SENDGRID_API_KEY;
-  const fromEmail = process.env.SENDGRID_FROM_EMAIL;
-  if (!apiKey || !fromEmail) {
-    console.error("sendTransactionalEmail: Missing SENDGRID_API_KEY or SENDGRID_FROM_EMAIL");
-    throw new Error("Transactional email provider not configured.");
-  }
+  const resolved = resolveTransactionalConfig();
+  if (!resolved.ok) throw new TransactionalEmailNotConfigured(resolved.missing);
+
   return sendEmail(
-    { to: params.to, from: fromEmail, subject: params.subject, text: params.text, html: params.html },
-    { provider: "sendgrid", sendgridApiKey: apiKey }
+    {
+      to: params.to,
+      from: resolved.from,
+      subject: params.subject,
+      text: params.text,
+      html: params.html,
+    },
+    resolved.config
   );
 }

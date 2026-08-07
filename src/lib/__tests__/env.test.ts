@@ -33,30 +33,37 @@ describe("Redis credential detection", () => {
 
   const warnings = () => warn.mock.calls.map((c) => String(c[0])).filter((m) => m.includes("[env]"));
 
+  /**
+   * Only the Redis warnings. These assertions counted every [env] warning, so
+   * adding an unrelated one elsewhere in RECOMMENDED broke four tests that have
+   * nothing to do with it. Filtering keeps them about Redis.
+   */
+  const redisWarnings = () => warnings().filter((m) => m.includes("REDIS"));
+
   it("warns when neither prefix is set", () => {
     assertRequiredEnv();
-    expect(warnings()).toHaveLength(2);
-    expect(warnings()[0]).toContain("KV_REST_API_URL / UPSTASH_REDIS_REST_URL");
+    expect(redisWarnings()).toHaveLength(2);
+    expect(redisWarnings()[0]).toContain("KV_REST_API_URL / UPSTASH_REDIS_REST_URL");
   });
 
   it("is satisfied by the Vercel integration's KV_ names", () => {
     process.env.KV_REST_API_URL = "https://x.upstash.io";
     process.env.KV_REST_API_TOKEN = "t";
     assertRequiredEnv();
-    expect(warnings()).toHaveLength(0);
+    expect(redisWarnings()).toHaveLength(0);
   });
 
   it("is still satisfied by the original UPSTASH_ names", () => {
     process.env.UPSTASH_REDIS_REST_URL = "https://x.upstash.io";
     process.env.UPSTASH_REDIS_REST_TOKEN = "t";
     assertRequiredEnv();
-    expect(warnings()).toHaveLength(0);
+    expect(redisWarnings()).toHaveLength(0);
   });
 
   it("warns about only the half that is missing", () => {
     process.env.KV_REST_API_URL = "https://x.upstash.io";
     assertRequiredEnv();
-    expect(warnings()).toHaveLength(1);
+    expect(redisWarnings()).toHaveLength(1);
     expect(warnings()[0]).toContain("TOKEN");
   });
 });

@@ -10,6 +10,13 @@ const AUDIT_ACTIONS = {
   TOTP_DISABLED: "totp_disabled",
   TOTP_VERIFIED: "totp_verified",
   PASSWORD_CHANGED: "password_changed",
+  /**
+   * Both outcomes are recorded, because the request deliberately returns the
+   * same response whether or not the email went out - so the log is the only
+   * place the difference is visible.
+   */
+  PASSWORD_RESET_SENT: "password_reset_sent",
+  PASSWORD_RESET_FAILED: "password_reset_failed",
   CAMPAIGN_SENT: "campaign_sent",
   CAMPAIGN_SCHEDULED: "campaign_scheduled",
   SUBSCRIBER_EXPORTED: "subscriber_exported",

@@ -4,6 +4,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { isDisposableEmail } from "@/lib/disposable-emails";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { sendTransactionalEmail } from "@/lib/email-sender";
+import { logError } from "@/lib/logger";
 import { getClientIp } from "@/lib/client-ip";
 
 const CORS_HEADERS = {
@@ -176,14 +177,17 @@ export async function POST(req: NextRequest) {
           <ul style="font-size:13px;color:#555;padding-left:20px">
             <li><strong>Import subscribers</strong> from your Dashboard</li>
             <li><strong>Create a newsletter</strong> with our drag-free editor</li>
-            <li><strong>Connect SendGrid or SES</strong> in Settings to start sending</li>
+            <li><strong>Connect Resend, SendGrid or SES</strong> in Settings to start sending</li>
           </ul>
           <hr style="border:none;border-top:2px solid #0a0a0a;margin:16px 0" />
           <a href="${process.env.APP_URL || "https://newsletter.brod3000.com"}/dashboard" style="display:inline-block;padding:12px 28px;background:#f5e642;color:#0a0a0a;font-weight:bold;font-size:13px;text-transform:uppercase;letter-spacing:0.05em;text-decoration:none;border:3px solid #0a0a0a">Go to Dashboard</a>
           <p style="font-size:11px;color:#999;margin-top:20px">If you didn't sign up for Veloce, you can ignore this email.</p>
         </div>
       `,
-    }).catch(err => console.error("Welcome email failed:", err));
+      // Deliberately not awaited: a welcome email that cannot be sent must not
+      // fail a signup that already succeeded. Logged properly now rather than
+      // console.error'd - this send has never once worked, and nothing said so.
+    }).catch((err) => logError(err, { route: "auth.signup.welcome-email", email: userEmail }));
 
     return NextResponse.json({
       token,

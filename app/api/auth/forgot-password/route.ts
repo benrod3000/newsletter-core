@@ -4,6 +4,8 @@ import { rateLimit } from "@/lib/rate-limit";
 import { sendTransactionalEmail } from "@/lib/email-sender";
 import { getClientIp } from "@/lib/client-ip";
 import { verifyTurnstileToken } from "@/lib/turnstile";
+import { logError } from "@/lib/logger";
+import { logAudit, AUDIT_ACTIONS } from "@/lib/audit-log";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -43,7 +45,7 @@ export async function POST(req: NextRequest) {
     const expiresAt = new Date(Date.now() + 3600000).toISOString();
 
     const findRes = await fetch(
-      `${supabaseUrl}/rest/v1/workspace_users?select=id,email&email=eq.${encodeURIComponent(userEmail)}&limit=1`,
+      `${supabaseUrl}/rest/v1/workspace_users?select=id,email,workspace_id&email=eq.${encodeURIComponent(userEmail)}&limit=1`,
       { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
     );
     const users = await findRes.json();
@@ -61,7 +63,11 @@ export async function POST(req: NextRequest) {
     // Send reset email (non-blocking)
     const appUrl = process.env.APP_URL || "https://newsletter.brod3000.com";
     const resetUrl = `${appUrl}/reset-password?token=${resetToken}`;
-    sendTransactionalEmail({
+    // Awaited, unlike before, so a failure is observable. The response below is
+    // deliberately unchanged either way - see the note there.
+    let sent = false;
+    try {
+      sent = await sendTransactionalEmail({
       to: userEmail,
       subject: "Reset your Veloce password",
       html: `
@@ -74,8 +80,27 @@ export async function POST(req: NextRequest) {
           <p style="font-size:11px;color:#999;word-break:break-all">Or paste this link: <a href="${resetUrl}" style="color:#2f7f5f">${resetUrl}</a></p>
         </div>
       `,
-    }).catch(err => console.error("Password reset email failed:", err));
+    });
+    } catch (err) {
+      // Logged where every other error goes, rather than a console line nobody
+      // reads. This is how "password reset has never worked" stayed invisible.
+      logError(err, { route: "auth.forgot-password", email: userEmail });
+    }
 
+    await logAudit({
+      workspace_id: users[0].workspace_id,
+      user_id: users[0].id,
+      action: sent ? AUDIT_ACTIONS.PASSWORD_RESET_SENT : AUDIT_ACTIONS.PASSWORD_RESET_FAILED,
+      details: { email: userEmail },
+      ip_address: ip,
+      user_agent: req.headers.get("user-agent") || "unknown",
+    });
+
+    // Always { ok: true }, whether the address exists, does not exist, or the
+    // send failed. Responding differently would turn this endpoint into an
+    // account enumeration oracle - anyone could test whether an email has an
+    // account here. The operator sees the failure in Security Activity; the
+    // requester deliberately cannot. Do not "improve" this by surfacing errors.
     return NextResponse.json({ ok: true }, { status: 200, headers: CORS_HEADERS });
   } catch (error: any) {
     console.error("Forgot password error:", error);
