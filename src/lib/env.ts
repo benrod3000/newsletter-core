@@ -50,9 +50,32 @@ export function resolveRedisCredentials(): { url?: string; token?: string } {
  * instead of the app failing to boot. Each entry lists every name that
  * satisfies it.
  */
+/**
+ * Platform email: password resets and the signup welcome.
+ *
+ * Recommended rather than required on purpose. A missing reset sender is
+ * serious - account recovery does not work without it - but it should not stop
+ * the application booting, which would take down every workspace that is
+ * sending campaigns perfectly well through its own provider.
+ *
+ * It is here at all because this was previously silent: the send threw, the
+ * caller swallowed it, and the endpoint reported success. Nothing anywhere said
+ * that password reset had never worked.
+ */
+const TRANSACTIONAL_KEY_VARS = ["RESEND_API_KEY", "SENDGRID_API_KEY"] as const;
+const TRANSACTIONAL_FROM_VARS = ["TRANSACTIONAL_FROM_EMAIL", "SENDGRID_FROM_EMAIL"] as const;
+
 const RECOMMENDED: readonly (readonly [readonly string[], string])[] = [
   [REDIS_URL_VARS, "Rate limiting is inactive without a Redis REST URL."],
   [REDIS_TOKEN_VARS, "Rate limiting is inactive without a Redis REST token."],
+  [
+    TRANSACTIONAL_KEY_VARS,
+    "Password reset and signup emails cannot be sent without a platform email API key.",
+  ],
+  [
+    TRANSACTIONAL_FROM_VARS,
+    "Password reset and signup emails cannot be sent without a from address.",
+  ],
 ] as const;
 
 export function assertRequiredEnv(): void {
