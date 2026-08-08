@@ -134,6 +134,41 @@ describe("buildHtmlFromEditor branding", () => {
     expect(html).toContain("&lt;script&gt;");
   });
 
+  it("always carries an unsubscribe link, whatever the author wrote", () => {
+    // Missing entirely until a real test send was inspected. The
+    // List-Unsubscribe header was set, but nothing in the visible message let a
+    // recipient opt out unless the author happened to add the merge tag - and
+    // CAN-SPAM requires the mechanism to be in the message.
+    const html = buildHtmlFromEditor("<p>No unsubscribe tag in here.</p>");
+
+    expect(html).toContain("{{ unsubscribe_url }}");
+    expect(html).toContain(">Unsubscribe</a>");
+  });
+
+  it("resolves that link to a real per-recipient URL", async () => {
+    const { buildRecipientEmail } = await import("../email/recipient-email");
+
+    const email = buildRecipientEmail({
+      baseHtml: buildHtmlFromEditor("<p>Hi</p>"),
+      subject: "Test",
+      message: "Test",
+      from: "A <a@b.com>",
+      baseUrl: "https://example.com",
+      campaignId: null,
+      subscriber: {
+        id: "sub-1",
+        email: "x@y.com",
+        unsubscribe_token: "tok-123",
+        country: null, region: null, city: null,
+        first_name: null, last_name: null,
+        date_of_birth: null, phone_number: null,
+      },
+    });
+
+    expect(email.html).toContain("https://example.com/unsubscribe?token=tok-123");
+    expect(email.html).not.toContain("{{ unsubscribe_url }}");
+  });
+
   it("still contains the campaign body", () => {
     expect(buildHtmlFromEditor("<p>Body here</p>")).toContain("<p>Body here</p>");
   });
