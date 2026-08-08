@@ -47,6 +47,17 @@ export function renderTemplate(template: string, data: Record<string, string>): 
  *
  * Styles are inline because email clients strip <style> blocks; the editorCss
  * block is kept for the editor's own output but cannot be relied on.
+ *
+ * The footer carries an unsubscribe link, and it is in the shell rather than
+ * left to whoever writes the campaign. It was missing entirely until a real
+ * test send was inspected: the List-Unsubscribe header was set correctly, but
+ * nothing in the visible message let a recipient opt out unless the author
+ * happened to type a {{ unsubscribe_url }} merge tag themselves. CAN-SPAM
+ * requires a clear opt-out mechanism *in the message*, and a header that only
+ * some mail clients surface does not satisfy it.
+ *
+ * `{{ unsubscribe_url }}` is resolved per recipient by buildRecipientEmail, so
+ * every campaign gets a working link regardless of what its author wrote.
  */
 export function buildHtmlFromEditor(
   editorHtml: string,
@@ -82,6 +93,8 @@ export function buildHtmlFromEditor(
       <hr style="border:none;border-top:1px solid #27272a;margin:32px 0;">
       <p style="color:#71717a;font-size:12px;line-height:1.5;margin:0;">
         You are receiving this email because you subscribed to ${safeName}.
+        <br>
+        <a href="{{ unsubscribe_url }}" style="color:#71717a;text-decoration:underline;">Unsubscribe</a>
       </p>
     </td></tr>
   </table>
