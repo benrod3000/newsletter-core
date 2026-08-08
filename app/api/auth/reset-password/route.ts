@@ -3,6 +3,10 @@ import { hashPassword } from "@/lib/jwt";
 import { rateLimit } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/client-ip";
 import { verifyTurnstileToken } from "@/lib/turnstile";
+import crypto from "node:crypto";
+import { getSupabaseClient } from "@/lib/supabase";
+import { logError } from "@/lib/logger";
+import { logAudit, AUDIT_ACTIONS } from "@/lib/audit-log";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -35,29 +39,58 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Security check failed. Please try again." }, { status: 400, headers: CORS_HEADERS });
     }
 
-    const supabaseUrl = process.env.SUPABASE_URL!;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    const supabase = getSupabaseClient();
 
-    const findRes = await fetch(
-      `${supabaseUrl}/rest/v1/workspace_users?select=id,reset_token,reset_token_expires_at&reset_token=eq.${encodeURIComponent(token)}&limit=1`,
-      { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
-    );
-    const users = await findRes.json();
+    // Looked up by hash: the database stores a SHA-256, never the token. The
+    // previous version selected on `reset_token`, a column that has never
+    // existed, so PostgREST answered 400, no user was found, and every reset
+    // reported "invalid or expired token" - which is exactly the symptom, for
+    // every token, always.
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
-    if (!users?.length) {
+    const { data: user, error: findError } = await supabase
+      .from("workspace_users")
+      .select("id, workspace_id, reset_token_expires_at")
+      .eq("reset_token_hash", tokenHash)
+      .maybeSingle();
+
+    if (findError) {
+      logError(findError, { route: "auth.reset-password.lookup" });
+      return NextResponse.json({ error: "Internal server error" }, { status: 500, headers: CORS_HEADERS });
+    }
+
+    if (!user) {
       return NextResponse.json({ error: "Invalid or expired reset token." }, { status: 400, headers: CORS_HEADERS });
     }
 
-    const user = users[0];
-    if (user.reset_token_expires_at && new Date(user.reset_token_expires_at) < new Date()) {
+    if (!user.reset_token_expires_at || new Date(user.reset_token_expires_at) < new Date()) {
+      // A row with no expiry is treated as expired rather than as valid
+      // forever, which is the safer direction for a credential.
       return NextResponse.json({ error: "Reset token has expired. Please request a new one." }, { status: 400, headers: CORS_HEADERS });
     }
 
     const passwordHash = await hashPassword(password);
-    await fetch(`${supabaseUrl}/rest/v1/workspace_users?id=eq.${user.id}`, {
-      method: "PATCH",
-      headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json", Prefer: "return=minimal" },
-      body: JSON.stringify({ password_hash: passwordHash, reset_token: null, reset_token_expires_at: null }),
+
+    // Clearing the token in the same statement makes it single-use. Checked,
+    // because a password that appears to change and does not is worse than one
+    // that visibly fails.
+    const { error: updateError } = await supabase
+      .from("workspace_users")
+      .update({ password_hash: passwordHash, reset_token_hash: null, reset_token_expires_at: null })
+      .eq("id", user.id);
+
+    if (updateError) {
+      logError(updateError, { route: "auth.reset-password.update", userId: user.id });
+      return NextResponse.json({ error: "Could not reset password. Please try again." }, { status: 500, headers: CORS_HEADERS });
+    }
+
+    await logAudit({
+      workspace_id: user.workspace_id,
+      user_id: user.id,
+      action: AUDIT_ACTIONS.PASSWORD_CHANGED,
+      details: { via: "reset link" },
+      ip_address: getClientIp(req),
+      user_agent: req.headers.get("user-agent") || "unknown",
     });
 
     return NextResponse.json({ ok: true, message: "Password reset successfully." }, { status: 200, headers: CORS_HEADERS });
