@@ -1361,6 +1361,8 @@ export type Database = {
           last_login_user_agent: string | null
           password_hash: string
           recovery_codes: string[] | null
+          reset_token_expires_at: string | null
+          reset_token_hash: string | null
           role: string
           totp_enabled: boolean
           totp_secret: string | null
@@ -1378,6 +1380,8 @@ export type Database = {
           last_login_user_agent?: string | null
           password_hash: string
           recovery_codes?: string[] | null
+          reset_token_expires_at?: string | null
+          reset_token_hash?: string | null
           role?: string
           totp_enabled?: boolean
           totp_secret?: string | null
@@ -1395,6 +1399,8 @@ export type Database = {
           last_login_user_agent?: string | null
           password_hash?: string
           recovery_codes?: string[] | null
+          reset_token_expires_at?: string | null
+          reset_token_hash?: string | null
           role?: string
           totp_enabled?: boolean
           totp_secret?: string | null

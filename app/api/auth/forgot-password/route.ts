@@ -6,6 +6,7 @@ import { getClientIp } from "@/lib/client-ip";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { logError } from "@/lib/logger";
 import { logAudit, AUDIT_ACTIONS } from "@/lib/audit-log";
+import { getSupabaseClient } from "@/lib/supabase";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -38,31 +39,56 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Security check failed. Please try again." }, { status: 400, headers: CORS_HEADERS });
     }
 
-    const supabaseUrl = process.env.SUPABASE_URL!;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    const supabase = getSupabaseClient();
     const userEmail = email.toLowerCase().trim();
+
+    // Hashed at rest. The token in the email is the only plaintext copy, so a
+    // read of this table is not account takeover for everyone mid-reset.
     const resetToken = crypto.randomBytes(32).toString("hex");
+    const resetTokenHash = crypto.createHash("sha256").update(resetToken).digest("hex");
     const expiresAt = new Date(Date.now() + 3600000).toISOString();
 
-    const findRes = await fetch(
-      `${supabaseUrl}/rest/v1/workspace_users?select=id,email,workspace_id&email=eq.${encodeURIComponent(userEmail)}&limit=1`,
-      { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
-    );
-    const users = await findRes.json();
+    const { data: user, error: findError } = await supabase
+      .from("workspace_users")
+      .select("id, email, workspace_id")
+      .eq("email", userEmail)
+      .maybeSingle();
 
-    if (!users?.length) {
+    if (findError) {
+      logError(findError, { route: "auth.forgot-password.lookup" });
+      // Same shape as every other exit here - see the note on the response.
       return NextResponse.json({ ok: true }, { status: 200, headers: CORS_HEADERS });
     }
 
-    await fetch(`${supabaseUrl}/rest/v1/workspace_users?id=eq.${users[0].id}`, {
-      method: "PATCH",
-      headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json", Prefer: "return=minimal" },
-      body: JSON.stringify({ reset_token: resetToken, reset_token_expires_at: expiresAt }),
-    });
+    if (!user) {
+      return NextResponse.json({ ok: true }, { status: 200, headers: CORS_HEADERS });
+    }
 
-    // Send reset email (non-blocking)
+    // Checked, unlike before. This wrote to reset_token and
+    // reset_token_expires_at via raw fetch with no error handling, and neither
+    // column existed - so PostgREST answered 400 42703, the token was never
+    // stored, and every reset link reported "invalid or expired".
+    const { error: storeError } = await supabase
+      .from("workspace_users")
+      .update({ reset_token_hash: resetTokenHash, reset_token_expires_at: expiresAt })
+      .eq("id", user.id);
+
+    if (storeError) {
+      logError(storeError, { route: "auth.forgot-password.store-token", userId: user.id });
+      await logAudit({
+        workspace_id: user.workspace_id,
+        user_id: user.id,
+        action: AUDIT_ACTIONS.PASSWORD_RESET_FAILED,
+        details: { email: userEmail, reason: "could not store token" },
+        ip_address: ip,
+        user_agent: req.headers.get("user-agent") || "unknown",
+      });
+      return NextResponse.json({ ok: true }, { status: 200, headers: CORS_HEADERS });
+    }
+
     const appUrl = process.env.APP_URL || "https://newsletter.brod3000.com";
     const resetUrl = `${appUrl}/reset-password?token=${resetToken}`;
+
     // Awaited, unlike before, so a failure is observable. The response below is
     // deliberately unchanged either way - see the note there.
     let sent = false;
@@ -88,8 +114,8 @@ export async function POST(req: NextRequest) {
     }
 
     await logAudit({
-      workspace_id: users[0].workspace_id,
-      user_id: users[0].id,
+      workspace_id: user.workspace_id,
+      user_id: user.id,
       action: sent ? AUDIT_ACTIONS.PASSWORD_RESET_SENT : AUDIT_ACTIONS.PASSWORD_RESET_FAILED,
       details: { email: userEmail },
       ip_address: ip,
