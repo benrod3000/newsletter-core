@@ -168,5 +168,71 @@ export const GET = withWorkspace(async ({ ctx }) => {
     status.details += " No sender email is set, so sending will fail regardless of the key.";
   }
 
+  // A valid key plus a sender address is *still* not enough to send.
+  //
+  // Resend rejects any message whose From domain is not verified in the account
+  // that owns the key. Measured on this project: a valid full-access key with
+  // sender_email set to ben@brod3000.com, and zero verified domains - so every
+  // send would have been rejected at the provider while this endpoint reported
+  // a green "Verified against this workspace's own Resend key".
+  //
+  // That is the same false-green this file already guards against for a missing
+  // sender email, one step further along. Checked last because it needs the key
+  // to have proven valid first.
+  if (isResend && status.key_valid && client.sender_email) {
+    const domain = client.sender_email.split("@")[1]?.toLowerCase();
+    const verified = await resendDomainStatus(key, domain);
+
+    if (verified === "unverified") {
+      status.configured = false;
+      status.sender_verified = false;
+      status.missing_fields.push("Verified sending domain");
+      status.details =
+        `${providerLabel} has no verified domain for ${domain}, so it will reject ` +
+        `mail from ${client.sender_email}. Add and verify ${domain} in ${providerLabel}, ` +
+        `which means adding the DNS records it gives you.`;
+    } else if (verified === "pending") {
+      status.configured = false;
+      status.sender_verified = false;
+      status.details =
+        `${domain} is added to ${providerLabel} but not verified yet. Sending stays ` +
+        `blocked until its DNS records propagate.`;
+    }
+    // "verified" and "unknown" both leave the existing details alone: unknown
+    // means a send-only key that cannot list domains, and reporting a problem
+    // we cannot actually see would be worse than saying nothing.
+  }
+
   return NextResponse.json(status, { headers: CORS });
 });
+
+/**
+ * Whether `domain` is verified in the Resend account owning this key.
+ *
+ * Returns "unknown" rather than guessing when the key cannot list domains: a
+ * send-only key answers 401 restricted_api_key here, and that key is a
+ * perfectly good sending key. Treating it as a failure would tell a correctly
+ * configured workspace to go fix something that is not broken.
+ */
+async function resendDomainStatus(
+  apiKey: string,
+  domain: string | undefined
+): Promise<"verified" | "pending" | "unverified" | "unknown"> {
+  if (!domain) return "unknown";
+
+  try {
+    const res = await fetch("https://api.resend.com/domains", {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (!res.ok) return "unknown";
+
+    const body = (await res.json()) as { data?: Array<{ name?: string; status?: string }> };
+    const match = body.data?.find((d) => d.name?.toLowerCase() === domain);
+
+    if (!match) return "unverified";
+    return match.status === "verified" ? "verified" : "pending";
+  } catch {
+    // Reachability problems are already reported by the key check above.
+    return "unknown";
+  }
+}
