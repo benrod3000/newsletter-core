@@ -3,6 +3,7 @@ import { createClientJWT, hashPassword } from "@/lib/jwt";
 import { rateLimit } from "@/lib/rate-limit";
 import { isDisposableEmail } from "@/lib/disposable-emails";
 import { verifyTurnstileToken } from "@/lib/turnstile";
+import { passwordProblem } from "@/lib/password-policy";
 import { sendTransactionalEmail } from "@/lib/email-sender";
 import { logError } from "@/lib/logger";
 import { getClientIp } from "@/lib/client-ip";
@@ -56,8 +57,9 @@ export async function POST(req: NextRequest) {
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json({ error: "Valid email required" }, { status: 400, headers: CORS_HEADERS });
     }
-    if (!password || password.length < 6) {
-      return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400, headers: CORS_HEADERS });
+    const passwordError = passwordProblem(password);
+    if (passwordError) {
+      return NextResponse.json({ error: passwordError }, { status: 400, headers: CORS_HEADERS });
     }
 
     if (!turnstile_token || !(await verifyTurnstileToken(turnstile_token))) {

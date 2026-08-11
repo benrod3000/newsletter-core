@@ -100,11 +100,18 @@ export function resolveTransactionalConfig():
 /**
  * Send a platform email: password resets, signup welcome. Not campaign mail.
  *
- * THIS HAS NEVER SENT ANYTHING. It required SENDGRID_API_KEY and
+ * History worth keeping, because the shape recurs: for most of this project's
+ * life this sent nothing at all. It required SENDGRID_API_KEY and
  * SENDGRID_FROM_EMAIL, neither of which has ever existed in this project's
  * Vercel environment, so it threw on its first line every time. Both callers
  * invoked it fire-and-forget with `.catch(console.error)` and then returned
  * success, so users were told a reset link was on its way and nothing was sent.
+ * `RESEND_API_KEY` and `TRANSACTIONAL_FROM_EMAIL` are set as of 2026-08-08.
+ *
+ * The same bug had a second copy in the confirmation email, which is why that
+ * now shares this file's `resolveTransactionalConfig()` - see
+ * `src/lib/email/confirmation-email.ts`. If you add a third send path, route it
+ * through here rather than reading provider env vars directly.
  *
  * Deliberately independent of any workspace's provider settings. Platform email
  * is from Veloce, not from a customer, and the signup welcome fires before a

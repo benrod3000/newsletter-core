@@ -136,6 +136,13 @@ async function cleanWorkspace(
       .select("id, email, created_at")
       .eq("workspace_id", workspaceId)
       .eq("health_score", "cold")
+      // Never delete a suppressed row. Those rows exist *in order* to be kept:
+      // unsubscribe stopped deleting subscribers and now records suppression
+      // instead, so the row is the durable proof that the address opted out. An
+      // unsubscribed contact is cold almost by definition, so without this filter
+      // auto-clean would delete precisely the records that stop the address being
+      // mailed again, and it would do it on a timer with no human involved.
+      .eq("suppressed", false)
       // Signed up long enough ago to have had the chance to engage. This is a
       // necessary condition, not the criterion - the engagement check below is.
       .lt("created_at", cutoff)

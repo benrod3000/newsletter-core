@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
 import { getClientContextFromJWT, assertWorkspaceAccess } from "@/lib/client-context";
 import { sendEmail, type ProviderConfig } from "@/lib/email-sender";
+import { PLATFORM_FALLBACK_FROM_EMAIL } from "@/lib/platform-sender";
 
 /**
  * POST /api/clients/{workspaceId}/test-provider
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 
   const provider = client.email_provider || "sendgrid";
-  const fromEmail = client.ses_from_email || client.sender_email || "test@veloce.app";
+  const fromEmail = client.ses_from_email || client.sender_email || PLATFORM_FALLBACK_FROM_EMAIL;
 
   let config: ProviderConfig;
 

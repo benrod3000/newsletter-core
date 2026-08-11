@@ -5,6 +5,7 @@ import { getSupabaseClient } from "@/lib/supabase";
 import { drainCampaignJob } from "@/lib/send-queue";
 import { buildDispatcherConfig } from "@/lib/email/dispatcher";
 import { logError, logWarn } from "@/lib/logger";
+import { PLATFORM_FALLBACK_FROM_EMAIL } from "@/lib/platform-sender";
 
 /**
  * GET /api/admin/campaigns/recover
@@ -116,7 +117,7 @@ export async function GET(req: NextRequest) {
         messageHtml: campaign.editor_html || "",
         messageCss: campaign.editor_css || "",
         baseUrl: process.env.NEXT_PUBLIC_APP_URL || "",
-        fromEmail: client.sender_email || process.env.SENDGRID_FROM_EMAIL || "noreply@veloce.app",
+        fromEmail: client.sender_email || process.env.SENDGRID_FROM_EMAIL || PLATFORM_FALLBACK_FROM_EMAIL,
         fromName: client.sender_name || "Veloce",
         dispatchConfig,
         timeBudgetMs: Math.max(10_000, DRAIN_BUDGET_MS - (Date.now() - startedAt)),

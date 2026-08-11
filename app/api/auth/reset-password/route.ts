@@ -3,6 +3,7 @@ import { hashPassword } from "@/lib/jwt";
 import { rateLimit } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/client-ip";
 import { verifyTurnstileToken } from "@/lib/turnstile";
+import { passwordProblem } from "@/lib/password-policy";
 import crypto from "node:crypto";
 import { getSupabaseClient } from "@/lib/supabase";
 import { logError } from "@/lib/logger";
@@ -31,8 +32,12 @@ export async function POST(req: NextRequest) {
 
   try {
     const { token, password, turnstile_token } = await req.json();
-    if (!token || !password || password.length < 6) {
-      return NextResponse.json({ error: "Valid token and password (6+ chars) required" }, { status: 400, headers: CORS_HEADERS });
+    if (!token) {
+      return NextResponse.json({ error: "A valid reset token is required." }, { status: 400, headers: CORS_HEADERS });
+    }
+    const passwordError = passwordProblem(password);
+    if (passwordError) {
+      return NextResponse.json({ error: passwordError }, { status: 400, headers: CORS_HEADERS });
     }
 
     if (!turnstile_token || !(await verifyTurnstileToken(turnstile_token))) {

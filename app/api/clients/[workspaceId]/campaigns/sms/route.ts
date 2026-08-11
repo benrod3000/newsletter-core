@@ -15,9 +15,14 @@ export async function GET(
   if (!ctx || !assertWorkspaceAccess(ctx, workspaceId))
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // Count SMS-reachable subscribers
+  // Count SMS-reachable subscribers.
+  //
+  // Must apply the same filters as the send below, or the operator is shown a
+  // recipient count that does not match who is actually texted. `suppressed` is
+  // one of them: unsubscribe used to delete the row, so an opt-out could not be
+  // counted here; it now keeps the row and sets a flag.
   const countRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/subscribers?select=count&workspace_id=eq.${workspaceId}&sms_consent=is.true`,
+    `${SUPABASE_URL}/rest/v1/subscribers?select=count&workspace_id=eq.${workspaceId}&sms_consent=is.true&suppressed=is.false`,
     { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
   );
   const countData = await countRes.json();
@@ -56,9 +61,11 @@ export async function POST(
     return NextResponse.json({ error: "SMS not configured. Add your Twilio credentials in Settings → SMS." }, { status: 400 });
   }
 
-  // Fetch subscribers with phone + SMS consent
+  // Fetch subscribers with phone + SMS consent. Keep these filters in step with
+  // the count in GET above - an opt-out must not be texted, and the number the
+  // operator was shown must be the number of people reached.
   const subsRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/subscribers?select=id,phone,first_name&workspace_id=eq.${workspaceId}&sms_consent=is.true&not.phone=is.null&limit=500`,
+    `${SUPABASE_URL}/rest/v1/subscribers?select=id,phone,first_name&workspace_id=eq.${workspaceId}&sms_consent=is.true&suppressed=is.false&not.phone=is.null&limit=500`,
     { headers: auth, signal: AbortSignal.timeout(15000) }
   );
   const subscribers = await subsRes.json();

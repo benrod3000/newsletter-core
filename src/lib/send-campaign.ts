@@ -8,6 +8,7 @@ import {
 import type { GeoFilter } from "@/lib/geo-utils";
 import type { DispatchConfig } from "@/lib/email/dispatcher";
 import { resolveBranding, type Branding } from "@/lib/branding";
+import { PLATFORM_FALLBACK_FROM_EMAIL } from "@/lib/platform-sender";
 
 /**
  * Audience selector.
@@ -36,7 +37,7 @@ async function getWorkspaceSender(
   // This error was discarded until migration 055. supabase-js resolves failures
   // as { error } rather than throwing, so a rejected select left `client` null and
   // every field below fell through to its default - which silently rewrote the
-  // workspace's provider to "sendgrid" and its from-address to noreply@veloce.app.
+  // workspace's provider to "sendgrid" and its from-address to the platform fallback.
   // A workspace that picked Resend would have been dispatched through SendGrid.
   // Failing loudly is correct: sending with the wrong provider and the wrong
   // sender is worse than not sending.
@@ -51,7 +52,7 @@ async function getWorkspaceSender(
   return {
     branding: resolveBranding(client),
     fromEmail:
-      client.sender_email || client.ses_from_email || process.env.SENDGRID_FROM_EMAIL || "noreply@veloce.app",
+      client.sender_email || client.ses_from_email || process.env.SENDGRID_FROM_EMAIL || PLATFORM_FALLBACK_FROM_EMAIL,
     fromName: client.sender_name || "Veloce",
     dispatchConfig: {
       provider: client.email_provider || "sendgrid",
