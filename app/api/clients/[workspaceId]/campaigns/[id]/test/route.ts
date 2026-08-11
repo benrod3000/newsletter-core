@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClientContextFromJWT, assertWorkspaceAccess } from "@/lib/client-context";
 import { sendEmail } from "@/lib/email-sender";
+import { PLATFORM_FALLBACK_FROM_EMAIL } from "@/lib/platform-sender";
 
 export async function POST(
   req: NextRequest,
@@ -45,7 +46,7 @@ export async function POST(
     const brand = Array.isArray(branding) ? branding[0] : null;
 
     // Build sender config from branding
-    const fromEmail = brand?.sender_email || brand?.ses_from_email || "noreply@veloce.app";
+    const fromEmail = brand?.sender_email || brand?.ses_from_email || PLATFORM_FALLBACK_FROM_EMAIL;
     const fromName = brand?.sender_name || "Veloce";
     const from = `${fromName} <${fromEmail}>`;
 

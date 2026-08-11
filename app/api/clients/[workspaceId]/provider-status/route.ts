@@ -113,10 +113,13 @@ export const GET = withWorkspace(async ({ ctx }) => {
   }
 
   // A valid key is not sufficient to send. With no sender_email the dispatcher
-  // falls back to noreply@veloce.app, which is not a verified sender on the
+  // falls back to the platform address, which is not a verified sender on the
   // workspace's own provider account, so the send is rejected at the provider
   // with an error that says nothing about this page. Reporting "connected" on
   // the strength of the key alone is how that trap gets set.
+  //
+  // That fallback used to be a literal noreply@veloce.app - a domain this project
+  // does not own - so the send could not have succeeded from any account.
   status.sender_verified = Boolean(client.sender_email);
   if (!client.sender_email) status.missing_fields.push("Sender Email");
 

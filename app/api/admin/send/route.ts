@@ -8,6 +8,7 @@ import { dispatchEmail } from "@/lib/email/dispatcher";
 import { getSupabaseClient } from "@/lib/supabase";
 import { renderTemplate, buildHtmlFromEditor } from "@/lib/campaign-personalization";
 import { apiSuccess, apiError, apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api-response";
+import { PLATFORM_FALLBACK_FROM_EMAIL } from "@/lib/platform-sender";
 
 /** POST /api/admin/send - Send campaign or test. Delegates to sendCampaignBlast. */
 export async function POST(req: NextRequest) {
@@ -82,7 +83,7 @@ export async function POST(req: NextRequest) {
       }
 
       const config = buildDispatcherConfig(client);
-      const fromEmail = client.sender_email || process.env.SENDGRID_FROM_EMAIL || "noreply@veloce.app";
+      const fromEmail = client.sender_email || process.env.SENDGRID_FROM_EMAIL || PLATFORM_FALLBACK_FROM_EMAIL;
       const fromName = client.sender_name || "Veloce";
 
       await dispatchEmail({
