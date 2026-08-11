@@ -132,7 +132,15 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  let query = supabase.from("subscribers").select("email, latitude, longitude").eq("workspace_id", workspaceClientId);
+  // `suppressed` is excluded to match `campaign_audience()`, the SQL definition
+  // that decides who is actually mailed. A preview that counts opted-out people
+  // overstates the audience, and the two diverged the moment unsubscribe stopped
+  // deleting rows.
+  let query = supabase
+    .from("subscribers")
+    .select("email, latitude, longitude")
+    .eq("workspace_id", workspaceClientId)
+    .eq("suppressed", false);
 
   if (audience === "confirmed") query = query.eq("confirmed", true);
   if (audience === "pending") query = query.eq("confirmed", false);

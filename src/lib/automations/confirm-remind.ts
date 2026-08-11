@@ -21,9 +21,14 @@ export async function runConfirmRemind() {
   let removed = 0;
 
   try {
-    // Step 1: Send reminder to subscribers who signed up ~48h ago and haven't confirmed
+    // Step 1: Send reminder to subscribers who signed up ~48h ago and haven't confirmed.
+    //
+    // `suppressed=is.false` is load-bearing. Unsubscribe used to DELETE the
+    // subscriber row, so an opted-out address could not be selected here by
+    // construction. It now sets `suppressed` and keeps the row, so without this
+    // filter someone who unsubscribed before confirming would be sent reminders.
     const pendingRes = await fetch(
-      `${supabaseUrl}/rest/v1/subscribers?select=id,email,workspace_id,confirmation_token,created_at&confirmed=eq.false&created_at=lte.${encodeURIComponent(fortyEightHoursAgo)}&created_at=gt.${encodeURIComponent(sevenDaysAgo)}&reminded=is.false&limit=500`,
+      `${supabaseUrl}/rest/v1/subscribers?select=id,email,workspace_id,confirmation_token,created_at&confirmed=eq.false&suppressed=is.false&created_at=lte.${encodeURIComponent(fortyEightHoursAgo)}&created_at=gt.${encodeURIComponent(sevenDaysAgo)}&reminded=is.false&limit=500`,
       { headers: auth }
     );
     const pending = await pendingRes.json();
