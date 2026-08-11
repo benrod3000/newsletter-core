@@ -6,6 +6,7 @@ import { isDisposableEmail } from "@/lib/disposable-emails";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { logError } from "@/lib/logger";
 import { getClientIp } from "@/lib/client-ip";
+import { sendLeadMagnetEmail } from "@/lib/email/lead-magnet";
 import type { TablesUpdate } from "@/lib/database.types";
 
 const CORS_HEADERS = {
@@ -23,8 +24,13 @@ export async function OPTIONS() {
 /**
  * POST /api/public/forms/[id]/submit
  * Public endpoint - accepts an email, adds the subscriber to the widget's
- * target list, records the submission, and fires a subscriber_joined
- * automation so a download email gets sent.
+ * target list, records the submission, emails the lead magnet, and fires any
+ * subscriber_joined automation.
+ *
+ * The email is sent here, inline. It previously relied entirely on a
+ * subscriber_joined automation, which sent nothing: production has no
+ * automation_triggers, so the lookup returned empty and the helper returned
+ * without doing anything, while the widget told the visitor to check their inbox.
  *
  * Keyed by widget id for the same reason as the GET alongside it: slug is only
  * unique per workspace, so matching on it alone could resolve to another
@@ -115,9 +121,11 @@ export async function POST(
     );
   }
 
+  // `name` and `headline` are read so the delivery email can say what it is
+  // delivering rather than "your download".
   const { data: widget, error: widgetError } = await supabase
     .from("widgets")
-    .select("id, workspace_id, slug, list_id, download_url, is_active, type")
+    .select("id, workspace_id, slug, list_id, download_url, is_active, type, name, headline")
     .eq("id", id)
     .maybeSingle();
 
@@ -138,6 +146,7 @@ export async function POST(
   }
 
   const { workspace_id: workspaceId, list_id: listId, download_url: downloadUrl, slug } = widget;
+  const leadTitle = widget.headline?.trim() || widget.name?.trim() || null;
 
   const userAgent = req.headers.get("user-agent") || null;
   const referrer = req.headers.get("referer") || null;
@@ -154,7 +163,7 @@ export async function POST(
   const finalMessage = body.message?.trim().slice(0, 2000) || null;
   const smsConsentGiven = body.sms_consent === true;
 
-  const { subscriberId, suppressed, error: subscriberError } = await resolveSubscriber({
+  const { subscriberId, suppressed, unsubscribeToken, error: subscriberError } = await resolveSubscriber({
     supabase,
     workspaceId,
     email,
@@ -224,10 +233,42 @@ export async function POST(
   }
 
   // Someone who has unsubscribed or bounced must not be mailed again just
-  // because they hit a form, so the automation is skipped for them. The
-  // submission is still recorded above - it happened, and hiding it would make
-  // the widget's conversion numbers wrong.
+  // because they hit a form, so both the delivery email and the automation are
+  // skipped for them. The submission is still recorded above - it happened, and
+  // hiding it would make the widget's conversion numbers wrong.
+  //
+  // The email is sent inline rather than handed to the subscriber_joined
+  // automation. That automation was the only thing this ever did with
+  // download_url, and it could not deliver: there are no automation_triggers, and
+  // the processor runs on a daily cron, so "the link is on its way" meant up to
+  // 24 hours even in the case where one existed.
+  let leadMagnetSent = false;
+  let leadMagnetReason: string | undefined;
+
   if (!suppressed) {
+    // Only lead magnets. A coupon widget stores its code in this same column and
+    // shows it on screen, and a feedback widget has nothing to deliver.
+    if (downloadUrl && widget.type === "lead_magnet") {
+      const result = await sendLeadMagnetEmail({
+        email,
+        subscriberId,
+        leadUrl: downloadUrl,
+        leadTitle,
+        unsubscribeToken,
+        host: req.headers.get("host"),
+        audienceName: widget.name,
+      });
+      leadMagnetSent = result.sent;
+      if (!result.sent) {
+        leadMagnetReason = result.reason;
+        logError(new Error("Lead magnet email not sent"), {
+          route: "public.forms.submit.lead-magnet",
+          widgetId: id,
+          reason: result.reason,
+        });
+      }
+    }
+
     await triggerSubscriberJoined(supabase, workspaceId, subscriberId, email, downloadUrl, slug);
   }
 
@@ -243,10 +284,19 @@ export async function POST(
     logError(eventError, { route: "public.forms.submit.event", widgetId: id });
   }
 
-  // The client renders the coupon code or download button from this. It is
-  // deliberately absent from the config endpoint.
+  // The client renders the coupon code or download link from this. It is
+  // deliberately absent from the config endpoint, so it cannot be read without
+  // actually submitting.
+  //
+  // `email_sent` is reported so the success screen can tell the truth. It used to
+  // say "check your inbox" unconditionally while no email existed at all.
   return NextResponse.json(
-    { ok: true, download_url: downloadUrl ?? null },
+    {
+      ok: true,
+      download_url: downloadUrl ?? null,
+      email_sent: leadMagnetSent,
+      ...(leadMagnetReason ? { email_reason: leadMagnetReason } : {}),
+    },
     { status: 200, headers: CORS_HEADERS }
   );
 }
@@ -300,9 +350,16 @@ async function resolveSubscriber({
   smsConsentGiven: boolean;
   ipGeo: Awaited<ReturnType<typeof geolocateIP>>;
   req: NextRequest;
-}): Promise<{ subscriberId: string | null; suppressed: boolean; error: unknown }> {
+}): Promise<{
+  subscriberId: string | null;
+  suppressed: boolean;
+  unsubscribeToken: string | null;
+  error: unknown;
+}> {
+  // `unsubscribe_token` is read so the lead magnet email can carry a working
+  // opt-out link. CAN-SPAM wants the mechanism in the message, not just a header.
   const EXISTING_COLUMNS =
-    "id, confirmed, suppressed, first_name, last_name, phone, sms_consent, postal_code, latitude";
+    "id, confirmed, suppressed, unsubscribe_token, first_name, last_name, phone, sms_consent, postal_code, latitude";
 
   const { data: existing } = await supabase
     .from("subscribers")
@@ -341,17 +398,22 @@ async function resolveSubscriber({
         longitude: finalLongitude,
         consent_source: `widget:${slug}`,
       })
-      .select("id")
+      .select("id, unsubscribe_token")
       .single();
 
     if (!createError && newSub) {
-      return { subscriberId: newSub.id, suppressed: false, error: null };
+      return {
+        subscriberId: newSub.id,
+        suppressed: false,
+        unsubscribeToken: newSub.unsubscribe_token,
+        error: null,
+      };
     }
 
     // 23505 means a concurrent submission created it first. That is the same
     // outcome this request wanted, so read the winner's row and continue.
     if (createError && createError.code !== "23505") {
-      return { subscriberId: null, suppressed: false, error: createError };
+      return { subscriberId: null, suppressed: false, unsubscribeToken: null, error: createError };
     }
 
     const { data: raced, error: reReadError } = await supabase
@@ -362,7 +424,12 @@ async function resolveSubscriber({
       .maybeSingle();
 
     if (reReadError || !raced) {
-      return { subscriberId: null, suppressed: false, error: reReadError ?? createError };
+      return {
+        subscriberId: null,
+        suppressed: false,
+        unsubscribeToken: null,
+        error: reReadError ?? createError,
+      };
     }
 
     current = raced;
@@ -403,7 +470,12 @@ async function resolveSubscriber({
     }
   }
 
-  return { subscriberId: current.id, suppressed: current.suppressed === true, error: null };
+  return {
+    subscriberId: current.id,
+    suppressed: current.suppressed === true,
+    unsubscribeToken: current.unsubscribe_token,
+    error: null,
+  };
 }
 
 /**
