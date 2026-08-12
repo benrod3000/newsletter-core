@@ -55,6 +55,32 @@ export function buildTrackedLeadMagnetUrl({
   return tracked.toString();
 }
 
+/** Where the download button goes in an operator-written body. */
+export const DOWNLOAD_LINK_TAG = "{{download_link}}";
+
+/**
+ * Turn an operator's plain-text body into HTML.
+ *
+ * Escaped, never interpolated raw: widget config is editable by any workspace
+ * member, and this text is mailed to subscribers. Newlines become paragraphs, and
+ * the one merge tag is replaced with the tracked button. If the tag is absent the
+ * button is appended, because a delivery email with no way to reach the file is
+ * the failure this whole change exists to fix.
+ */
+function renderOperatorBody(body: string, buttonHtml: string): string {
+  const escaped = escapeHtml(body.trim());
+  const withParagraphs = escaped
+    .split(/\n{2,}/)
+    .map((para) => `<p style="color:#a1a1aa;font-size:15px;line-height:1.6;margin:0 0 20px;">${para.replace(/\n/g, "<br>")}</p>`)
+    .join("");
+
+  const tag = escapeHtml(DOWNLOAD_LINK_TAG);
+  if (withParagraphs.includes(tag)) {
+    return withParagraphs.replace(tag, buttonHtml);
+  }
+  return `${withParagraphs}${buttonHtml}`;
+}
+
 export async function sendLeadMagnetEmail({
   email,
   subscriberId,
@@ -64,6 +90,8 @@ export async function sendLeadMagnetEmail({
   host,
   audienceName,
   replyTo,
+  emailSubject,
+  emailBody,
 }: {
   email: string;
   subscriberId: string;
@@ -73,6 +101,10 @@ export async function sendLeadMagnetEmail({
   host: string | null;
   audienceName?: string | null;
   replyTo?: string | null;
+  /** Operator-written subject. Falls back to the built-in copy when empty. */
+  emailSubject?: string | null;
+  /** Operator-written body, plain text. Falls back to the built-in copy. */
+  emailBody?: string | null;
 }): Promise<LeadMagnetEmailResult> {
   const resolved = resolveTransactionalConfig();
   if (!resolved.ok) {
@@ -104,29 +136,42 @@ export async function sendLeadMagnetEmail({
       : "";
     const unsubscribeText = unsubscribeUrl ? `\nUnsubscribe: ${unsubscribeUrl}` : "";
 
+    const buttonHtml = `
+      <a href="${downloadUrl}"
+         style="display:inline-block;background:#fbbf24;color:#000;font-size:14px;font-weight:700;padding:14px 28px;border-radius:8px;text-decoration:none;">
+        Open ${safeLabel}
+      </a>`;
+
+    const customBody = emailBody?.trim();
+    const bodyHtml = customBody
+      ? renderOperatorBody(customBody, buttonHtml)
+      : `
+      <h1 style="color:#fff;font-size:32px;font-weight:700;margin:0 0 16px;line-height:1.2;">
+        Here&rsquo;s ${safeLabel}.
+      </h1>
+      <p style="color:#a1a1aa;font-size:15px;line-height:1.6;margin:0 0 32px;">
+        Thanks for asking${safeSender ? ` about ${safeSender}` : ""}. The link below is yours.
+      </p>${buttonHtml}`;
+
+    const bodyText = customBody
+      ? (customBody.includes(DOWNLOAD_LINK_TAG)
+          ? customBody.replace(DOWNLOAD_LINK_TAG, downloadUrl)
+          : `${customBody}\n\n${downloadUrl}`)
+      : `Here's ${label}.\n\n${downloadUrl}`;
+
     const sent = await sendEmail(
       {
         to: email,
         from: resolved.from,
         ...(replyTo ? { replyTo } : {}),
-        subject: `Here's ${label}`,
+        subject: emailSubject?.trim() || `Here's ${label}`,
         html: `
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
 <body style="background:#0d0d0d;font-family:sans-serif;margin:0;padding:40px 24px;">
   <table style="max-width:520px;margin:0 auto;width:100%;">
-    <tr><td>
-      <h1 style="color:#fff;font-size:32px;font-weight:700;margin:0 0 16px;line-height:1.2;">
-        Here&rsquo;s ${safeLabel}.
-      </h1>
-      <p style="color:#a1a1aa;font-size:15px;line-height:1.6;margin:0 0 32px;">
-        Thanks for asking${safeSender ? ` about ${safeSender}` : ""}. The link below is yours.
-      </p>
-      <a href="${downloadUrl}"
-         style="display:inline-block;background:#fbbf24;color:#000;font-size:14px;font-weight:700;padding:14px 28px;border-radius:8px;text-decoration:none;">
-        Open ${safeLabel}
-      </a>
+    <tr><td>${bodyHtml}
       <hr style="border:none;border-top:1px solid #27272a;margin:40px 0;">
       <p style="color:#52525b;font-size:12px;line-height:1.5;margin:0;">
         You received this because you requested it${safeSender ? ` from ${safeSender}` : ""}.${unsubscribeHtml}
@@ -135,7 +180,7 @@ export async function sendLeadMagnetEmail({
   </table>
 </body>
 </html>`,
-        text: `Here's ${label}.\n\n${downloadUrl}\n\nYou received this because you requested it${sender ? ` from ${sender}` : ""}.${unsubscribeText}`,
+        text: `${bodyText}\n\nYou received this because you requested it${sender ? ` from ${sender}` : ""}.${unsubscribeText}`,
         ...(unsubscribeUrl ? { listUnsubscribe: `<${unsubscribeUrl}>` } : {}),
       },
       resolved.config

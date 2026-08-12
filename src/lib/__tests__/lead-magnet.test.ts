@@ -142,6 +142,63 @@ describe("sendLeadMagnetEmail", () => {
     expect(params.subject).toBe("Here's your download");
   });
 
+  it("uses the operator's subject and body when the widget has them", async () => {
+    configure();
+    await sendLeadMagnetEmail({
+      ...base,
+      emailSubject: "Your copy of my resume",
+      emailBody: "Thanks for asking.\n\n{{download_link}}\n\nBen",
+    });
+
+    const [params] = sendEmail.mock.calls[0];
+    expect(params.subject).toBe("Your copy of my resume");
+    expect(params.html).toContain("Thanks for asking.");
+    expect(params.html).toContain("Ben");
+    // The tag is replaced by the button, not left sitting in the message.
+    expect(params.html).not.toContain("{{download_link}}");
+    expect(params.text).not.toContain("{{download_link}}");
+    expect(params.html).toContain("/api/track/click");
+    expect(params.text).toContain("/api/track/click");
+  });
+
+  it("appends the button when the operator omits the merge tag", async () => {
+    // Otherwise a body with no tag sends a delivery email containing no way to
+    // reach the file - the exact failure this feature exists to fix.
+    configure();
+    await sendLeadMagnetEmail({ ...base, emailBody: "Here you go." });
+
+    const [params] = sendEmail.mock.calls[0];
+    expect(params.html).toContain("Here you go.");
+    expect(params.html).toContain("/api/track/click");
+    expect(params.text).toContain("/api/track/click");
+  });
+
+  it("escapes an operator-written body rather than trusting it as HTML", async () => {
+    // Widget config is editable by any workspace member and this text is mailed to
+    // subscribers, so it is content, not markup.
+    configure();
+    await sendLeadMagnetEmail({
+      ...base,
+      emailBody: "<script>alert(1)</script> and <b>bold</b>",
+    });
+
+    const [params] = sendEmail.mock.calls[0];
+    expect(params.html).not.toContain("<script>");
+    expect(params.html).not.toContain("<b>bold</b>");
+    expect(params.html).toContain("&lt;script&gt;");
+  });
+
+  it("falls back to the built-in copy when the fields are blank", async () => {
+    // Blank has to mean "use the default", not "send an empty email".
+    configure();
+    await sendLeadMagnetEmail({ ...base, emailSubject: "   ", emailBody: "  " });
+
+    const [params] = sendEmail.mock.calls[0];
+    expect(params.subject).toBe("Here's Resume - 2026");
+    expect(params.html).toContain("Thanks for asking");
+    expect(params.html).toContain("/api/track/click");
+  });
+
   it("reports a provider rejection as not sent", async () => {
     configure();
     sendEmail.mockResolvedValue(false);

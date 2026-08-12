@@ -1231,6 +1231,8 @@ export type Database = {
           created_at: string | null
           description: string | null
           download_url: string
+          email_body: string | null
+          email_subject: string | null
           fields: Json | null
           headline: string
           id: string
@@ -1252,6 +1254,8 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           download_url: string
+          email_body?: string | null
+          email_subject?: string | null
           fields?: Json | null
           headline?: string
           id?: string
@@ -1273,6 +1277,8 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           download_url?: string
+          email_body?: string | null
+          email_subject?: string | null
           fields?: Json | null
           headline?: string
           id?: string

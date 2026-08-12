@@ -66,7 +66,7 @@ export const POST = withWorkspace(
     const {
       name, slug, list_id, headline, description, download_url,
       button_text, success_message, placeholder, fields, styles,
-      type, size, collect_location,
+      type, size, collect_location, email_subject, email_body,
     } = body;
 
     if (!name || typeof name !== "string" || !name.trim()) {
@@ -127,6 +127,10 @@ export const POST = withWorkspace(
         type: type || "lead_magnet",
         size: size || "medium",
         collect_location: collect_location !== false,
+        // Null rather than a default: the sender falls back to its built-in copy,
+        // so storing wording here would freeze today's text into every new widget.
+        email_subject: (email_subject as string)?.trim() || null,
+        email_body: (email_body as string)?.trim() || null,
       })
       .select()
       .single();

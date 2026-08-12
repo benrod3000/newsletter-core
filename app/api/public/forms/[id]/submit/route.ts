@@ -125,7 +125,7 @@ export async function POST(
   // delivering rather than "your download".
   const { data: widget, error: widgetError } = await supabase
     .from("widgets")
-    .select("id, workspace_id, slug, list_id, download_url, is_active, type, name, headline")
+    .select("id, workspace_id, slug, list_id, download_url, is_active, type, name, headline, email_subject, email_body")
     .eq("id", id)
     .maybeSingle();
 
@@ -257,6 +257,8 @@ export async function POST(
         unsubscribeToken,
         host: req.headers.get("host"),
         audienceName: widget.name,
+        emailSubject: widget.email_subject,
+        emailBody: widget.email_body,
       });
       leadMagnetSent = result.sent;
       if (!result.sent) {
