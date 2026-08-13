@@ -68,7 +68,11 @@ export interface ConfirmationEmailParams {
   email: string;
   confirmationToken: string;
   unsubscribeToken: string;
-  host: string | null;
+  /**
+   * Origin serving this backend's routes, from `getBaseUrl(req)`. Not APP_URL:
+   * that is the frontend, and /api/confirm lives here.
+   */
+  baseUrl: string;
   /** Name of the thing being unlocked, e.g. a widget's headline. */
   leadTitle: string | null;
   /** The lead magnet itself. Travels on the confirm link, never in this email. */
@@ -108,7 +112,7 @@ export async function sendConfirmationEmail({
   email,
   confirmationToken,
   unsubscribeToken,
-  host,
+  baseUrl,
   leadTitle,
   leadUrl,
   snapshot,
@@ -127,8 +131,6 @@ export async function sendConfirmationEmail({
     return { sent: false, reason: "Email service is not configured." };
   }
 
-  const appUrl = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? `https://${host}`;
-
   // Escaped because both reach an HTML body and both are caller-supplied:
   // `lead_title` arrives in the /api/subscribe request body, so an unescaped
   // value let a caller inject markup into mail sent to an address of their
@@ -142,8 +144,8 @@ export async function sendConfirmationEmail({
     const confirmParams = new URLSearchParams({ token: confirmationToken });
     if (leadTitle) confirmParams.set("lead_title", leadTitle);
     if (leadUrl) confirmParams.set("lead_url", leadUrl);
-    const confirmUrl = `${appUrl}/api/confirm?${confirmParams.toString()}`;
-    const unsubscribeUrl = `${appUrl}/unsubscribe?token=${unsubscribeToken}`;
+    const confirmUrl = `${baseUrl}/api/confirm?${confirmParams.toString()}`;
+    const unsubscribeUrl = `${baseUrl}/unsubscribe?token=${unsubscribeToken}`;
 
     const capturedSignals = buildCapturedSignals(snapshot);
     const capturedHtml = capturedSignals.length

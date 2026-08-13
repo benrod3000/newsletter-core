@@ -34,7 +34,7 @@ const base = {
   email: "someone@example.com",
   confirmationToken: "11111111-1111-1111-1111-111111111111",
   unsubscribeToken: "22222222-2222-2222-2222-222222222222",
-  host: "newsletter-core.vercel.app",
+  baseUrl: "https://newsletter-core.vercel.app",
   leadTitle: null,
   leadUrl: null,
   snapshot: EMPTY_SIGNUP_SNAPSHOT,

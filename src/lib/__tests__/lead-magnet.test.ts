@@ -23,6 +23,7 @@ vi.mock("../email-sender", async () => {
 });
 
 import { sendLeadMagnetEmail, buildTrackedLeadMagnetUrl } from "../email/lead-magnet";
+import { DEFAULT_BRANDING } from "../branding";
 
 const saved = { ...process.env };
 
@@ -32,7 +33,7 @@ const base = {
   leadUrl: "https://brod3000.com/images/resume.pdf",
   leadTitle: "Resume - 2026",
   unsubscribeToken: "22222222-2222-4222-8222-222222222222",
-  host: "newsletter-core.vercel.app",
+  baseUrl: "https://newsletter-core.vercel.app",
 };
 
 function configure() {
@@ -101,6 +102,23 @@ describe("sendLeadMagnetEmail", () => {
     const [params] = sendEmail.mock.calls[0];
     expect(params.html).toContain("/api/track/click");
     expect(params.html).not.toContain(`href="${base.leadUrl}"`);
+  });
+
+  it("builds links on the given baseUrl, ignoring APP_URL entirely", async () => {
+    // The bug this pins: the first version read `APP_URL ?? NEXT_PUBLIC_APP_URL`,
+    // and APP_URL is the *frontend* - it builds /dashboard and reset links. So
+    // every tracked link went to the React app, which has no /api/track/click and
+    // served its 404 page. The email arrived, the link was dead, and no server-side
+    // check could see it. baseUrl is now passed in and APP_URL must not win.
+    configure();
+    process.env.APP_URL = "https://newsletter.brod3000.com";
+
+    await sendLeadMagnetEmail({ ...base, baseUrl: "https://api.example.com" });
+
+    const [params] = sendEmail.mock.calls[0];
+    expect(params.html).toContain("https://api.example.com/api/track/click");
+    expect(params.html).not.toContain("newsletter.brod3000.com");
+    expect(params.html).toContain("https://api.example.com/unsubscribe?token=");
   });
 
   it("carries an opt-out in the body as well as the header", async () => {
@@ -197,6 +215,59 @@ describe("sendLeadMagnetEmail", () => {
     expect(params.subject).toBe("Here's Resume - 2026");
     expect(params.html).toContain("Thanks for asking");
     expect(params.html).toContain("/api/track/click");
+  });
+
+  it("uses the workspace's logo and colours", async () => {
+    // The first email a subscriber ever receives was fixed dark grey with an amber
+    // button whatever the workspace had set, so a form on a branded site sent
+    // something that looked like it came from elsewhere.
+    configure();
+    await sendLeadMagnetEmail({
+      ...base,
+      branding: {
+        primary: "#2b7657",
+        secondary: "#101014",
+        logoUrl: "https://brod3000.com/logo.png",
+        name: "Brod3000",
+      },
+    });
+
+    const [params] = sendEmail.mock.calls[0];
+    expect(params.html).toContain("background:#101014");
+    expect(params.html).toContain("background:#2b7657");
+    expect(params.html).toContain('src="https://brod3000.com/logo.png"');
+    // The logo replaces the wordmark rather than sitting alongside it.
+    expect(params.html).not.toContain("letter-spacing:0.1em");
+  });
+
+  it("shows a wordmark when the workspace has no logo", async () => {
+    configure();
+    await sendLeadMagnetEmail({
+      ...base,
+      branding: { primary: "#2b7657", secondary: "#101014", logoUrl: null, name: "Brod3000" },
+    });
+
+    const [params] = sendEmail.mock.calls[0];
+    expect(params.html).toContain("Brod3000");
+    expect(params.html).not.toContain("<img");
+  });
+
+  it("picks button text that is readable on the brand colour", async () => {
+    // A hardcoded black label is fine on amber and invisible on navy, and the
+    // recipient cannot restyle an email to recover.
+    configure();
+    await sendLeadMagnetEmail({
+      ...base,
+      branding: { ...DEFAULT_BRANDING, primary: "#101040" },
+    });
+    expect(sendEmail.mock.calls[0][0].html).toContain("color:#ffffff");
+
+    sendEmail.mockClear();
+    await sendLeadMagnetEmail({
+      ...base,
+      branding: { ...DEFAULT_BRANDING, primary: "#fbbf24" },
+    });
+    expect(sendEmail.mock.calls[0][0].html).toContain("color:#000000");
   });
 
   it("reports a provider rejection as not sent", async () => {

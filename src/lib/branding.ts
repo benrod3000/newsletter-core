@@ -44,6 +44,32 @@ export function safeColor(value: unknown, fallback: string): string {
 }
 
 /**
+ * Black or white, whichever is readable on the given background.
+ *
+ * A button hardcoded to black text is fine on the default amber and illegible on a
+ * dark brand colour - and email has no way to recover from that, since the
+ * recipient cannot restyle it. Uses the WCAG relative-luminance threshold, which is
+ * the same rule the widget builder's contrast badge applies.
+ */
+export function readableTextOn(background: string): "#000000" | "#ffffff" {
+  const hex = safeColor(background, DEFAULT_BRANDING.primary).slice(1);
+  const full = hex.length === 3 ? hex.split("").map((c) => c + c).join("") : hex;
+
+  const channel = (pair: string) => {
+    const c = parseInt(pair, 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+
+  const luminance =
+    0.2126 * channel(full.slice(0, 2)) +
+    0.7152 * channel(full.slice(2, 4)) +
+    0.0722 * channel(full.slice(4, 6));
+
+  // Contrast against white vs black; 0.179 is where the two ratios cross.
+  return luminance > 0.179 ? "#000000" : "#ffffff";
+}
+
+/**
  * An https URL, or null.
  *
  * http is rejected alongside javascript: and data: - not on injection grounds

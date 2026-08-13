@@ -22,7 +22,7 @@
  * `campaign_audience()`. Both had been permanently empty for the same reason.
  */
 
-import { escapeHtml } from "@/lib/branding";
+import { escapeHtml, readableTextOn, DEFAULT_BRANDING, type Branding } from "@/lib/branding";
 import { resolveTransactionalConfig, sendEmail } from "@/lib/email-sender";
 import { logError } from "@/lib/logger";
 
@@ -67,11 +67,11 @@ export const DOWNLOAD_LINK_TAG = "{{download_link}}";
  * button is appended, because a delivery email with no way to reach the file is
  * the failure this whole change exists to fix.
  */
-function renderOperatorBody(body: string, buttonHtml: string): string {
+function renderOperatorBody(body: string, buttonHtml: string, textColor: string): string {
   const escaped = escapeHtml(body.trim());
   const withParagraphs = escaped
     .split(/\n{2,}/)
-    .map((para) => `<p style="color:#a1a1aa;font-size:15px;line-height:1.6;margin:0 0 20px;">${para.replace(/\n/g, "<br>")}</p>`)
+    .map((para) => `<p style="color:${textColor};font-size:15px;line-height:1.7;margin:0 0 20px;">${para.replace(/\n/g, "<br>")}</p>`)
     .join("");
 
   const tag = escapeHtml(DOWNLOAD_LINK_TAG);
@@ -87,24 +87,46 @@ export async function sendLeadMagnetEmail({
   leadUrl,
   leadTitle,
   unsubscribeToken,
-  host,
+  baseUrl,
   audienceName,
   replyTo,
   emailSubject,
   emailBody,
+  branding = DEFAULT_BRANDING,
 }: {
   email: string;
   subscriberId: string;
   leadUrl: string;
   leadTitle: string | null;
   unsubscribeToken: string | null;
-  host: string | null;
+  /**
+   * Origin that serves this backend's own routes, from `getBaseUrl(req)`.
+   *
+   * Passed in rather than read from the environment here, matching
+   * `buildRecipientEmail`. The first version of this file used
+   * `APP_URL ?? NEXT_PUBLIC_APP_URL`, and those two mean different things: APP_URL
+   * is the **frontend** (it builds /dashboard and password-reset links) while
+   * NEXT_PUBLIC_APP_URL is this API. So every tracked link pointed at the React
+   * app, which has no /api/track/click route and rendered its 404 page. The email
+   * arrived, the link was dead, and nothing on the server could notice.
+   */
+  baseUrl: string;
   audienceName?: string | null;
   replyTo?: string | null;
   /** Operator-written subject. Falls back to the built-in copy when empty. */
   emailSubject?: string | null;
   /** Operator-written body, plain text. Falls back to the built-in copy. */
   emailBody?: string | null;
+  /**
+   * The workspace's logo and colours, from `resolveBranding(client)`.
+   *
+   * This email is the first thing a subscriber ever receives, and it was fixed dark
+   * grey with an amber button regardless of what the workspace had set - so a form
+   * embedded on a branded site sent something that looked like it came from
+   * somewhere else. Uses the same shell as `buildHtmlFromEditor`, so a lead magnet
+   * and a campaign read as the same sender.
+   */
+  branding?: Branding;
 }): Promise<LeadMagnetEmailResult> {
   const resolved = resolveTransactionalConfig();
   if (!resolved.ok) {
@@ -115,41 +137,52 @@ export async function sendLeadMagnetEmail({
     return { sent: false, reason: "Email service is not configured." };
   }
 
-  const appUrl = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? `https://${host}`;
-
   const label = leadTitle?.trim() || "your download";
   const safeLabel = escapeHtml(label);
   const sender = audienceName?.trim() || null;
   const safeSender = sender ? escapeHtml(sender) : null;
 
   try {
-    const downloadUrl = buildTrackedLeadMagnetUrl({ appUrl, subscriberId, leadUrl, leadTitle });
+    const downloadUrl = buildTrackedLeadMagnetUrl({ appUrl: baseUrl, subscriberId, leadUrl, leadTitle });
 
     // CAN-SPAM requires the opt-out mechanism in the message itself, not only in
     // a header. A widget subscriber is on a list now, so this is not exempt.
     const unsubscribeUrl = unsubscribeToken
-      ? `${appUrl}/unsubscribe?token=${unsubscribeToken}`
+      ? `${baseUrl}/unsubscribe?token=${unsubscribeToken}`
       : null;
 
     const unsubscribeHtml = unsubscribeUrl
-      ? `<br><a href="${unsubscribeUrl}" style="color:#52525b;">Unsubscribe</a>`
+      ? `<br><a href="${unsubscribeUrl}" style="color:#71717a;text-decoration:underline;">Unsubscribe</a>`
       : "";
     const unsubscribeText = unsubscribeUrl ? `\nUnsubscribe: ${unsubscribeUrl}` : "";
 
+    const { primary, secondary, logoUrl } = branding;
+    const brandName = escapeHtml(branding.name);
+    // The button carries the brand colour, so its label cannot be a fixed black.
+    const buttonText = readableTextOn(primary);
+
     const buttonHtml = `
       <a href="${downloadUrl}"
-         style="display:inline-block;background:#fbbf24;color:#000;font-size:14px;font-weight:700;padding:14px 28px;border-radius:8px;text-decoration:none;">
+         style="display:inline-block;background:${primary};color:${buttonText};font-size:14px;font-weight:700;padding:14px 28px;border-radius:8px;text-decoration:none;">
         Open ${safeLabel}
       </a>`;
 
+    // A logo replaces the wordmark when one is set. width as an attribute as well
+    // as a style, because Outlook ignores styles on images.
+    const header = logoUrl
+      ? `<img src="${escapeHtml(logoUrl)}" alt="${brandName}" width="160" style="max-width:160px;height:auto;display:block;margin:0 0 24px;border:0;">`
+      : `<p style="color:${primary};font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin:0 0 20px;">
+          ${brandName}
+        </p>`;
+
     const customBody = emailBody?.trim();
     const bodyHtml = customBody
-      ? renderOperatorBody(customBody, buttonHtml)
+      ? renderOperatorBody(customBody, buttonHtml, "#e4e4e7")
       : `
-      <h1 style="color:#fff;font-size:32px;font-weight:700;margin:0 0 16px;line-height:1.2;">
+      <h1 style="color:#ffffff;font-size:32px;font-weight:700;margin:0 0 16px;line-height:1.2;">
         Here&rsquo;s ${safeLabel}.
       </h1>
-      <p style="color:#a1a1aa;font-size:15px;line-height:1.6;margin:0 0 32px;">
+      <p style="color:#e4e4e7;font-size:15px;line-height:1.7;margin:0 0 32px;">
         Thanks for asking${safeSender ? ` about ${safeSender}` : ""}. The link below is yours.
       </p>${buttonHtml}`;
 
@@ -168,12 +201,17 @@ export async function sendLeadMagnetEmail({
         html: `
 <!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"></head>
-<body style="background:#0d0d0d;font-family:sans-serif;margin:0;padding:40px 24px;">
-  <table style="max-width:520px;margin:0 auto;width:100%;">
-    <tr><td>${bodyHtml}
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body style="background:${secondary};font-family:sans-serif;margin:0;padding:40px 24px;">
+  <table style="max-width:600px;margin:0 auto;width:100%;">
+    <tr><td>
+      ${header}
+      ${bodyHtml}
       <hr style="border:none;border-top:1px solid #27272a;margin:40px 0;">
-      <p style="color:#52525b;font-size:12px;line-height:1.5;margin:0;">
+      <p style="color:#71717a;font-size:12px;line-height:1.5;margin:0;">
         You received this because you requested it${safeSender ? ` from ${safeSender}` : ""}.${unsubscribeHtml}
       </p>
     </td></tr>

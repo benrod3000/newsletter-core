@@ -6,6 +6,8 @@ import { isDisposableEmail } from "@/lib/disposable-emails";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { logError } from "@/lib/logger";
 import { getClientIp } from "@/lib/client-ip";
+import { getBaseUrl } from "@/lib/geo-utils";
+import { resolveBranding, BRANDING_COLUMNS } from "@/lib/branding";
 import { sendLeadMagnetEmail } from "@/lib/email/lead-magnet";
 import type { TablesUpdate } from "@/lib/database.types";
 
@@ -249,13 +251,23 @@ export async function POST(
     // Only lead magnets. A coupon widget stores its code in this same column and
     // shows it on screen, and a feedback widget has nothing to deliver.
     if (downloadUrl && widget.type === "lead_magnet") {
+      // The workspace's logo and colours, so the first email a subscriber ever
+      // gets looks like the site they signed up on. A failed read is not worth
+      // blocking delivery over - resolveBranding falls back to the defaults.
+      const { data: brandRow } = await supabase
+        .from("clients")
+        .select(BRANDING_COLUMNS)
+        .eq("id", workspaceId)
+        .maybeSingle();
+
       const result = await sendLeadMagnetEmail({
         email,
         subscriberId,
         leadUrl: downloadUrl,
         leadTitle,
+        branding: resolveBranding(brandRow),
         unsubscribeToken,
-        host: req.headers.get("host"),
+        baseUrl: getBaseUrl(req),
         audienceName: widget.name,
         emailSubject: widget.email_subject,
         emailBody: widget.email_body,
