@@ -3,7 +3,7 @@ import { getSupabaseClient } from "@/lib/supabase";
 import { geolocateIP } from "@/lib/geo";
 import { applyRateLimit, rateLimitedResponse } from "@/lib/rate-limit-middleware";
 import { getClientIp } from "@/lib/client-ip";
-import { getBaseUrl } from "@/lib/geo-utils";
+import { getApiBaseUrl } from "@/lib/geo-utils";
 import { sendConfirmationEmail } from "@/lib/email/confirmation-email";
 import type { SignupSnapshot } from "@/lib/email/confirmation-email";
 
@@ -309,7 +309,7 @@ export async function POST(req: NextRequest) {
           email,
           confirmationToken: existing.confirmation_token,
           unsubscribeToken: existing.unsubscribe_token,
-          baseUrl: getBaseUrl(req),
+          baseUrl: getApiBaseUrl(req),
           leadTitle: lead_title,
           leadUrl: lead_url,
           snapshot,
@@ -342,7 +342,7 @@ export async function POST(req: NextRequest) {
       email,
       confirmationToken: subscriber.confirmation_token,
       unsubscribeToken: subscriber.unsubscribe_token,
-      baseUrl: getBaseUrl(req),
+      baseUrl: getApiBaseUrl(req),
       leadTitle: lead_title,
       leadUrl: lead_url,
       snapshot,

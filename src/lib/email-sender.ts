@@ -73,14 +73,33 @@ export class TransactionalEmailNotConfigured extends Error {
   }
 }
 
-/** Platform email credentials, or the list of what is missing. */
-export function resolveTransactionalConfig():
+/**
+ * Platform email credentials, or the list of what is missing.
+ *
+ * `displayName` overrides the From name only - never the address, which has to stay
+ * on the verified platform domain or the send fails SPF and DKIM. Workspace mail
+ * that happens to travel on platform credentials should still say who it is from: a
+ * capture form's delivery email arrived as "Veloce", which is the product's name and
+ * not the sender's, and a subscriber who asked a person for a file has no reason to
+ * recognise it.
+ */
+export function resolveTransactionalConfig(displayName?: string | null):
   | { ok: true; from: string; config: ProviderConfig }
   | { ok: false; missing: string[] } {
   const resendKey = process.env.RESEND_API_KEY;
   const sendgridKey = process.env.SENDGRID_API_KEY;
   const from = process.env.TRANSACTIONAL_FROM_EMAIL || process.env.SENDGRID_FROM_EMAIL;
-  const fromName = process.env.TRANSACTIONAL_FROM_NAME || "Veloce";
+  // `<>"`, commas, semicolons and CRLF are removed because they are the header's
+  // own syntax - left in, a workspace name could close the display name and append
+  // a second address.
+  //
+  // `@` goes too, which is about deception rather than parsing. Stripping only the
+  // punctuation turned `Evil" <attacker@example.com>, x` into the display name
+  // `Evil attacker@example.com x`, which cannot misdeliver anything but reads as a
+  // different sender in every mail client. A display name that can impersonate an
+  // address is a phishing surface in a product where the name is tenant-controlled.
+  const cleanedOverride = displayName?.replace(/[<>"@\r\n,;]/g, "").trim().slice(0, 78);
+  const fromName = cleanedOverride || process.env.TRANSACTIONAL_FROM_NAME || "Veloce";
 
   const missing: string[] = [];
   if (!resendKey && !sendgridKey) missing.push("RESEND_API_KEY or SENDGRID_API_KEY");

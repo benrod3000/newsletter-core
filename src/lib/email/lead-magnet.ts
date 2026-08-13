@@ -128,7 +128,9 @@ export async function sendLeadMagnetEmail({
    */
   branding?: Branding;
 }): Promise<LeadMagnetEmailResult> {
-  const resolved = resolveTransactionalConfig();
+  // The From name is the workspace's, not the product's. The address stays on the
+  // platform's verified domain, which is what SPF and DKIM are bound to.
+  const resolved = resolveTransactionalConfig(branding.name);
   if (!resolved.ok) {
     logError(new Error("Lead magnet email is not configured."), {
       route: "email.lead-magnet",
@@ -139,7 +141,11 @@ export async function sendLeadMagnetEmail({
 
   const label = leadTitle?.trim() || "your download";
   const safeLabel = escapeHtml(label);
-  const sender = audienceName?.trim() || null;
+  // Who this is from, in the recipient's terms. This used to be handed the
+  // widget's `name`, which is an internal label an operator picks for their own
+  // list - so a resume form sent "Thanks for asking about RESUME". The brand name
+  // is what a subscriber recognises.
+  const sender = audienceName?.trim() || branding.name?.trim() || null;
   const safeSender = sender ? escapeHtml(sender) : null;
 
   try {
@@ -158,32 +164,50 @@ export async function sendLeadMagnetEmail({
 
     const { primary, secondary, logoUrl } = branding;
     const brandName = escapeHtml(branding.name);
+    // The neobrutalist system is built on a near-black ink for borders and text on
+    // a warm off-white ground, with the brand colour used as a block of fill rather
+    // than as text. `secondary` is the workspace's dark colour, so it becomes the
+    // ink; the ground is fixed light because a bordered card needs something to sit
+    // on and email clients handle light backgrounds far more predictably than dark
+    // ones under forced dark mode.
+    const ink = secondary;
+    const ground = "#f5f5f0";
+    const body = "#3f3f46";
     // The button carries the brand colour, so its label cannot be a fixed black.
     const buttonText = readableTextOn(primary);
 
+    // Squared corners, a hard border and an offset shadow, matching the product's
+    // own visual system. A rounded amber pill on dark grey was generic email
+    // styling that happened to use the brand's colour - the shape carries as much
+    // of the identity as the palette does.
     const buttonHtml = `
-      <a href="${downloadUrl}"
-         style="display:inline-block;background:${primary};color:${buttonText};font-size:14px;font-weight:700;padding:14px 28px;border-radius:8px;text-decoration:none;">
-        Open ${safeLabel}
-      </a>`;
+      <table cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px;">
+        <tr><td style="background:${ink};padding:0;">
+          <a href="${downloadUrl}"
+             style="display:inline-block;background:${primary};color:${buttonText};font-family:Helvetica,Arial,sans-serif;font-size:14px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;padding:16px 32px;border:3px solid ${ink};text-decoration:none;position:relative;left:-4px;top:-4px;">
+            Open ${safeLabel}
+          </a>
+        </td></tr>
+      </table>`;
 
     // A logo replaces the wordmark when one is set. width as an attribute as well
     // as a style, because Outlook ignores styles on images.
     const header = logoUrl
-      ? `<img src="${escapeHtml(logoUrl)}" alt="${brandName}" width="160" style="max-width:160px;height:auto;display:block;margin:0 0 24px;border:0;">`
-      : `<p style="color:${primary};font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin:0 0 20px;">
+      ? `<img src="${escapeHtml(logoUrl)}" alt="${brandName}" width="150" style="max-width:150px;height:auto;display:block;margin:0 0 26px;border:0;">`
+      : `<p style="display:inline-block;background:${ink};color:${ground};font-family:Helvetica,Arial,sans-serif;font-size:12px;font-weight:800;letter-spacing:0.16em;text-transform:uppercase;padding:8px 14px;margin:0 0 26px;">
           ${brandName}
         </p>`;
 
     const customBody = emailBody?.trim();
     const bodyHtml = customBody
-      ? renderOperatorBody(customBody, buttonHtml, "#e4e4e7")
+      ? renderOperatorBody(customBody, buttonHtml, body)
       : `
-      <h1 style="color:#ffffff;font-size:32px;font-weight:700;margin:0 0 16px;line-height:1.2;">
-        Here&rsquo;s ${safeLabel}.
+      <h1 style="color:${ink};font-family:Helvetica,Arial,sans-serif;font-size:34px;font-weight:800;letter-spacing:-0.02em;text-transform:uppercase;line-height:0.95;margin:0 0 18px;">
+        Here&rsquo;s ${safeLabel}
       </h1>
-      <p style="color:#e4e4e7;font-size:15px;line-height:1.7;margin:0 0 32px;">
-        Thanks for asking${safeSender ? ` about ${safeSender}` : ""}. The link below is yours.
+      <div style="height:8px;width:88px;background:${primary};border:2px solid ${ink};margin:0 0 22px;"></div>
+      <p style="color:${body};font-size:15px;line-height:1.7;margin:0 0 28px;">
+        Thanks for asking${safeSender ? ` from ${safeSender}` : ""}. The link below is yours.
       </p>${buttonHtml}`;
 
     const bodyText = customBody
@@ -205,15 +229,21 @@ export async function sendLeadMagnetEmail({
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
 </head>
-<body style="background:${secondary};font-family:sans-serif;margin:0;padding:40px 24px;">
-  <table style="max-width:600px;margin:0 auto;width:100%;">
-    <tr><td>
-      ${header}
-      ${bodyHtml}
-      <hr style="border:none;border-top:1px solid #27272a;margin:40px 0;">
-      <p style="color:#71717a;font-size:12px;line-height:1.5;margin:0;">
-        You received this because you requested it${safeSender ? ` from ${safeSender}` : ""}.${unsubscribeHtml}
-      </p>
+<body style="background:${ground};font-family:Helvetica,Arial,sans-serif;margin:0;padding:32px 16px;">
+  <table cellpadding="0" cellspacing="0" border="0" style="max-width:600px;margin:0 auto;width:100%;">
+    <tr><td style="background:${ink};">
+      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#ffffff;border:3px solid ${ink};position:relative;left:-5px;top:-5px;">
+        <tr><td style="height:10px;background:${primary};border-bottom:3px solid ${ink};"></td></tr>
+        <tr><td style="padding:34px 30px 30px;">
+          ${header}
+          ${bodyHtml}
+        </td></tr>
+        <tr><td style="border-top:3px solid ${ink};background:${ground};padding:18px 30px;">
+          <p style="color:#71717a;font-size:11px;line-height:1.6;margin:0;letter-spacing:0.02em;">
+            You received this because you requested it${safeSender ? ` from ${safeSender}` : ""}.${unsubscribeHtml}
+          </p>
+        </td></tr>
+      </table>
     </td></tr>
   </table>
 </body>

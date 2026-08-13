@@ -240,6 +240,63 @@ describe("sendLeadMagnetEmail", () => {
     expect(params.html).not.toContain("letter-spacing:0.1em");
   });
 
+  it("sends under the workspace's name, not the product's", async () => {
+    // The From read "Veloce <noreply@brod3000.com>" - the product's name on a
+    // message a subscriber requested from a person. The address must not move: it
+     // is what SPF and DKIM are bound to.
+    configure();
+    await sendLeadMagnetEmail({
+      ...base,
+      branding: { ...DEFAULT_BRANDING, name: "Brod3000" },
+    });
+
+    const [params] = sendEmail.mock.calls[0];
+    expect(params.from).toBe("Brod3000 <noreply@brod3000.com>");
+  });
+
+  it("cannot put a second address, or anything resembling one, in the From header", async () => {
+    // The name is tenant-controlled. Stripping only header punctuation still left
+    // `Evil attacker@example.com x` as the display name - harmless to the parser and
+    // convincing to a human, which is the part that matters.
+    configure();
+    await sendLeadMagnetEmail({
+      ...base,
+      branding: { ...DEFAULT_BRANDING, name: 'Evil" <attacker@example.com>, x' },
+    });
+
+    const [params] = sendEmail.mock.calls[0];
+    expect(params.from).toContain("<noreply@brod3000.com>");
+    // Exactly one address, and no @ anywhere in the display name.
+    expect(params.from.match(/@/g)).toHaveLength(1);
+    expect(params.from).not.toContain("<attacker");
+  });
+
+  it("keeps the From header on one line", async () => {
+    configure();
+    await sendLeadMagnetEmail({
+      ...base,
+      branding: { ...DEFAULT_BRANDING, name: "Brod\r\nBcc: someone@example.com" },
+    });
+
+    const [params] = sendEmail.mock.calls[0];
+    expect(params.from).not.toMatch(/[\r\n]/);
+  });
+
+  it("names the sender by brand, not by the widget's internal label", async () => {
+    // audienceName used to be the widget's `name`, so a resume form said
+    // "Thanks for asking about RESUME".
+    configure();
+    await sendLeadMagnetEmail({
+      ...base,
+      audienceName: null,
+      branding: { ...DEFAULT_BRANDING, name: "Brod3000" },
+    });
+
+    const [params] = sendEmail.mock.calls[0];
+    expect(params.html).toContain("Brod3000");
+    expect(params.html).not.toContain("RESUME");
+  });
+
   it("shows a wordmark when the workspace has no logo", async () => {
     configure();
     await sendLeadMagnetEmail({

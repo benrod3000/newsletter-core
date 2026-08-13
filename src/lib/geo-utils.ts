@@ -87,3 +87,28 @@ export function getBaseUrl(req: { headers: Headers }): string {
   const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "";
   return `${proto}://${host}`;
 }
+
+/**
+ * The origin that serves *this* API, taken from the request and nothing else.
+ *
+ * Use for any link that must reach a route in this app: `/api/track/click`,
+ * `/api/confirm`, `/unsubscribe`.
+ *
+ * `getBaseUrl` above is not safe for that. It prefers `NEXT_PUBLIC_APP_URL`, and on
+ * this project both that and `APP_URL` resolve to the **frontend** - the React app,
+ * which has no `/api/*` routes and answers with its own 404 page. Emailed download
+ * links did exactly that: the message arrived looking correct and every link in it
+ * was dead. Env values here are write-only in Vercel, so the misconfiguration
+ * cannot be read back and confirmed; the request host can, and it is correct by
+ * construction because the request reached this handler.
+ *
+ * The tradeoff is that a request arriving on a preview deployment mints links on
+ * that preview. That is the right answer anyway - a preview's links should not point
+ * at production - and it is far better than links that always point somewhere with
+ * no route to serve them.
+ */
+export function getApiBaseUrl(req: { headers: Headers }): string {
+  const proto = req.headers.get("x-forwarded-proto") ?? "https";
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "";
+  return `${proto}://${host}`;
+}

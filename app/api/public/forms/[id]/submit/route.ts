@@ -6,7 +6,7 @@ import { isDisposableEmail } from "@/lib/disposable-emails";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { logError } from "@/lib/logger";
 import { getClientIp } from "@/lib/client-ip";
-import { getBaseUrl } from "@/lib/geo-utils";
+import { getApiBaseUrl } from "@/lib/geo-utils";
 import { resolveBranding, BRANDING_COLUMNS } from "@/lib/branding";
 import { sendLeadMagnetEmail } from "@/lib/email/lead-magnet";
 import type { TablesUpdate } from "@/lib/database.types";
@@ -267,7 +267,7 @@ export async function POST(
         leadTitle,
         branding: resolveBranding(brandRow),
         unsubscribeToken,
-        baseUrl: getBaseUrl(req),
+        baseUrl: getApiBaseUrl(req),
         audienceName: widget.name,
         emailSubject: widget.email_subject,
         emailBody: widget.email_body,
