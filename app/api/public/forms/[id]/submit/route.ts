@@ -127,7 +127,7 @@ export async function POST(
   // delivering rather than "your download".
   const { data: widget, error: widgetError } = await supabase
     .from("widgets")
-    .select("id, workspace_id, slug, list_id, download_url, is_active, type, name, headline, email_subject, email_body, email_heading")
+    .select("id, workspace_id, slug, list_id, download_url, is_active, type, name, headline, email_subject, email_body, email_heading, subscribe_to_list")
     .eq("id", id)
     .maybeSingle();
 
@@ -193,7 +193,12 @@ export async function POST(
     );
   }
 
-  if (listId) {
+  // A widget only joins someone to its list when it says it does. Delivering a
+  // file someone asked for and signing them up for future mail are different
+  // relationships, and the second is not implied by the first - see migration 064.
+  // A suppressed person is never re-added regardless: they opted out, and a form
+  // submission is not a fresh opt-in.
+  if (listId && widget.subscribe_to_list && !suppressed) {
     const { data: existingMembership } = await supabase
       .from("subscriber_list_memberships")
       .select("id")

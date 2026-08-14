@@ -67,6 +67,7 @@ export const POST = withWorkspace(
       name, slug, list_id, headline, description, download_url,
       button_text, success_message, placeholder, fields, styles,
       type, size, collect_location, email_subject, email_body, email_heading,
+      subscribe_to_list,
     } = body;
 
     if (!name || typeof name !== "string" || !name.trim()) {
@@ -132,6 +133,7 @@ export const POST = withWorkspace(
         email_subject: (email_subject as string)?.trim() || null,
         email_body: (email_body as string)?.trim() || null,
         email_heading: (email_heading as string)?.trim() || null,
+        subscribe_to_list: subscribe_to_list === true,
       })
       .select()
       .single();

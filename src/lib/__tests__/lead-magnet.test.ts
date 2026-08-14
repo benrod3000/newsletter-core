@@ -382,6 +382,19 @@ describe("sendLeadMagnetEmail", () => {
     expect(params.text).toContain("/api/track/click");
   });
 
+  it("still delivers the file when the widget does not subscribe anyone", async () => {
+    // One-time delivery is the default for a lead magnet: the visitor asked for a
+    // file, not for future mail. The delivery itself must be unaffected - the
+    // opt-out link included, since they are still receiving a message.
+    configure();
+    const result = await sendLeadMagnetEmail(base);
+
+    expect(result.sent).toBe(true);
+    const [params] = sendEmail.mock.calls[0];
+    expect(params.html).toContain("/api/track/click");
+    expect(params.html).toContain("/unsubscribe?token=");
+  });
+
   it("reports a provider rejection as not sent", async () => {
     configure();
     sendEmail.mockResolvedValue(false);

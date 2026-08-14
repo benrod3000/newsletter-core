@@ -1244,6 +1244,7 @@ export type Database = {
           size: string
           slug: string
           styles: Json | null
+          subscribe_to_list: boolean
           success_message: string
           type: string | null
           updated_at: string | null
@@ -1268,6 +1269,7 @@ export type Database = {
           size?: string
           slug: string
           styles?: Json | null
+          subscribe_to_list?: boolean
           success_message?: string
           type?: string | null
           updated_at?: string | null
@@ -1292,6 +1294,7 @@ export type Database = {
           size?: string
           slug?: string
           styles?: Json | null
+          subscribe_to_list?: boolean
           success_message?: string
           type?: string | null
           updated_at?: string | null
