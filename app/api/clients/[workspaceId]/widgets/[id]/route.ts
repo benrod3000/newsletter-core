@@ -10,7 +10,7 @@ const ALLOWED_FIELDS = [
   "fields", "styles", "type", "size", "collect_location",
   // Operator-written copy for the lead magnet delivery email. Empty means "use
   // the built-in wording", which is why these are nullable rather than defaulted.
-  "email_subject", "email_body",
+  "email_subject", "email_body", "email_heading",
 ] as const;
 
 /**

@@ -67,11 +67,35 @@ export const DOWNLOAD_LINK_TAG = "{{download_link}}";
  * button is appended, because a delivery email with no way to reach the file is
  * the failure this whole change exists to fix.
  */
-function renderOperatorBody(body: string, buttonHtml: string, textColor: string): string {
+function renderOperatorBody(
+  body: string,
+  buttonHtml: string,
+  textColor: string,
+  linkColor: string
+): string {
   const escaped = escapeHtml(body.trim());
+
+  // Bare URLs become links. Runs *after* escaping, and only matches http(s), so
+  // nothing here can introduce markup - a signature reading "brod3000.com" should
+  // be clickable without the operator having to write HTML they cannot write anyway.
+  const linkify = (text: string) =>
+    text.replace(
+      /\bhttps?:\/\/[^\s<]+|\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/[^\s<]*)?/gi,
+      (match) => {
+        if (match.includes("&lt;") || match.includes("&gt;")) return match;
+        const href = match.startsWith("http") ? match : `https://${match}`;
+        return `<a href="${href}" style="color:${linkColor};text-decoration:underline;">${match}</a>`;
+      }
+    );
+
   const withParagraphs = escaped
     .split(/\n{2,}/)
-    .map((para) => `<p style="color:${textColor};font-size:15px;line-height:1.7;margin:0 0 20px;">${para.replace(/\n/g, "<br>")}</p>`)
+    .map(
+      (para) =>
+        `<p style="color:${textColor};font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.65;margin:0 0 18px;">${linkify(
+          para.replace(/\n/g, "<br>")
+        )}</p>`
+    )
     .join("");
 
   const tag = escapeHtml(DOWNLOAD_LINK_TAG);
@@ -92,6 +116,7 @@ export async function sendLeadMagnetEmail({
   replyTo,
   emailSubject,
   emailBody,
+  emailHeading,
   branding = DEFAULT_BRANDING,
 }: {
   email: string;
@@ -117,6 +142,12 @@ export async function sendLeadMagnetEmail({
   emailSubject?: string | null;
   /** Operator-written body, plain text. Falls back to the built-in copy. */
   emailBody?: string | null;
+  /**
+   * The large headline. Its own field rather than the first line of the body,
+   * because it is set in different type at a different size - folding it into the
+   * body would mean guessing which paragraph was meant to be shouted.
+   */
+  emailHeading?: string | null;
   /**
    * The workspace's logo and colours, from `resolveBranding(client)`.
    *
@@ -164,57 +195,60 @@ export async function sendLeadMagnetEmail({
 
     const { primary, secondary, logoUrl } = branding;
     const brandName = escapeHtml(branding.name);
-    // The neobrutalist system is built on a near-black ink for borders and text on
-    // a warm off-white ground, with the brand colour used as a block of fill rather
-    // than as text. `secondary` is the workspace's dark colour, so it becomes the
-    // ink; the ground is fixed light because a bordered card needs something to sit
-    // on and email clients handle light backgrounds far more predictably than dark
-    // ones under forced dark mode.
+
+    // Palette. `ink` is the near-black used for every border and for headline
+    // type; `ground` is the warm off-white the card sits on. The brand colour is
+    // used as fill - a top rule and the button - never as body text, which is what
+    // keeps a bright yellow legible.
     const ink = secondary;
     const ground = "#f5f5f0";
+    const card = "#f7f7f4";
     const body = "#3f3f46";
-    // The button carries the brand colour, so its label cannot be a fixed black.
+    const hairline = "#d4d4d0";
     const buttonText = readableTextOn(primary);
 
-    // Squared corners, a hard border and an offset shadow, matching the product's
-    // own visual system. A rounded amber pill on dark grey was generic email
-    // styling that happened to use the brand's colour - the shape carries as much
-    // of the identity as the palette does.
+    // Boxed wordmark: outlined rather than filled, so it reads as a mark instead of
+    // a highlight. A logo replaces it when one is set - width as an attribute as
+    // well as a style, because Outlook ignores styles on images.
+    const header = logoUrl
+      ? `<img src="${escapeHtml(logoUrl)}" alt="${brandName}" width="150" style="max-width:150px;height:auto;display:block;margin:0 0 34px;border:0;">`
+      : `<table cellpadding="0" cellspacing="0" border="0" style="margin:0 0 34px;"><tr><td style="border:3px solid ${ink};padding:9px 14px;">
+          <span style="color:${ink};font-family:Helvetica,Arial,sans-serif;font-size:15px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;">${brandName}</span>
+        </td></tr></table>`;
+
+    const heading = emailHeading?.trim() || `Here's ${label}`;
+    const headingHtml = `
+      <h1 style="color:${ink};font-family:Helvetica,Arial,sans-serif;font-size:44px;font-weight:800;letter-spacing:-0.025em;text-transform:uppercase;line-height:0.92;margin:0 0 28px;">
+        ${escapeHtml(heading)}
+      </h1>
+      <div style="border-top:1px solid ${hairline};font-size:0;line-height:0;margin:0 0 26px;">&nbsp;</div>`;
+
     const buttonHtml = `
-      <table cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px;">
-        <tr><td style="background:${ink};padding:0;">
+      <table cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 28px;">
+        <tr><td style="background:${primary};border:3px solid ${ink};">
           <a href="${downloadUrl}"
-             style="display:inline-block;background:${primary};color:${buttonText};font-family:Helvetica,Arial,sans-serif;font-size:14px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;padding:16px 32px;border:3px solid ${ink};text-decoration:none;position:relative;left:-4px;top:-4px;">
+             style="display:block;color:${buttonText};font-family:Helvetica,Arial,sans-serif;font-size:15px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:16px 40px;text-decoration:none;">
             Open ${safeLabel}
           </a>
         </td></tr>
       </table>`;
 
-    // A logo replaces the wordmark when one is set. width as an attribute as well
-    // as a style, because Outlook ignores styles on images.
-    const header = logoUrl
-      ? `<img src="${escapeHtml(logoUrl)}" alt="${brandName}" width="150" style="max-width:150px;height:auto;display:block;margin:0 0 26px;border:0;">`
-      : `<p style="display:inline-block;background:${ink};color:${ground};font-family:Helvetica,Arial,sans-serif;font-size:12px;font-weight:800;letter-spacing:0.16em;text-transform:uppercase;padding:8px 14px;margin:0 0 26px;">
-          ${brandName}
-        </p>`;
-
     const customBody = emailBody?.trim();
     const bodyHtml = customBody
-      ? renderOperatorBody(customBody, buttonHtml, body)
+      ? renderOperatorBody(customBody, buttonHtml, body, ink)
       : `
-      <h1 style="color:${ink};font-family:Helvetica,Arial,sans-serif;font-size:34px;font-weight:800;letter-spacing:-0.02em;text-transform:uppercase;line-height:0.95;margin:0 0 18px;">
-        Here&rsquo;s ${safeLabel}
-      </h1>
-      <div style="height:8px;width:88px;background:${primary};border:2px solid ${ink};margin:0 0 22px;"></div>
-      <p style="color:${body};font-size:15px;line-height:1.7;margin:0 0 28px;">
-        Thanks for asking${safeSender ? ` from ${safeSender}` : ""}. The link below is yours.
+      <p style="color:${body};font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.65;margin:0 0 18px;">
+        Here&rsquo;s ${safeLabel}, as requested${safeSender ? ` from ${safeSender}` : ""}.
       </p>${buttonHtml}`;
 
+    // The plain-text alternative. Not decoration: a message with no text part is a
+    // spam signal, and some clients render it by preference. Mirrors the same
+    // order - heading, body, link, why-you-got-this - so the two do not drift.
     const bodyText = customBody
-      ? (customBody.includes(DOWNLOAD_LINK_TAG)
-          ? customBody.replace(DOWNLOAD_LINK_TAG, downloadUrl)
-          : `${customBody}\n\n${downloadUrl}`)
-      : `Here's ${label}.\n\n${downloadUrl}`;
+      ? customBody.includes(DOWNLOAD_LINK_TAG)
+        ? customBody.replace(DOWNLOAD_LINK_TAG, downloadUrl)
+        : `${customBody}\n\n${downloadUrl}`
+      : `${heading}\n\nHere's ${label}, as requested${sender ? ` from ${sender}` : ""}.\n\n${downloadUrl}`;
 
     const sent = await sendEmail(
       {
@@ -229,18 +263,23 @@ export async function sendLeadMagnetEmail({
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
 </head>
-<body style="background:${ground};font-family:Helvetica,Arial,sans-serif;margin:0;padding:32px 16px;">
-  <table cellpadding="0" cellspacing="0" border="0" style="max-width:600px;margin:0 auto;width:100%;">
-    <tr><td style="background:${ink};">
-      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#ffffff;border:3px solid ${ink};position:relative;left:-5px;top:-5px;">
-        <tr><td style="height:10px;background:${primary};border-bottom:3px solid ${ink};"></td></tr>
-        <tr><td style="padding:34px 30px 30px;">
+<body style="background:${ground};font-family:Helvetica,Arial,sans-serif;margin:0;padding:0;">
+  <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background:${ground};">
+    <tr><td align="center" style="padding:24px 12px 40px;">
+      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:600px;background:${card};border:1px solid ${hairline};">
+        <!-- Brand rule. The one place the colour appears at full strength. -->
+        <tr><td style="height:8px;background:${primary};font-size:0;line-height:0;">&nbsp;</td></tr>
+        <tr><td style="padding:34px 32px 30px;">
           ${header}
+          ${headingHtml}
           ${bodyHtml}
-        </td></tr>
-        <tr><td style="border-top:3px solid ${ink};background:${ground};padding:18px 30px;">
-          <p style="color:#71717a;font-size:11px;line-height:1.6;margin:0;letter-spacing:0.02em;">
-            You received this because you requested it${safeSender ? ` from ${safeSender}` : ""}.${unsubscribeHtml}
+          <div style="border-top:1px solid ${hairline};font-size:0;line-height:0;margin:8px 0 22px;">&nbsp;</div>
+          <p style="color:#71717a;font-family:Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;margin:0 0 8px;">
+            You received this because you requested ${safeLabel}${safeSender ? ` from ${safeSender}` : ""}.${unsubscribeHtml}
+          </p>
+          <p style="color:#a1a1aa;font-family:Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;margin:0;">
+            If the button does not work, use this link:<br>
+            <a href="${downloadUrl}" style="color:#71717a;text-decoration:underline;word-break:break-all;">${escapeHtml(downloadUrl)}</a>
           </p>
         </td></tr>
       </table>

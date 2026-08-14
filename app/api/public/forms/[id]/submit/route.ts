@@ -127,7 +127,7 @@ export async function POST(
   // delivering rather than "your download".
   const { data: widget, error: widgetError } = await supabase
     .from("widgets")
-    .select("id, workspace_id, slug, list_id, download_url, is_active, type, name, headline, email_subject, email_body")
+    .select("id, workspace_id, slug, list_id, download_url, is_active, type, name, headline, email_subject, email_body, email_heading")
     .eq("id", id)
     .maybeSingle();
 
@@ -271,6 +271,7 @@ export async function POST(
         audienceName: widget.name,
         emailSubject: widget.email_subject,
         emailBody: widget.email_body,
+        emailHeading: widget.email_heading,
       });
       leadMagnetSent = result.sent;
       if (!result.sent) {

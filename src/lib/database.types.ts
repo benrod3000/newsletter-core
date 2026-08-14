@@ -1232,6 +1232,7 @@ export type Database = {
           description: string | null
           download_url: string
           email_body: string | null
+          email_heading: string | null
           email_subject: string | null
           fields: Json | null
           headline: string
@@ -1255,6 +1256,7 @@ export type Database = {
           description?: string | null
           download_url: string
           email_body?: string | null
+          email_heading?: string | null
           email_subject?: string | null
           fields?: Json | null
           headline?: string
@@ -1278,6 +1280,7 @@ export type Database = {
           description?: string | null
           download_url?: string
           email_body?: string | null
+          email_heading?: string | null
           email_subject?: string | null
           fields?: Json | null
           headline?: string

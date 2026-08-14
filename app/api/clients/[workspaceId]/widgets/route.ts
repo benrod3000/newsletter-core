@@ -66,7 +66,7 @@ export const POST = withWorkspace(
     const {
       name, slug, list_id, headline, description, download_url,
       button_text, success_message, placeholder, fields, styles,
-      type, size, collect_location, email_subject, email_body,
+      type, size, collect_location, email_subject, email_body, email_heading,
     } = body;
 
     if (!name || typeof name !== "string" || !name.trim()) {
@@ -131,6 +131,7 @@ export const POST = withWorkspace(
         // so storing wording here would freeze today's text into every new widget.
         email_subject: (email_subject as string)?.trim() || null,
         email_body: (email_body as string)?.trim() || null,
+        email_heading: (email_heading as string)?.trim() || null,
       })
       .select()
       .single();

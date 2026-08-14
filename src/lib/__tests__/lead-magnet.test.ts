@@ -213,7 +213,7 @@ describe("sendLeadMagnetEmail", () => {
 
     const [params] = sendEmail.mock.calls[0];
     expect(params.subject).toBe("Here's Resume - 2026");
-    expect(params.html).toContain("Thanks for asking");
+    expect(params.html).toContain("as requested");
     expect(params.html).toContain("/api/track/click");
   });
 
@@ -233,7 +233,8 @@ describe("sendLeadMagnetEmail", () => {
     });
 
     const [params] = sendEmail.mock.calls[0];
-    expect(params.html).toContain("background:#101014");
+    // secondary is the ink - borders and headline type - and primary is the fill.
+    expect(params.html).toContain("solid #101014");
     expect(params.html).toContain("background:#2b7657");
     expect(params.html).toContain('src="https://brod3000.com/logo.png"');
     // The logo replaces the wordmark rather than sitting alongside it.
@@ -325,6 +326,60 @@ describe("sendLeadMagnetEmail", () => {
       branding: { ...DEFAULT_BRANDING, primary: "#fbbf24" },
     });
     expect(sendEmail.mock.calls[0][0].html).toContain("color:#000000");
+  });
+
+  it("uses the operator's headline as the large type", async () => {
+    // Its own field, not the first line of the body: it renders at a different
+    // size, and folding it in would mean guessing which paragraph to shout.
+    configure();
+    await sendLeadMagnetEmail({ ...base, emailHeading: "Thanks for your interest." });
+
+    const [params] = sendEmail.mock.calls[0];
+    // The <h1> carries the operator's words rather than a generated "Here's <file>".
+    expect(params.html).toMatch(/<h1[^>]*>\s*Thanks for your interest\./);
+    expect(params.html).not.toMatch(/<h1[^>]*>\s*Here&#39;s/);
+  });
+
+  it("escapes the headline", async () => {
+    configure();
+    await sendLeadMagnetEmail({ ...base, emailHeading: "<img src=x onerror=1>" });
+
+    const [params] = sendEmail.mock.calls[0];
+    expect(params.html).not.toContain("<img src=x");
+    expect(params.html).toContain("&lt;img src=x");
+  });
+
+  it("linkifies a bare domain in the body", async () => {
+    // A signature reading "brod3000.com" should be clickable. Operators write plain
+    // text here - they have no way to author an anchor.
+    configure();
+    await sendLeadMagnetEmail({ ...base, emailBody: "Ben Rodriguez\nbrod3000.com" });
+
+    const [params] = sendEmail.mock.calls[0];
+    expect(params.html).toContain('href="https://brod3000.com"');
+  });
+
+  it("does not let linkifying reintroduce markup", async () => {
+    // Linkifying runs after escaping, so an escaped tag must stay escaped.
+    configure();
+    await sendLeadMagnetEmail({
+      ...base,
+      emailBody: '<a href="https://evil.example">click</a>',
+    });
+
+    const [params] = sendEmail.mock.calls[0];
+    expect(params.html).not.toContain('<a href="https://evil.example">click</a>');
+    expect(params.html).toContain("&lt;a href=");
+  });
+
+  it("always offers the raw link as a fallback to the button", async () => {
+    // Images and buttons get stripped by some clients and corporate gateways.
+    configure();
+    await sendLeadMagnetEmail(base);
+
+    const [params] = sendEmail.mock.calls[0];
+    expect(params.html).toContain("If the button does not work");
+    expect(params.text).toContain("/api/track/click");
   });
 
   it("reports a provider rejection as not sent", async () => {
