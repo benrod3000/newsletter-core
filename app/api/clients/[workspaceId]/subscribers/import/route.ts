@@ -47,6 +47,9 @@ export const maxDuration = 60;
  *
  * Parses CSV with header row, maps columns, upserts by email.
  */
+const CONSENT_ATTESTATION =
+  "Imported by a workspace member who confirmed these contacts gave permission to be emailed.";
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ workspaceId: string }> }
@@ -63,7 +66,11 @@ export async function POST(
   }
 
   const body = await req.json();
-  const { csv, confirmed = false } = body;
+  const { csv, confirmed = false, consent_confirmed = false } = body;
+
+  // Recorded verbatim on every row the import creates, so the basis for mailing
+  // these people is answerable months later without reconstructing it.
+  const consentConfirmed = consent_confirmed === true;
 
   if (!csv || typeof csv !== "string") {
     return NextResponse.json({ error: "CSV string required" }, { status: 400 });
@@ -151,6 +158,25 @@ export async function POST(
       workspace_id: workspaceId,
       email,
       confirmed,
+      // Consent is recorded from the operator's attestation, not defaulted.
+      //
+      // It used to be left unset, so every imported row landed with the column's
+      // `false` default - which read as "declined" once sending began to enforce
+      // consent (migration 065), even though nobody had been asked. 10,300 rows
+      // arrived that way and needed a backfill.
+      //
+      // The operator is the controller here: they are the one who knows how the
+      // list was obtained, so they assert it and the assertion is stored alongside
+      // the contact rather than inferred later. Unticked means the contacts are
+      // stored but not mailable, which is the safe direction.
+      consent_email_marketing: consentConfirmed,
+      ...(consentConfirmed
+        ? {
+            consented_at: new Date().toISOString(),
+            consent_source: `import:${context.userId ?? context.email ?? "unknown"}`,
+            consent_text: CONSENT_ATTESTATION,
+          }
+        : {}),
     };
 
     for (const [key, header] of mappableFields) {

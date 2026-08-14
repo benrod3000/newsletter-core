@@ -178,6 +178,7 @@ export async function POST(
     finalLatitude,
     finalLongitude,
     smsConsentGiven,
+    subscribesToList: widget.subscribe_to_list === true,
     ipGeo,
     req,
   });
@@ -353,6 +354,7 @@ async function resolveSubscriber({
   finalLatitude,
   finalLongitude,
   smsConsentGiven,
+  subscribesToList,
   ipGeo,
   req,
 }: {
@@ -368,6 +370,7 @@ async function resolveSubscriber({
   finalLatitude: number | null;
   finalLongitude: number | null;
   smsConsentGiven: boolean;
+  subscribesToList: boolean;
   ipGeo: Awaited<ReturnType<typeof geolocateIP>>;
   req: NextRequest;
 }): Promise<{
@@ -407,9 +410,16 @@ async function resolveSubscriber({
         sms_consented_at: smsConsentGiven ? new Date().toISOString() : null,
         postal_code: finalPostalCode || finalUserPostal,
         confirmed: true, // widget signups are single opt-in by default
-        consent_email_marketing: true,
+        // Consent follows what the form actually asked for. A one-time lead magnet
+        // takes an address in exchange for a file and promises nothing further, so
+        // recording marketing consent there would assert something the visitor was
+        // never shown. Sending enforces this column as of migration 065, so the
+        // distinction is load-bearing rather than documentary.
+        consent_email_marketing: subscribesToList,
         consent_version: "widget-2026",
-        consent_text: "I agree to receive emails from this sender.",
+        consent_text: subscribesToList
+          ? "I agree to receive emails from this sender."
+          : "Requested a one-time download. No marketing consent given.",
         consented_at: new Date().toISOString(),
         country: geoCountry,
         region: geoRegion,
