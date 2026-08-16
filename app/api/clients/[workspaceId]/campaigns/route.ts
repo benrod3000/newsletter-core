@@ -76,6 +76,24 @@ export const POST = withWorkspace(
 
     if (error) {
       logError(error, { route: "clients.campaigns.create", workspaceId: ctx.workspaceId });
+
+      // A constraint violation is the caller's problem, not a server fault, and
+      // saying which value was rejected is the difference between a five-minute fix
+      // and a feature that looks broken. Targeting a list returned a bare 500
+      // reading "Failed to create campaign" for as long as lists have existed,
+      // because the audience CHECK had never been updated to allow them - see
+      // migration 067.
+      if (error.code === "23514") {
+        return NextResponse.json(
+          {
+            error:
+              `The database rejected this campaign: ${error.message}. ` +
+              `Audience was "${audience || "confirmed"}".`,
+          },
+          { status: 400 }
+        );
+      }
+
       return NextResponse.json({ error: "Failed to create campaign" }, { status: 500 });
     }
 
