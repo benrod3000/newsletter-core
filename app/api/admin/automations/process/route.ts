@@ -260,6 +260,12 @@ export async function POST(req: NextRequest) {
             .eq("workspace_id", auto.workspace_id)
             .eq("confirmed", true)
             .eq("suppressed", false)
+            // Campaign sending enforces consent through campaign_audience() as of
+            // migration 065. Automations select their own recipients, so without
+            // this they would mail people campaigns are forbidden to touch - and the
+            // most likely such person is a one-time lead magnet requester, who was
+            // told they were getting a file and nothing more.
+            .eq("consent_email_marketing", true)
             .gte("created_at", notBefore.toISOString())
             .lte("created_at", joinedBefore.toISOString())
             .limit(BATCH);
@@ -323,6 +329,12 @@ export async function POST(req: NextRequest) {
             .select("id")
             .eq("workspace_id", auto.workspace_id)
             .eq("confirmed", true)
+            // Never add someone who opted out. This filter was absent, and until
+            // recently could not matter: unsubscribe deleted the row, so there was
+            // nobody to re-add. Now that an opt-out is a durable record on a
+            // surviving row, an automation could quietly put an unsubscribed person
+            // back on a list and make them reachable again.
+            .eq("suppressed", false)
             .gte("created_at", notBefore.toISOString())
             .lte("created_at", joinedBefore.toISOString())
             .limit(BATCH);
@@ -389,6 +401,10 @@ export async function POST(req: NextRequest) {
           .eq("workspace_id", auto.workspace_id)
           .eq("confirmed", true)
           .eq("suppressed", false)
+          // Same reason as the subscriber_joined path above. This one matters more:
+          // it is the scheduled send, so it mails the entire workspace rather than
+          // people who just signed up.
+          .eq("consent_email_marketing", true)
           .limit(BATCH);
 
         const baseHtml = buildHtmlFromEditor(
