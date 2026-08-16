@@ -32,7 +32,13 @@ export async function getGoogleTokens(code: string): Promise<{ access_token: str
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       code,
-      workspace_id: process.env.GOOGLE_CLIENT_ID!,
+      // `client_id`, not `workspace_id`. This is OAuth's parameter name, fixed by
+      // the spec, and it has nothing to do with the database column of the same
+      // former name. The tenancy rename (commit 9510450) replaced `client_id` ->
+      // `workspace_id` across the codebase and swept this up with it, so the token
+      // exchange has been missing a required parameter - and Google sign-in has
+      // been broken - ever since.
+      client_id: process.env.GOOGLE_CLIENT_ID!,
       client_secret: process.env.GOOGLE_CLIENT_SECRET!,
       redirect_uri: `${OAUTH_REDIRECT}/google/callback`,
       grant_type: "authorization_code",
@@ -46,6 +52,17 @@ export async function getGoogleTokens(code: string): Promise<{ access_token: str
     headers: { Authorization: `Bearer ${tokens.access_token}` },
   });
   const user = await userRes.json();
+
+  // An unverified address must not be able to claim an account.
+  //
+  // findOrCreateOAuthUser matches an existing workspace user by email alone, so
+  // whoever presents an address gets that account. Without this check, registering
+  // a provider account against someone else's address and never proving ownership
+  // of it is enough to sign in as them.
+  if (!user.email || user.verified_email === false) {
+    throw new Error("Google account has no verified email address");
+  }
+
   return { access_token: tokens.access_token, email: user.email, name: user.name, sub: user.id };
 }
 
@@ -58,7 +75,8 @@ export async function getGitHubTokens(code: string): Promise<{ access_token: str
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({
       code,
-      workspace_id: process.env.GITHUB_CLIENT_ID!,
+      // See the note in getGoogleTokens: OAuth's parameter, not the renamed column.
+      client_id: process.env.GITHUB_CLIENT_ID!,
       client_secret: process.env.GITHUB_CLIENT_SECRET!,
     }),
   });
@@ -72,7 +90,17 @@ export async function getGitHubTokens(code: string): Promise<{ access_token: str
   ]);
   const user = await userRes.json();
   const emails = await emailsRes.json();
-  const primaryEmail = emails.find((e: any) => e.primary)?.email || user.email;
+  // Primary *and* verified. This took the primary address whether or not GitHub
+  // had confirmed it, and fell back to the profile's public email, which is not
+  // verified either - so an address the user never proved they own could be used
+  // to match an existing account. See the note in getGoogleTokens.
+  const primaryEmail = Array.isArray(emails)
+    ? emails.find((e: { primary?: boolean; verified?: boolean; email?: string }) => e.primary && e.verified)?.email
+    : undefined;
+
+  if (!primaryEmail) {
+    throw new Error("GitHub account has no verified primary email address");
+  }
 
   return { access_token: tokens.access_token, email: primaryEmail, name: user.name || user.login, login: user.login };
 }
@@ -92,6 +120,11 @@ export async function findOrCreateOAuthUser(email: string, name: string): Promis
   const supabaseUrl = process.env.SUPABASE_URL!;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
   const auth = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` };
+
+  // Google returns no `name` for accounts that have not set one, and this is the
+  // first thing to call `.toLowerCase()` on it - which throws, failing the whole
+  // sign-in at the last step, after the provider round trip has succeeded.
+  const safeName = (name || email.split("@")[0] || "New").trim() || "New";
 
   // Check if user exists
   const checkRes = await fetch(
@@ -118,12 +151,23 @@ export async function findOrCreateOAuthUser(email: string, name: string): Promis
     method: "POST",
     headers: { ...auth, "Prefer": "return=representation" },
     body: JSON.stringify({
-      name: `${name}'s Workspace`,
-      slug: `${name.toLowerCase().replace(/[^a-z0-9-]+/g, "-")}-${crypto.randomUUID().split("-")[0]}`,
+      name: `${safeName}'s Workspace`,
+      slug: `${safeName.toLowerCase().replace(/[^a-z0-9-]+/g, "-")}-${crypto.randomUUID().split("-")[0]}`,
     }),
   });
   const workspace = await workspaceRes.json();
   const workspaceId = workspace.id || workspace[0]?.id;
+
+  // Both inserts are checked before anything is built on them.
+  //
+  // These were read straight into `workspaceId ?? undefined` and carried on. A
+  // failed workspace insert therefore produced a user row with no workspace, and a
+  // failed user insert still minted a signed JWT - a session for an account that
+  // does not exist, which then fails confusingly on every subsequent request rather
+  // than at the point the sign-in actually went wrong.
+  if (!workspaceId) {
+    throw new Error(`Could not create workspace for OAuth user: ${JSON.stringify(workspace)}`);
+  }
 
   const userRes = await fetch(`${supabaseUrl}/rest/v1/workspace_users`, {
     method: "POST",
@@ -138,6 +182,10 @@ export async function findOrCreateOAuthUser(email: string, name: string): Promis
   });
   const newUser = await userRes.json();
   const userId = newUser.id || newUser[0]?.id;
+
+  if (!userId) {
+    throw new Error(`Could not create user for OAuth sign-in: ${JSON.stringify(newUser)}`);
+  }
 
   const token = createClientJWT(workspaceId, userId, email, "owner");
   return { token, workspaceId, email, role: "owner" };
