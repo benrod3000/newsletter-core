@@ -1,32 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { Workspace, AdminUser, Role } from "./types";
 
-type Role = "owner" | "editor" | "viewer";
-
-interface Workspace {
-  id: string;
-  name: string;
-  slug: string;
-  created_at: string;
-}
-
-interface AdminUser {
-  id: string;
-  username: string;
-  role: Role;
-  active: boolean;
-  // `scoped_workspace_id`, which is what /api/admin/workspaces returns. This said
-  // `client_id`, so it was always undefined and every scoped admin rendered as
-  // "global" - the workspace-access column, wrong, on the screen an operator would
-  // use to audit who can reach what.
-  //
-  // admin_users deliberately kept `scoped_workspace_id` through the tenancy rename
-  // rather than becoming `workspace_id`: it restricts a platform admin, it does not
-  // declare ownership of a tenant.
-  scoped_workspace_id: string | null;
-  created_at: string;
-}
 
 export default function ClientWorkspaceManager() {
   const [expanded, setExpanded] = useState(false);

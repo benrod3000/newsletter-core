@@ -1,30 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-
-interface Subscriber {
-  id: string;
-  email: string;
-  confirmed: boolean;
-  lead_magnet_claimed: boolean;
-  first_name: string | null;
-  last_name: string | null;
-  date_of_birth: string | null;
-  phone_number: string | null;
-  country: string | null;
-  region: string | null;
-  city: string | null;
-  latitude: number | null;
-  longitude: number | null;
-  timezone: string | null;
-  locale: string | null;
-  utm_source: string | null;
-  utm_medium: string | null;
-  utm_campaign: string | null;
-  referrer: string | null;
-  landing_path: string | null;
-  created_at: string | null;
-}
+import type { SubscriberRow as Subscriber } from "./types";
 
 const ADMIN_TIME_ZONE = "America/Los_Angeles";
 

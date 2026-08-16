@@ -1,16 +1,8 @@
 "use client";
 
 import { useState, useRef } from "react";
+import type { SubscriberListRow as SubscriberList } from "./types";
 
-interface SubscriberList {
-  id: string;
-  name: string;
-  description: string | null;
-  opt_in_type: "single" | "double";
-  created_at: string;
-  updated_at: string;
-  memberCount?: number;
-}
 
 export default function SubscriberListsPanel() {
   const [lists, setLists] = useState<SubscriberList[]>([]);

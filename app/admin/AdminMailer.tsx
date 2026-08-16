@@ -4,57 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import CampaignReportPanel from "./CampaignReportPanel";
 import { checkUnsubscribeTag } from "@/lib/link-validation";
 import type { Editor } from "grapesjs";
+import type { CampaignRow as Campaign, ClientWorkspace, Role } from "./types";
 
 type Audience = "confirmed" | "all" | "pending" | "claimed_offer" | string;
 
 type SendStatus = "idle" | "sending" | "success" | "error";
 
-type Role = "owner" | "editor" | "viewer";
-
-interface Campaign {
-  id: string;
-  // `workspace_id`, matching what the API returns. This said `client_id`, which
-  // migration 048 renamed away - so the field was always undefined and TypeScript
-  // was satisfied, because the type asserted a shape the API had stopped sending.
-  workspace_id: string;
-  title: string;
-  subject: string;
-  audience: Audience;
-  status: "draft" | "scheduled" | "sent";
-  editor_html: string;
-  editor_css: string | null;
-  plain_text: string | null;
-  scheduled_for: string | null;
-  sent_count: number;
-  last_sent_at: string | null;
-  last_test_sent_at: string | null;
-  last_test_recipient: string | null;
-  geo_filter: {
-    country?: string | null;
-    regions?: string[];
-    cities?: string[];
-    region?: string | null;
-    city?: string | null;
-    center_lat?: number | null;
-    center_lng?: number | null;
-    radius_km?: number | null;
-    radius_value?: number | null;
-    radius_unit?: "km" | "mi";
-  } | null;
-  stats?: {
-    opens: number;
-    clicks: number;
-    openRate: number;
-    clickRate: number;
-  };
-  updated_at: string;
-}
-
-interface ClientWorkspace {
-  id: string;
-  name: string;
-  slug: string;
-}
 
 interface CampaignApiResponse {
   campaigns: Campaign[];
