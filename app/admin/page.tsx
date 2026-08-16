@@ -1,4 +1,5 @@
 import { getSupabaseClient } from "@/lib/supabase";
+import { fetchAllRows } from "@/lib/paginate";
 import { headers } from "next/headers";
 import AdminMailer from "./AdminMailer";
 import ClientWorkspaceManager from "./ClientWorkspaceManager";
@@ -33,38 +34,72 @@ export default async function AdminPage() {
   const username = requestHeaders.get("x-admin-username");
 
   const supabase = getSupabaseClient();
-  let query = supabase
-    .from("subscribers")
-    .select("id, email, confirmed, first_name, last_name, date_of_birth, phone_number, country, region, city, latitude, longitude, timezone, locale, utm_source, utm_medium, utm_campaign, referrer, landing_path, created_at")
-    .order("created_at", { ascending: false });
+  /*
+   * Paged, because every number on this page is derived from the result.
+   *
+   * This was a single unbounded select, which PostgREST silently caps at 1,000
+   * rows. On a workspace with ten thousand subscribers the table showed a thousand
+   * of them - tolerable on its own - but confirmedCount, pendingCount and
+   * confirmationRate below are all computed by counting that same array, so the
+   * headline figures described an arbitrary sample while presenting themselves as
+   * totals. Worst of all, confirmedCount is handed to AdminMailer and shown to the
+   * operator as the size of the audience they are about to send to.
+   */
+  const loadSubscribers = () =>
+    fetchAllRows((afterId, pageSize) => {
+      let q = supabase
+        .from("subscribers")
+        .select("id, email, confirmed, first_name, last_name, date_of_birth, phone_number, country, region, city, latitude, longitude, timezone, locale, utm_source, utm_medium, utm_campaign, referrer, landing_path, created_at")
+        .order("id", { ascending: true })
+        .limit(pageSize);
 
-  if (role !== "owner" && clientId) {
-    // `client_id` until the generated types caught it: migration 048 renamed this
-    // column to `workspace_id` and this call site was missed. PostgREST rejected
-    // the filter with 42703, so `data` came back null and a scoped admin saw an
-    // empty list. Fails closed rather than leaking, but it has been broken since
-    // the tenancy rename shipped.
-    query = query.eq("workspace_id", clientId);
+      if (role !== "owner" && clientId) {
+        // `client_id` until the generated types caught it: migration 048 renamed
+        // this column to `workspace_id` and this call site was missed. PostgREST
+        // rejected the filter with 42703, so `data` came back null and a scoped
+        // admin saw an empty list. Fails closed rather than leaking, but it was
+        // broken from the tenancy rename until the types were turned on.
+        q = q.eq("workspace_id", clientId);
+      }
+      if (afterId) q = q.gt("id", afterId);
+      return q;
+    });
+
+  // Declared from the loader's own return type so the row shape stays inferred -
+  // annotating it by hand here is what the components downstream depend on.
+  let error: { message: string } | null = null;
+  let baseSubscribers: Awaited<ReturnType<typeof loadSubscribers>> = [];
+
+  try {
+    baseSubscribers = await loadSubscribers();
+  } catch (err) {
+    error = { message: err instanceof Error ? err.message : String(err) };
   }
 
-  const { data, error } = await query;
-
-  const baseSubscribers = data ?? [];
+  // Keyset paging orders by id; the page wants newest first.
+  baseSubscribers.sort((a, b) =>
+    String(b.created_at ?? "").localeCompare(String(a.created_at ?? ""))
+  );
   const subscriberIds = baseSubscribers.map((subscriber) => subscriber.id);
 
-  let claimedLeadMagnetIds = new Set<string>();
-  if (subscriberIds.length > 0) {
+  // Batched for the same reason the subscriber query is paged: one `.in()` over
+  // every subscriber returns at most 1,000 events however many ids it was given,
+  // so lead_magnet_claimed was under-reported as soon as the list outgrew that.
+  const claimedLeadMagnetIds = new Set<string>();
+  const EVENT_BATCH = 200;
+  for (let i = 0; i < subscriberIds.length; i += EVENT_BATCH) {
+    const ids = subscriberIds.slice(i, i + EVENT_BATCH);
     const { data: clickEvents } = await supabase
       .from("campaign_events")
       .select("subscriber_id, metadata")
       .eq("event_type", "click")
-      .in("subscriber_id", subscriberIds);
+      .in("subscriber_id", ids);
 
-    claimedLeadMagnetIds = new Set(
-      (clickEvents ?? [])
-        .filter((event) => event.subscriber_id && jsonString(event.metadata, "tracking_kind") === "lead_magnet")
-        .map((event) => event.subscriber_id as string)
-    );
+    for (const event of clickEvents ?? []) {
+      if (event.subscriber_id && jsonString(event.metadata, "tracking_kind") === "lead_magnet") {
+        claimedLeadMagnetIds.add(event.subscriber_id as string);
+      }
+    }
   }
 
   const subscribers = baseSubscribers.map((subscriber) => ({

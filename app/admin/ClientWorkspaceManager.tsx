@@ -16,7 +16,15 @@ interface AdminUser {
   username: string;
   role: Role;
   active: boolean;
-  client_id: string | null;
+  // `scoped_workspace_id`, which is what /api/admin/workspaces returns. This said
+  // `client_id`, so it was always undefined and every scoped admin rendered as
+  // "global" - the workspace-access column, wrong, on the screen an operator would
+  // use to audit who can reach what.
+  //
+  // admin_users deliberately kept `scoped_workspace_id` through the tenancy rename
+  // rather than becoming `workspace_id`: it restricts a platform admin, it does not
+  // declare ownership of a tenant.
+  scoped_workspace_id: string | null;
   created_at: string;
 }
 
@@ -48,7 +56,7 @@ export default function ClientWorkspaceManager() {
     const term = userSearch.trim().toLowerCase();
     if (!term) return users;
     return users.filter((user) => {
-      const workspaceLabel = user.client_id ? workspaceNameById.get(user.client_id) ?? "workspace" : "global";
+      const workspaceLabel = user.scoped_workspace_id ? workspaceNameById.get(user.scoped_workspace_id) ?? "workspace" : "global";
       return `${user.username} ${user.role} ${workspaceLabel}`.toLowerCase().includes(term);
     });
   }, [users, userSearch, workspaceNameById]);
@@ -381,7 +389,7 @@ export default function ClientWorkspaceManager() {
                       <span className="font-medium text-zinc-200">{u.username}</span>{" "}
                       <span className="text-zinc-500">[{u.role}]</span>{" "}
                       <span className="text-zinc-500">
-                        {u.client_id ? workspaceNameById.get(u.client_id) ?? "workspace" : "global"}
+                        {u.scoped_workspace_id ? workspaceNameById.get(u.scoped_workspace_id) ?? "workspace" : "global"}
                       </span>{" "}
                       <span className={u.active ? "text-emerald-400" : "text-red-400"}>
                         {u.active ? "active" : "inactive"}

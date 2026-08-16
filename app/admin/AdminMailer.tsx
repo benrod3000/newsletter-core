@@ -13,7 +13,10 @@ type Role = "owner" | "editor" | "viewer";
 
 interface Campaign {
   id: string;
-  client_id: string;
+  // `workspace_id`, matching what the API returns. This said `client_id`, which
+  // migration 048 renamed away - so the field was always undefined and TypeScript
+  // was satisfied, because the type asserted a shape the API had stopped sending.
+  workspace_id: string;
   title: string;
   subject: string;
   audience: Audience;
@@ -427,7 +430,14 @@ export default function AdminMailer({ totalCount, confirmedCount, claimedLeadMag
     );
     setPreviewCount(null);
     setScheduledFor(toLocalInputValue(campaign.scheduled_for));
-    setSelectedClientId(campaign.client_id || selectedClientId);
+    // Loading a campaign must switch to the workspace that campaign belongs to.
+    //
+    // This read `campaign.client_id`, which is always undefined since the tenancy
+    // rename, so the `||` fell through and left whatever workspace happened to be
+    // selected. Opening a campaign from workspace A while B was selected therefore
+    // aimed A's content at B's subscribers, silently, with the correct-looking
+    // campaign title on screen.
+    setSelectedClientId(campaign.workspace_id || selectedClientId);
 
     if (editor) {
       editor.setComponents(campaign.editor_html || DEFAULT_COMPONENTS);
