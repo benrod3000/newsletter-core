@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
+import { fetchAllRows } from "@/lib/paginate";
 import {
   getClientContextFromJWT,
   assertWorkspaceAccess,
@@ -21,6 +22,7 @@ import { apiSuccess, apiUnauthorized, apiInternalError } from "@/lib/api-respons
  *   total_subscribers, new_subscribers, campaigns_sent,
  *   avg_open_rate, avg_click_rate,          // 0-100, within the window
  *   subscriber_growth: [{ date, count }],
+ *   lead_magnet: { submissions, clicks, click_rate },   // capture forms, not campaigns
  *   top_campaigns: [{ id, name, sent, open_rate, click_rate, sent_at }],
  *   previous: { new_subscribers, campaigns_sent, avg_open_rate, avg_click_rate },
  *   period: { days, start, previous_start, truncated }
@@ -65,8 +67,9 @@ export async function GET(
 
   try {
     // ── Subscribers ──────────────────────────────────────────────────────────
-    // Unsubscribes hard-delete the row, so this is a current headcount rather
-    // than a running total. New-in-window is the comparable figure.
+    // A current headcount. Unsubscribes no longer delete the row - they set
+    // `suppressed` as of migration 065 - so this counts everyone on file including
+    // people who have opted out. New-in-window below is the comparable figure.
     const { count: totalSubscribers, error: subCountError } = await supabase
       .from("subscribers")
       .select("id", { count: "exact", head: true })
@@ -77,29 +80,66 @@ export async function GET(
       return apiInternalError("Failed to compute subscriber count");
     }
 
-    const { data: windowSubscribers } = await supabase
-      .from("subscribers")
-      .select("created_at")
-      .eq("workspace_id", workspaceId)
-      .gte("created_at", priorStartDate.toISOString());
+    /*
+     * Counted by the database, and the daily rows paged.
+     *
+     * This fetched every subscriber created since the start of the *previous*
+     * window in one unbounded select, then counted the results in JS. PostgREST
+     * caps a response at 1,000 rows with no error and no ordering guarantee, so on
+     * any workspace with more history than that the count was of an arbitrary
+     * thousand.
+     *
+     * It failed in the most misleading possible way here. 10,300 contacts were
+     * imported on one day, and ten more signed up over the following fortnight. The
+     * thousand rows that came back were all from the import - so `newSubscribers`
+     * was 0, the growth chart was flat, and the ten real signups were invisible.
+     * "No growth" was not a rendering problem; the number genuinely was zero.
+     *
+     * The two totals are now `count: exact` head queries, which the database
+     * computes and no ceiling applies to. Only the current window's rows are
+     * fetched, and paged, because bucketing by day needs the individual timestamps
+     * and PostgREST cannot GROUP BY.
+     */
+    const [{ count: newSubscribersCount }, { count: prevNewSubscribersCount }] = await Promise.all([
+      supabase
+        .from("subscribers")
+        .select("id", { count: "exact", head: true })
+        .eq("workspace_id", workspaceId)
+        .gte("created_at", startDate.toISOString()),
+      supabase
+        .from("subscribers")
+        .select("id", { count: "exact", head: true })
+        .eq("workspace_id", workspaceId)
+        .gte("created_at", priorStartDate.toISOString())
+        .lt("created_at", startDate.toISOString()),
+    ]);
 
-    let newSubscribers = 0;
-    let prevNewSubscribers = 0;
+    const newSubscribers = newSubscribersCount ?? 0;
+    const prevNewSubscribers = prevNewSubscribersCount ?? 0;
+
     const growthBuckets: Record<string, number> = {};
     for (let i = 0; i < days; i++) {
       const d = new Date(startDate);
       d.setUTCDate(d.getUTCDate() + i);
       growthBuckets[d.toISOString().slice(0, 10)] = 0;
     }
-    for (const row of windowSubscribers || []) {
-      const t = new Date(row.created_at).getTime();
-      if (t >= startDate.getTime()) {
-        newSubscribers += 1;
-        const key = new Date(row.created_at).toISOString().slice(0, 10);
-        if (key in growthBuckets) growthBuckets[key] += 1;
-      } else {
-        prevNewSubscribers += 1;
-      }
+
+    const windowSubscribers = await fetchAllRows((afterId, pageSize) => {
+      let q = supabase
+        .from("subscribers")
+        .select("id, created_at")
+        .eq("workspace_id", workspaceId)
+        .gte("created_at", startDate.toISOString())
+        .order("id", { ascending: true })
+        .limit(pageSize);
+      if (afterId) q = q.gt("id", afterId);
+      return q;
+    });
+
+    for (const row of windowSubscribers) {
+      if (!row.created_at) continue;
+      const key = new Date(row.created_at).toISOString().slice(0, 10);
+      if (key in growthBuckets) growthBuckets[key] += 1;
     }
     const subscriberGrowth = Object.entries(growthBuckets).map(([date, count]) => ({ date, count }));
 
@@ -199,9 +239,64 @@ export async function GET(
       .sort((a, b) => b.open_rate - a.open_rate)
       .slice(0, topCampaignsLimit);
 
+    /*
+     * Capture-form engagement, which campaign analytics cannot see.
+     *
+     * Everything above is per campaign: events are fetched with
+     * `.in("campaign_id", ...)` and the rates divide by `sent_count`. A lead magnet
+     * has no campaign row, so its clicks carry `campaign_id = null` and are excluded
+     * by construction.
+     *
+     * That was invisible while nothing had been sent. It stopped being invisible the
+     * moment capture forms began delivering: at the time of writing, every single
+     * engagement event in the database is a lead-magnet click, so analytics was
+     * excluding 100% of the engagement that exists and reporting zero opens and zero
+     * clicks - correctly, for campaigns, and uselessly for the operator.
+     *
+     * Reported separately rather than folded into the campaign rates, because they
+     * measure different things. `submissions` is the denominator: one lead magnet
+     * email goes out per form submission, so a click rate against it is meaningful.
+     * There is deliberately no open rate - a delivery email carries no tracking
+     * pixel, and inventing one from clicks would be worse than omitting it.
+     */
+    const leadMagnetWindow = async (from: Date, to: Date | null) => {
+      let submissionsQuery = supabase
+        .from("widget_events")
+        .select("id", { count: "exact", head: true })
+        .eq("workspace_id", workspaceId)
+        .eq("event_type", "submission")
+        .gte("occurred_at", from.toISOString());
+      let clicksQuery = supabase
+        .from("campaign_events")
+        .select("id", { count: "exact", head: true })
+        .eq("workspace_id", workspaceId)
+        .eq("metadata->>tracking_kind", "lead_magnet")
+        .gte("occurred_at", from.toISOString());
+
+      if (to) {
+        submissionsQuery = submissionsQuery.lt("occurred_at", to.toISOString());
+        clicksQuery = clicksQuery.lt("occurred_at", to.toISOString());
+      }
+
+      const [{ count: submissions }, { count: clicks }] = await Promise.all([
+        submissionsQuery,
+        clicksQuery,
+      ]);
+
+      const s = submissions ?? 0;
+      const c = clicks ?? 0;
+      return { submissions: s, clicks: c, click_rate: s > 0 ? (c / s) * 100 : 0 };
+    };
+
+    const [leadMagnet, prevLeadMagnet] = await Promise.all([
+      leadMagnetWindow(startDate, null),
+      leadMagnetWindow(priorStartDate, startDate),
+    ]);
+
     return apiSuccess({
       total_subscribers: totalSubscribers || 0,
       new_subscribers: newSubscribers,
+      lead_magnet: leadMagnet,
       campaigns_sent: currentSummary.campaigns_sent,
       avg_open_rate: currentSummary.avg_open_rate,
       avg_click_rate: currentSummary.avg_click_rate,
@@ -209,6 +304,7 @@ export async function GET(
       top_campaigns: topCampaigns,
       previous: {
         new_subscribers: prevNewSubscribers,
+        lead_magnet: prevLeadMagnet,
         campaigns_sent: previousSummary.campaigns_sent,
         avg_open_rate: previousSummary.avg_open_rate,
         avg_click_rate: previousSummary.avg_click_rate,
