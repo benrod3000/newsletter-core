@@ -44,9 +44,49 @@ function csvEscape(value: unknown): string {
  *
  * Query params:
  * - status: "confirmed" | "pending" (optional - exports all if omitted)
+ * - ids: comma-separated subscriber uuids (optional - exports just those)
+ *
+ * `ids` exists so "export the rows I ticked" can mean that. The button used to live
+ * among the bulk actions while exporting whatever the filter matched, so selecting
+ * five contacts and pressing it produced the whole list.
  */
 export const GET = withWorkspace(async ({ req, ctx, db }) => {
-  const status = new URL(req.url).searchParams.get("status");
+  const params = new URL(req.url).searchParams;
+  const status = params.get("status");
+
+  /*
+   * Parsed strictly and capped.
+   *
+   * Every id is shape-checked before it reaches PostgREST: an `.in()` built from
+   * unvalidated input is how a filter-injection surface appears, and this endpoint
+   * reads personal data. Anything malformed fails the request rather than being
+   * dropped, because silently exporting a different set than was asked for is worse
+   * than an error.
+   *
+   * The cap is a URL-length guard, not a policy: a selection is one page of the
+   * contacts table, so it cannot legitimately approach this.
+   */
+  const MAX_IDS = 500;
+  const UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+  const rawIds = params.get("ids");
+  let ids: string[] | null = null;
+
+  if (rawIds !== null) {
+    ids = rawIds.split(",").map((v) => v.trim()).filter(Boolean);
+
+    if (ids.length === 0) {
+      return NextResponse.json({ error: "No contacts selected." }, { status: 400 });
+    }
+    if (ids.length > MAX_IDS) {
+      return NextResponse.json(
+        { error: `Too many contacts selected. Export at most ${MAX_IDS} at once, or export by filter instead.` },
+        { status: 400 }
+      );
+    }
+    if (!ids.every((v) => UUID.test(v))) {
+      return NextResponse.json({ error: "Invalid contact id in selection." }, { status: 400 });
+    }
+  }
 
   // `id` is selected only to drive keyset pagination; it is not a CSV column.
   // Ordering by id rather than created_at because the walk needs a unique key,
@@ -73,6 +113,7 @@ export const GET = withWorkspace(async ({ req, ctx, db }) => {
         .order("id", { ascending: true })
         .limit(pageSize);
 
+      if (ids) q = q.in("id", ids);
       if (status === "confirmed") q = q.eq("confirmed", true);
       else if (status === "pending") q = q.eq("confirmed", false);
       if (afterId) q = q.gt("id", afterId);
