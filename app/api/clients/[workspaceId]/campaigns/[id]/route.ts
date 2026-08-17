@@ -3,6 +3,7 @@ import { isUuid } from "@/lib/route-params";
 import { withWorkspace } from "@/lib/with-workspace";
 import { logError } from "@/lib/logger";
 import { logAudit, extractRequestMeta, audit, AUDIT_ACTIONS } from "@/lib/audit-log";
+import { isValidAudience, FIXED_AUDIENCES } from "@/lib/send-campaign";
 
 const CORS = { "Access-Control-Allow-Origin": "*" };
 
@@ -42,7 +43,22 @@ export const PATCH = withWorkspace<{ workspaceId: string; id: string }>(
     } else {
       if (body.title !== undefined) updateData.title = body.title;
       if (body.subject !== undefined) updateData.subject = body.subject;
-      if (body.audience !== undefined) updateData.audience = body.audience;
+      if (body.audience !== undefined) {
+        // Validated here rather than left to the CHECK constraint, which reports a
+        // rejected value as a 500 with no indication of the column. A draft that
+        // silently refuses to save is the symptom that produced.
+        if (!isValidAudience(body.audience)) {
+          return NextResponse.json(
+            {
+              error:
+                `"${body.audience}" is not a valid audience. Use one of ` +
+                `${FIXED_AUDIENCES.join(", ")}, or list:<uuid>.`,
+            },
+            { status: 400, headers: CORS }
+          );
+        }
+        updateData.audience = body.audience;
+      }
       if (body.editor_html !== undefined) updateData.editor_html = body.editor_html;
       if (body.editor_css !== undefined) updateData.editor_css = body.editor_css;
     }

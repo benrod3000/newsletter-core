@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withWorkspace } from "@/lib/with-workspace";
 import { logError } from "@/lib/logger";
 import { audit, AUDIT_ACTIONS } from "@/lib/audit-log";
+import { isValidAudience, FIXED_AUDIENCES } from "@/lib/send-campaign";
 
 /**
  * GET /api/clients/[workspaceId]/campaigns
@@ -57,6 +58,17 @@ export const POST = withWorkspace(
 
     if (!title || !subject) {
       return NextResponse.json({ error: "Title and subject required" }, { status: 400 });
+    }
+
+    if (audience !== undefined && !isValidAudience(audience)) {
+      return NextResponse.json(
+        {
+          error:
+            `"${audience}" is not a valid audience. Use one of ${FIXED_AUDIENCES.join(", ")}, ` +
+            `or list:<uuid>.`,
+        },
+        { status: 400 }
+      );
     }
 
     const { data, error } = await db

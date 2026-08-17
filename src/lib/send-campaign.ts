@@ -17,12 +17,45 @@ import { PLATFORM_FALLBACK_FROM_EMAIL } from "@/lib/platform-sender";
  * `| string` collapsed it back to `string`, so a typo'd audience compiled fine
  * and silently sent to the wrong people.
  */
-export type Audience = "all" | "confirmed" | "pending" | "claimed_offer" | `list:${string}`;
+/**
+ * The audiences a campaign may target.
+ *
+ * `geo` behaves as "all", narrowed by the campaign's `geo_filter` columns rather
+ * than by the audience string itself - `campaign_audience()` matches none of its
+ * audience branches for it, which leaves every subscriber eligible before the
+ * country/region/city/radius parameters are applied.
+ */
+export type Audience = "all" | "confirmed" | "pending" | "claimed_offer" | "geo" | `list:${string}`;
+
+/** The fixed audiences, as a value - see isValidAudience. */
+export const FIXED_AUDIENCES = ["all", "confirmed", "pending", "claimed_offer", "geo"] as const;
+
+const LIST_AUDIENCE = /^list:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+/**
+ * Validate an audience before it reaches the database.
+ *
+ * There is a CHECK constraint on `campaigns.audience` saying the same thing, and it
+ * had drifted from the UI twice: it never learned about lists, which made "Failed to
+ * create campaign" the response to picking one, and then it never learned about
+ * `geo`, which broke saving a draft the same way a day later. A constraint violation
+ * surfaces as a 500 with no indication of which column was at fault, so each time it
+ * read as the campaign feature being broken.
+ *
+ * Checking here makes the rejection a 400 that names the value, and leaves the
+ * constraint as a backstop rather than the only gate. If you add an audience, add it
+ * to this list, to the type above, and to the constraint - `audience-values.test.ts`
+ * asserts the first two agree.
+ */
+export function isValidAudience(value: unknown): value is Audience {
+  if (typeof value !== "string") return false;
+  return (FIXED_AUDIENCES as readonly string[]).includes(value) || LIST_AUDIENCE.test(value);
+}
 
 /**
  * Look up the workspace's configured sending provider and build dispatch config.
  */
-async function getWorkspaceSender(
+export async function getWorkspaceSender(
   supabase: ReturnType<typeof getSupabaseClient>,
   workspaceId: string
 ): Promise<{ fromEmail: string; fromName: string; dispatchConfig: DispatchConfig; branding: Branding }> {
