@@ -1,0 +1,24 @@
+-- widgets.download_url is only meaningful for two of the six widget types.
+--
+-- `lead_magnet` puts the file behind an email address and links to it once the
+-- delivery email has been sent or has failed; `coupon` renders the value
+-- literally as the code on the success screen. `newsletter`, `event_rsvp`,
+-- `feedback` and `sms_list` never read the column.
+--
+-- It was NOT NULL, and the create route required it of every type, while the
+-- builder validated it for lead magnets only. So creating a feedback form
+-- passed client validation and came back a 400 asking for a download URL its
+-- own form does not offer a field for - which is why the only widget that has
+-- ever existed in this database is a lead magnet. The type picker offered six
+-- options, four of which could not be saved.
+--
+-- Relaxing the API check alone would not have been enough: the insert would
+-- have reached Postgres and failed the NOT NULL instead, turning a 400 into a
+-- 500 without making anything creatable.
+--
+-- No backfill. Every existing row has a value, and the column stays required by
+-- the application for the two types that read it - enforced in
+-- `requiresDownloadUrl()` rather than by the constraint, so the error can name
+-- the type and say "coupon code" or "download URL" as appropriate.
+
+ALTER TABLE widgets ALTER COLUMN download_url DROP NOT NULL;

@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { withWorkspace } from "@/lib/with-workspace";
 import { logError } from "@/lib/logger";
-import { isWidgetSize, WIDGET_SIZES } from "@/lib/widget-config";
+import {
+  isWidgetSize,
+  WIDGET_SIZES,
+  isWidgetType,
+  WIDGET_TYPES,
+  requiresDownloadUrl,
+} from "@/lib/widget-config";
 import { audit, AUDIT_ACTIONS } from "@/lib/audit-log";
 
 /**
@@ -76,8 +82,28 @@ export const POST = withWorkspace(
     if (!slug || typeof slug !== "string" || !slug.trim()) {
       return NextResponse.json({ error: "Slug is required" }, { status: 400 });
     }
-    if (!download_url || typeof download_url !== "string" || !download_url.trim()) {
-      return NextResponse.json({ error: "Download URL is required" }, { status: 400 });
+    // Only the types that actually read the column. Requiring it of all six made
+    // the other four impossible to create through the builder, which validates it
+    // for lead magnets only - so a feedback form passed the client and came back
+    // a 400 naming a field its own form does not show.
+    if (type !== undefined && !isWidgetType(type)) {
+      return NextResponse.json(
+        { error: `Type must be one of: ${WIDGET_TYPES.join(", ")}` },
+        { status: 400 }
+      );
+    }
+    const widgetType = (type as string) || "lead_magnet";
+    const downloadUrl = typeof download_url === "string" ? download_url.trim() : "";
+
+    if (requiresDownloadUrl(widgetType) && !downloadUrl) {
+      return NextResponse.json(
+        {
+          error: widgetType === "coupon"
+            ? "A coupon code is required for this widget type."
+            : "A download URL is required for this widget type.",
+        },
+        { status: 400 }
+      );
     }
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
       return NextResponse.json(
@@ -113,7 +139,11 @@ export const POST = withWorkspace(
         list_id: list_id || null,
         headline: (headline as string)?.trim() || "Get the Free Download",
         description: (description as string)?.trim() || "Enter your email and we'll send you the download link.",
-        download_url: download_url.trim(),
+        // Null, not "", for a type that has nothing to exchange. The renderer
+        // gates the download link and the coupon panel on this value being
+        // truthy, so an empty string would be indistinguishable - but it would
+        // still read as "this widget has a download that happens to be blank".
+        download_url: downloadUrl || null,
         button_text: (button_text as string)?.trim() || "Send Me the Link",
         success_message: (success_message as string)?.trim() || "Check your inbox! The download link is on its way.",
         placeholder: (placeholder as string)?.trim() || "you@example.com",
@@ -125,7 +155,7 @@ export const POST = withWorkspace(
           border_color: "#0a0a0a",
           button_text_color: "#0a0a0a",
         },
-        type: type || "lead_magnet",
+        type: widgetType,
         size: size || "medium",
         collect_location: collect_location !== false,
         // Null rather than a default: the sender falls back to its built-in copy,
