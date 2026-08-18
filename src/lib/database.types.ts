@@ -1605,6 +1605,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      process_due_campaigns: { Args: never; Returns: undefined }
       reset_admin_user_password: {
         Args: { p_password: string; p_user_id: string }
         Returns: undefined

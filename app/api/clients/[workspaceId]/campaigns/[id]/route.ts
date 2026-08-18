@@ -7,6 +7,9 @@ import { isValidAudience, FIXED_AUDIENCES } from "@/lib/send-campaign";
 
 const CORS = { "Access-Control-Allow-Origin": "*" };
 
+/** How far into the past a requested send time may fall before it is rejected. */
+const PAST_SCHEDULE_TOLERANCE_MS = 60_000;
+
 export const PATCH = withWorkspace<{ workspaceId: string; id: string }>(
   async ({ req, ctx, db, params }) => {
     const { id } = params;
@@ -37,9 +40,63 @@ export const PATCH = withWorkspace<{ workspaceId: string; id: string }>(
 
     const updateData: Record<string, unknown> = {};
 
-    if (body.schedule_now) {
+    if (body.unschedule) {
+      // Returning a pending campaign to draft. Without this the only way out of
+      // "scheduled" was to wait for the send or edit the row by hand.
+      if (existing.status !== "scheduled") {
+        return NextResponse.json(
+          { error: `Only a scheduled campaign can be unscheduled (this one is ${existing.status}).` },
+          { status: 409, headers: CORS }
+        );
+      }
+      updateData.status = "draft";
+      updateData.scheduled_for = null;
+    } else if (body.schedule_now) {
+      if (existing.status === "sent" || existing.status === "sending") {
+        return NextResponse.json(
+          { error: `This campaign is already ${existing.status}.` },
+          { status: 409, headers: CORS }
+        );
+      }
+
+      // `schedule_for` was previously passed straight through with
+      // `body.schedule_for || new Date().toISOString()`. An unparseable value
+      // reached Postgres as-is, and anything falsy - including the empty string
+      // a cleared date input produces - silently became "now", which is how a
+      // campaign nobody meant to schedule ends up pending.
+      let scheduledFor: string;
+      if (body.schedule_for === undefined || body.schedule_for === null) {
+        scheduledFor = new Date().toISOString();
+      } else {
+        if (typeof body.schedule_for !== "string" || !body.schedule_for.trim()) {
+          return NextResponse.json(
+            { error: "schedule_for must be an ISO 8601 timestamp." },
+            { status: 422, headers: CORS }
+          );
+        }
+        const parsed = new Date(body.schedule_for);
+        if (Number.isNaN(parsed.getTime())) {
+          return NextResponse.json(
+            { error: `"${body.schedule_for}" is not a valid date/time.` },
+            { status: 422, headers: CORS }
+          );
+        }
+        // A past time is accepted only within a small tolerance, which absorbs
+        // clock skew and the seconds between picking a time and submitting it.
+        // Beyond that it is a mistake worth reporting: the processor sends
+        // anything already due on its next pass, so a date entered as last week
+        // would go out immediately rather than being held.
+        if (parsed.getTime() < Date.now() - PAST_SCHEDULE_TOLERANCE_MS) {
+          return NextResponse.json(
+            { error: "That time is in the past. Pick a future time, or send now." },
+            { status: 422, headers: CORS }
+          );
+        }
+        scheduledFor = parsed.toISOString();
+      }
+
       updateData.status = "scheduled";
-      updateData.scheduled_for = body.schedule_for || new Date().toISOString();
+      updateData.scheduled_for = scheduledFor;
     } else {
       if (body.title !== undefined) updateData.title = body.title;
       if (body.subject !== undefined) updateData.subject = body.subject;
@@ -87,7 +144,7 @@ export const PATCH = withWorkspace<{ workspaceId: string; id: string }>(
     // draft save. Committing a campaign to an audience is irreversible; editing
     // the subject line is not, and recording both would bury the one that
     // matters under hundreds of the one that does not.
-    if (body.schedule_now) {
+    if (body.schedule_now || body.unschedule) {
       const { ip, ua } = extractRequestMeta(req);
       await logAudit({
         workspace_id: ctx.workspaceId,
@@ -98,6 +155,7 @@ export const PATCH = withWorkspace<{ workspaceId: string; id: string }>(
           subject: data.subject,
           audience: data.audience,
           scheduled_for: updateData.scheduled_for,
+          unscheduled: Boolean(body.unschedule),
         },
         ip_address: ip,
         user_agent: ua,

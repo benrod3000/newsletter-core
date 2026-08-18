@@ -23,6 +23,31 @@ async function processScheduledCampaigns(req: NextRequest) {
   if (!dueCampaigns || dueCampaigns.length === 0) return NextResponse.json({ ok: true, processed: 0, sent: 0 });
   let sent = 0;
   for (const campaign of dueCampaigns) {
+    // Claim the campaign before sending anything.
+    //
+    // This ran once a day, so two invocations could never overlap and the
+    // select-then-send was safe by accident. It now runs every five minutes,
+    // and a send that outlives its interval would otherwise be picked up again
+    // by the next run while the first was still draining - enqueueCampaignJob
+    // has no per-campaign guard, so that means a second job over the same
+    // audience and a duplicate delivery to everyone on it.
+    //
+    // The update is the lock: whichever run's statement lands first moves the
+    // row out of 'scheduled', and the other matches nothing and skips.
+    const { data: claimed, error: claimError } = await supabase
+      .from("campaigns")
+      .update({ status: "sending", updated_by: "cron" })
+      .eq("id", campaign.id)
+      .eq("status", "scheduled")
+      .select("id")
+      .maybeSingle();
+
+    if (claimError) {
+      logError(claimError, { campaignId: campaign.id, workspaceId: campaign.workspace_id, scope: "process.claim" });
+      continue;
+    }
+    if (!claimed) continue; // Another run got there first.
+
     try {
       const result = await sendCampaignBlast({
         workspaceId: campaign.workspace_id, subject: campaign.subject,
@@ -45,7 +70,20 @@ async function processScheduledCampaigns(req: NextRequest) {
       }).eq("id", campaign.id);
     } catch (err) {
       logError(err, { campaignId: campaign.id, workspaceId: campaign.workspace_id })
-      await supabase.from("campaigns").update({ last_error: err instanceof Error ? err.message : "Send failed", updated_by: "cron" }).eq("id", campaign.id);
+      // Put it back to 'scheduled', not just record the error. The claim above
+      // moved it to 'sending', and the due query only selects 'scheduled' - so
+      // leaving it there would strand the campaign permanently on a failure it
+      // used to recover from on the next run.
+      //
+      // sendCampaignBlast only throws before any mail moves (sending limit,
+      // unresolvable provider, enqueue failure), so a retry cannot duplicate a
+      // delivery. It does mean a workspace with a broken provider retries every
+      // five minutes instead of daily; last_error records why each time.
+      await supabase.from("campaigns").update({
+        status: "scheduled",
+        last_error: err instanceof Error ? err.message : "Send failed",
+        updated_by: "cron",
+      }).eq("id", campaign.id);
     }
   }
   return NextResponse.json({ ok: true, processed: dueCampaigns.length, sent });
