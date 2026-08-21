@@ -4,8 +4,8 @@ import { logError } from "@/lib/logger";
 import { fetchAllRows } from "@/lib/paginate";
 import { logAudit, extractRequestMeta, AUDIT_ACTIONS } from "@/lib/audit-log";
 import type { Tables } from "@/lib/database.types";
-import { getSupabaseClient } from "@/lib/supabase";
 import { quoteFilterValue } from "@/lib/postgrest";
+import { parseGeoAreas, fetchSubscribersInAreas } from "@/lib/geo-areas";
 
 const COLUMNS = [
   "email", "first_name", "last_name", "phone_number", "date_of_birth",
@@ -47,7 +47,8 @@ function csvEscape(value: unknown): string {
  * Query params:
  * - status: "confirmed" | "pending" (optional - exports all if omitted)
  * - ids: comma-separated subscriber uuids (optional - exports just those)
- * - near_lat / near_lng / radius: radius in miles, same contract as the list route
+ * - areas: `lat,lng,radiusMiles` triples separated by `;` - several areas are a union
+ * - near_lat / near_lng / radius: the original single-area form, still accepted
  * - search: matches email, first or last name
  * - joined_after / joined_before: ISO dates
  *
@@ -114,40 +115,28 @@ export const GET = withWorkspace(async ({ req, ctx, db }) => {
     | "confirmed" | "suppressed" | "suppressed_reason" | "created_at"
   >;
 
-  const nearLat = params.get("near_lat");
-  const nearLng = params.get("near_lng");
+  const areas = parseGeoAreas(params);
   const search = params.get("search");
   const joinedAfter = params.get("joined_after");
   const joinedBefore = params.get("joined_before");
 
   let subscribers: ExportRow[];
   try {
-    if (nearLat && nearLng) {
+    if (areas.length > 0) {
       /*
        * The radius lives in a Postgres function, so it cannot be expressed as a
        * PostgREST filter and composed with the rest. nearby_subscribers returns
        * SETOF subscribers - every column this export needs - so the geo predicate
        * runs in the database and the remaining filters are applied to its result.
        *
-       * Miles in, kilometres to the function, exactly as the list route converts
-       * them. Both must agree: an export that disagrees with the table it was
+       * Several areas are a union, resolved by the same helper the list route
+       * uses. Both must agree: an export that disagrees with the table it was
        * taken from is worse than no export.
        */
-      const radiusKm = parseFloat(params.get("radius") || "10") * 1.609344;
-      const { data, error } = await getSupabaseClient().rpc("nearby_subscribers", {
-        p_workspace_id: ctx.workspaceId,
-        center_lat: parseFloat(nearLat),
-        center_lng: parseFloat(nearLng),
-        radius_km: radiusKm,
-      });
-
-      if (error) {
-        logError(error, { route: "clients.subscribers.export.nearby", workspaceId: ctx.workspaceId });
-        return NextResponse.json({ error: "Failed to export subscribers" }, { status: 500 });
-      }
+      const rows = await fetchSubscribersInAreas(ctx.workspaceId, areas);
 
       const needle = search?.toLowerCase().trim();
-      subscribers = (Array.isArray(data) ? data : []).filter((s) => {
+      subscribers = rows.filter((s) => {
         if (ids && !ids.includes(s.id)) return false;
         if (status === "confirmed" && !s.confirmed) return false;
         if (status === "pending" && s.confirmed) return false;

@@ -5,6 +5,7 @@ import { getSupabaseClient } from "@/lib/supabase";
 import { logError } from "@/lib/logger";
 import { logAudit, extractRequestMeta, AUDIT_ACTIONS } from "@/lib/audit-log";
 import { quoteFilterValue } from "@/lib/postgrest";
+import { parseGeoAreas, fetchSubscribersInAreas } from "@/lib/geo-areas";
 
 /** Subscriber ids are uuid primary keys (migration 001). */
 const bulkDeleteSchema = z.object({
@@ -31,34 +32,50 @@ export const GET = withWorkspace(async ({ req, ctx, db }) => {
   const offset = parseInt(url.searchParams.get("offset") || "0");
   const status = url.searchParams.get("status");
 
-  const nearLat = url.searchParams.get("near_lat");
-  const nearLng = url.searchParams.get("near_lng");
-  const radius = url.searchParams.get("radius") || "10";
+  /*
+   * Areas are a union. The picker allows several and draws a circle for each,
+   * while this read near_lat/near_lng only - the first area - and dropped the
+   * rest. Selecting Oceanside at 10mi (which contains nobody) alongside
+   * Encinitas at 100mi (which contains eight) therefore answered 0, and the page
+   * rendered "your audience starts here" over a workspace of 10,310 contacts.
+   *
+   * Miles convert to kilometres in parseGeoAreas, at the one boundary where the
+   * unit changes: campaigns.geo_filter and enqueue_campaign_recipients are both
+   * km, so filtering a list and sending to the same shape must agree.
+   */
+  const areas = parseGeoAreas(url.searchParams);
 
-  if (nearLat && nearLng) {
-    // `radius` arrives in miles, which is what the UI offers. The function takes
-    // kilometres, because that is what campaigns.geo_filter stores and what
-    // enqueue_campaign_recipients uses - previously this passed `radius_miles`
-    // to a km-based world, so filtering the list and sending to the same radius
-    // could select different people. Converted here, at the one boundary where
-    // the unit changes.
-    const radiusKm = parseFloat(radius) * 1.609344;
-
-    const { data, error } = await getSupabaseClient().rpc("nearby_subscribers", {
-      p_workspace_id: ctx.workspaceId,
-      center_lat: parseFloat(nearLat),
-      center_lng: parseFloat(nearLng),
-      radius_km: radiusKm,
-    });
-
-    if (error) {
-      logError(error, { route: "clients.subscribers.nearby", workspaceId: ctx.workspaceId });
+  if (areas.length > 0) {
+    let rows;
+    try {
+      rows = await fetchSubscribersInAreas(ctx.workspaceId, areas);
+    } catch (err) {
+      logError(err, { route: "clients.subscribers.nearby", workspaceId: ctx.workspaceId, areas: areas.length });
       return NextResponse.json({ error: "Failed to fetch nearby subscribers" }, { status: 500 });
     }
 
-    const rows = Array.isArray(data) ? data : [];
+    // The remaining predicates are applied here because the radius lives in a
+    // Postgres function and cannot be composed with PostgREST filters.
+    const search = url.searchParams.get("search")?.toLowerCase().trim();
+    const joinedAfter = url.searchParams.get("joined_after");
+    const joinedBefore = url.searchParams.get("joined_before");
+
+    const filtered = rows.filter((s) => {
+      if (status === "confirmed" && !s.confirmed) return false;
+      if (status === "pending" && s.confirmed) return false;
+      if (status === "unsubscribed" && !s.suppressed) return false;
+      if ((status === "active" || status === "at_risk" || status === "cold") && s.health_score !== status) return false;
+      if (joinedAfter && s.created_at < joinedAfter) return false;
+      if (joinedBefore && s.created_at > `${joinedBefore}T23:59:59`) return false;
+      if (search) {
+        const hay = `${s.email ?? ""} ${s.first_name ?? ""} ${s.last_name ?? ""}`.toLowerCase();
+        if (!hay.includes(search)) return false;
+      }
+      return true;
+    });
+
     return NextResponse.json(
-      { subscribers: rows.slice(offset, offset + limit), total: rows.length, limit, offset },
+      { subscribers: filtered.slice(offset, offset + limit), total: filtered.length, limit, offset },
       { status: 200 }
     );
   }
