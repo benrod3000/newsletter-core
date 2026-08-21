@@ -4,29 +4,13 @@ import { withWorkspace } from "@/lib/with-workspace";
 import { getSupabaseClient } from "@/lib/supabase";
 import { logError } from "@/lib/logger";
 import { logAudit, extractRequestMeta, AUDIT_ACTIONS } from "@/lib/audit-log";
+import { quoteFilterValue } from "@/lib/postgrest";
 
 /** Subscriber ids are uuid primary keys (migration 001). */
 const bulkDeleteSchema = z.object({
   ids: z.array(z.string().uuid()).min(1).max(500),
 });
 
-/**
- * Escape a user-supplied value for use inside a PostgREST filter.
- *
- * PostgREST treats `,` `(` `)` and `.` as filter syntax. The previous version
- * built an `or=(email.ilike.*<search>*,...)` string with only
- * encodeURIComponent applied, which does not encode parentheses at all - so a
- * search term containing `)` could close the or-group and append further
- * top-level filters. The workspace filter is a separate ANDed parameter, so this
- * could not remove tenant scoping, but it could still bend the query.
- *
- * PostgREST allows double-quoting a value, with backslash escapes inside it.
- * Quoting is the correct fix; stripping characters would silently break searches
- * for names like "O'Brien (work)".
- */
-function quoteFilterValue(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
 
 /**
  * GET /api/clients/[workspaceId]/subscribers

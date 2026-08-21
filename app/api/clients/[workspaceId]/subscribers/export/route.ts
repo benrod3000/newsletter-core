@@ -4,6 +4,8 @@ import { logError } from "@/lib/logger";
 import { fetchAllRows } from "@/lib/paginate";
 import { logAudit, extractRequestMeta, AUDIT_ACTIONS } from "@/lib/audit-log";
 import type { Tables } from "@/lib/database.types";
+import { getSupabaseClient } from "@/lib/supabase";
+import { quoteFilterValue } from "@/lib/postgrest";
 
 const COLUMNS = [
   "email", "first_name", "last_name", "phone_number", "date_of_birth",
@@ -45,10 +47,21 @@ function csvEscape(value: unknown): string {
  * Query params:
  * - status: "confirmed" | "pending" (optional - exports all if omitted)
  * - ids: comma-separated subscriber uuids (optional - exports just those)
+ * - near_lat / near_lng / radius: radius in miles, same contract as the list route
+ * - search: matches email, first or last name
+ * - joined_after / joined_before: ISO dates
  *
  * `ids` exists so "export the rows I ticked" can mean that. The button used to live
  * among the bulk actions while exporting whatever the filter matched, so selecting
  * five contacts and pressing it produced the whole list.
+ *
+ * Everything after `ids` exists so "export what I am looking at" can mean that.
+ * Until now this accepted `status` and nothing else, so with a 10-mile radius
+ * around Encinitas applied and seven contacts on screen, Export CSV produced all
+ * 10,310 rows - the filter the operator had just built was not part of the
+ * request. These are the same parameter names the list route reads, deliberately:
+ * the export and the table must not be able to disagree about what "the current
+ * filter" means.
  */
 export const GET = withWorkspace(async ({ req, ctx, db }) => {
   const params = new URL(req.url).searchParams;
@@ -101,25 +114,76 @@ export const GET = withWorkspace(async ({ req, ctx, db }) => {
     | "confirmed" | "suppressed" | "suppressed_reason" | "created_at"
   >;
 
+  const nearLat = params.get("near_lat");
+  const nearLng = params.get("near_lng");
+  const search = params.get("search");
+  const joinedAfter = params.get("joined_after");
+  const joinedBefore = params.get("joined_before");
+
   let subscribers: ExportRow[];
   try {
-    subscribers = await fetchAllRows((afterId, pageSize) => {
-      let q = db
-        .from("subscribers")
-        .select(
-          "id, email, first_name, last_name, phone_number, date_of_birth, country, region, city, timezone, locale, utm_source, utm_medium, utm_campaign, consent_email_marketing, consent_analytics_tracking, confirmed, suppressed, suppressed_reason, created_at"
-        )
-        .eq("workspace_id", ctx.workspaceId)
-        .order("id", { ascending: true })
-        .limit(pageSize);
+    if (nearLat && nearLng) {
+      /*
+       * The radius lives in a Postgres function, so it cannot be expressed as a
+       * PostgREST filter and composed with the rest. nearby_subscribers returns
+       * SETOF subscribers - every column this export needs - so the geo predicate
+       * runs in the database and the remaining filters are applied to its result.
+       *
+       * Miles in, kilometres to the function, exactly as the list route converts
+       * them. Both must agree: an export that disagrees with the table it was
+       * taken from is worse than no export.
+       */
+      const radiusKm = parseFloat(params.get("radius") || "10") * 1.609344;
+      const { data, error } = await getSupabaseClient().rpc("nearby_subscribers", {
+        p_workspace_id: ctx.workspaceId,
+        center_lat: parseFloat(nearLat),
+        center_lng: parseFloat(nearLng),
+        radius_km: radiusKm,
+      });
 
-      if (ids) q = q.in("id", ids);
-      if (status === "confirmed") q = q.eq("confirmed", true);
-      else if (status === "pending") q = q.eq("confirmed", false);
-      if (afterId) q = q.gt("id", afterId);
+      if (error) {
+        logError(error, { route: "clients.subscribers.export.nearby", workspaceId: ctx.workspaceId });
+        return NextResponse.json({ error: "Failed to export subscribers" }, { status: 500 });
+      }
 
-      return q;
-    });
+      const needle = search?.toLowerCase().trim();
+      subscribers = (Array.isArray(data) ? data : []).filter((s) => {
+        if (ids && !ids.includes(s.id)) return false;
+        if (status === "confirmed" && !s.confirmed) return false;
+        if (status === "pending" && s.confirmed) return false;
+        if (joinedAfter && s.created_at < joinedAfter) return false;
+        if (joinedBefore && s.created_at > `${joinedBefore}T23:59:59`) return false;
+        if (needle) {
+          const hay = `${s.email ?? ""} ${s.first_name ?? ""} ${s.last_name ?? ""}`.toLowerCase();
+          if (!hay.includes(needle)) return false;
+        }
+        return true;
+      }) as ExportRow[];
+    } else {
+      subscribers = await fetchAllRows((afterId, pageSize) => {
+        let q = db
+          .from("subscribers")
+          .select(
+            "id, email, first_name, last_name, phone_number, date_of_birth, country, region, city, timezone, locale, utm_source, utm_medium, utm_campaign, consent_email_marketing, consent_analytics_tracking, confirmed, suppressed, suppressed_reason, created_at"
+          )
+          .eq("workspace_id", ctx.workspaceId)
+          .order("id", { ascending: true })
+          .limit(pageSize);
+
+        if (ids) q = q.in("id", ids);
+        if (status === "confirmed") q = q.eq("confirmed", true);
+        else if (status === "pending") q = q.eq("confirmed", false);
+        if (joinedAfter) q = q.gte("created_at", joinedAfter);
+        if (joinedBefore) q = q.lte("created_at", `${joinedBefore}T23:59:59`);
+        if (search) {
+          const needle = quoteFilterValue(search);
+          q = q.or(`email.ilike."%${needle}%",first_name.ilike."%${needle}%",last_name.ilike."%${needle}%"`);
+        }
+        if (afterId) q = q.gt("id", afterId);
+
+        return q;
+      });
+    }
   } catch (err) {
     logError(err, { route: "clients.subscribers.export", workspaceId: ctx.workspaceId });
     return NextResponse.json({ error: "Failed to export subscribers" }, { status: 500 });
