@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
 import { buildHtmlFromEditor, buildWebVersionUrl, mergeDataForRecipient, renderTemplate, type MergeRecipient } from "@/lib/campaign-personalization";
 import { injectTracking } from "@/lib/campaign-tracking";
+import { getApiBaseUrl } from "@/lib/geo-utils";
 import { sanitizeCampaignHtml, sanitizeCampaignCss } from "@/lib/sanitize-campaign-html";
 import { resolveBranding, BRANDING_COLUMNS } from "@/lib/branding";
 
@@ -15,12 +16,9 @@ type WebCampaign = {
 };
 
 
-function getBaseUrl(req: NextRequest): string {
-  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
-  const proto = req.headers.get("x-forwarded-proto") ?? "https";
-  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "";
-  return `${proto}://${host}`;
-}
+// Was a private copy of the deleted getBaseUrl, with the same NEXT_PUBLIC_APP_URL
+// preference and the same consequence: this page injects tracking, so its pixel
+// and links pointed at the frontend's catch-all and recorded nothing.
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -72,7 +70,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return new NextResponse("Not found", { status: 404 });
   }
 
-  const baseUrl = getBaseUrl(req);
+  const baseUrl = getApiBaseUrl(req);
   const unsubscribeUrl = `${baseUrl}/unsubscribe?token=${subscriber.unsubscribe_token}`;
   const webVersionUrl = buildWebVersionUrl(baseUrl, campaign.id, subscriber.id);
   const mergeData = mergeDataForRecipient(subscriber, unsubscribeUrl, webVersionUrl);

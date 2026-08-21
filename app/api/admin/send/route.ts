@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { canSendCampaigns, getAdminContextFromHeaders } from "@/lib/admin-context";
 import { sendCampaignBlast } from "@/lib/send-campaign";
-import { parseGeoFilter, getBaseUrl } from "@/lib/geo-utils";
+import { parseGeoFilter, getApiBaseUrl } from "@/lib/geo-utils";
 import type { Audience } from "@/lib/send-campaign";
 import { buildDispatcherConfig } from "@/lib/email/dispatcher";
 import { dispatchEmail } from "@/lib/email/dispatcher";
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     if (!subject || !message) return apiError(422, "VALIDATION_ERROR", "Subject and message required");
 
     const supabase = getSupabaseClient();
-    const baseUrl = getBaseUrl(req);
+    const baseUrl = getApiBaseUrl(req);
     let workspaceId = admin.clientId || "";
 
     // Resolve workspace from campaign

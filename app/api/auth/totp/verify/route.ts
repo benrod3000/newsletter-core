@@ -3,6 +3,7 @@ import { createClientJWT, verifyPendingTOTPJWT } from "@/lib/jwt";
 import { verifyTOTP } from "@/lib/totp";
 import { getSupabaseClient } from "@/lib/supabase";
 import { logAudit, AUDIT_ACTIONS, extractRequestMeta } from "@/lib/audit-log";
+import { recordLogin } from "@/lib/record-login";
 
 /**
  * POST /api/auth/totp/verify
@@ -60,15 +61,7 @@ export async function POST(req: NextRequest) {
     const expiresIn = 86400 * 30;
     const token = createClientJWT(payload.workspaceId, payload.userId, payload.email, payload.role, expiresIn);
 
-    // Update last login
-    const supabaseUrl = process.env.SUPABASE_URL!;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-    const auth = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` };
-    await fetch(`${supabaseUrl}/rest/v1/workspace_users?id=eq.${payload.userId}`, {
-      method: "PATCH",
-      headers: { ...auth, "Prefer": "return=minimal" },
-      body: JSON.stringify({ last_login_at: new Date().toISOString(), last_login_ip: ip, last_login_user_agent: ua }),
-    }).catch(() => {});
+    await recordLogin(payload.userId, { ip, ua });
 
     logAudit({ workspace_id: payload.workspaceId, user_id: payload.userId, action: AUDIT_ACTIONS.TOTP_VERIFIED, ip_address: ip, user_agent: ua });
 

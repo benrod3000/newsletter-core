@@ -7,7 +7,7 @@ import { buildRecipientEmail } from "@/lib/email/recipient-email";
 import { resolveBranding } from "@/lib/branding";
 import { checkSendingLimit, SendingLimitError } from "@/lib/sending-limits";
 import { logError } from "@/lib/logger";
-import { getBaseUrl } from "@/lib/geo-utils";
+import { getApiBaseUrl } from "@/lib/geo-utils";
 import type { Json } from "@/lib/database.types";
 
 /**
@@ -187,7 +187,7 @@ export async function POST(req: NextRequest) {
 
   const supabase = getSupabaseClient();
   const now = new Date();
-  const baseUrl = getBaseUrl(req);
+  const baseUrl = getApiBaseUrl(req);
 
   try {
     const { data: automations, error: autoError } = await supabase

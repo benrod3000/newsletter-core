@@ -3,7 +3,7 @@ import { isUuid } from "@/lib/route-params";
 import { withWorkspace } from "@/lib/with-workspace";
 import { getSupabaseClient } from "@/lib/supabase";
 import { sendCampaignBlast } from "@/lib/send-campaign";
-import { getBaseUrl, parseGeoFilter } from "@/lib/geo-utils";
+import { getApiBaseUrl, parseGeoFilter } from "@/lib/geo-utils";
 import { audit, AUDIT_ACTIONS } from "@/lib/audit-log";
 import { logError } from "@/lib/logger";
 
@@ -110,7 +110,7 @@ export const POST = withWorkspace<{ workspaceId: string; id: string }>(
         audience: campaign.audience ?? "confirmed",
         geoFilter: parseGeoFilter(campaign.geo_filter),
         campaignId: campaign.id,
-        baseUrl: getBaseUrl(req),
+        baseUrl: getApiBaseUrl(req),
       });
 
       // A drain that ran out of time leaves recipients pending and the recovery

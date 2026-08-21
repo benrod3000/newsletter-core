@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
 import { sendCampaignBlast } from "@/lib/send-campaign";
-import { getBaseUrl, parseGeoFilter } from "@/lib/geo-utils";
+import { getApiBaseUrl, parseGeoFilter } from "@/lib/geo-utils";
 import { requireCronSecret } from "@/lib/cron-auth";
 import { logError } from "@/lib/logger";
 
@@ -12,7 +12,7 @@ async function processScheduledCampaigns(req: NextRequest) {
   if (auth) return auth;
   const supabase = getSupabaseClient();
   const nowIso = new Date().toISOString();
-  const baseUrl = getBaseUrl(req);
+  const baseUrl = getApiBaseUrl(req);
   const dueQuery = supabase
     .from("campaigns")
     .select("id, workspace_id, subject, audience, geo_filter, editor_html, editor_css, plain_text")

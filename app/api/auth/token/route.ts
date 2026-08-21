@@ -7,6 +7,9 @@ import { ZodError } from "zod";
 import { logAudit, AUDIT_ACTIONS, extractRequestMeta } from "@/lib/audit-log";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { isDemoAccount } from "@/lib/demo";
+import { recordLogin } from "@/lib/record-login";
+import { getSupabaseClient } from "@/lib/supabase";
+import { logError } from "@/lib/logger";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -67,14 +70,24 @@ export async function POST(req: NextRequest) {
       return apiError(401, "INVALID_CREDENTIALS", "Invalid email or password");
     }
 
-    // Auto-upgrade legacy password hash
+    // Auto-upgrade a legacy password hash.
+    //
+    // Third instance of the same defect in this file: a PostgREST PATCH with a
+    // JSON body and no Content-Type, which the server answers 415, wrapped in a
+    // .catch that could not have caught it anyway because fetch does not reject
+    // on an error status. So no legacy hash has ever actually been upgraded -
+    // the branch runs, the request is refused, and the next sign-in takes the
+    // same branch again.
     if (rehash) {
-      const updateUrl = `${supabaseUrl}/rest/v1/workspace_users?id=eq.${user.id}`;
-      await fetch(updateUrl, {
-        method: "PATCH",
-        headers: { ...auth, "Prefer": "return=minimal" },
-        body: JSON.stringify({ password_hash: rehash }),
-      }).catch(() => {});
+      const { error: rehashError } = await getSupabaseClient()
+        .from("workspace_users")
+        .update({ password_hash: rehash })
+        .eq("id", user.id);
+
+      // Not fatal: the password verified, and the stored hash is old rather
+      // than wrong. Reported so a permanent failure is visible instead of
+      // retrying forever in silence.
+      if (rehashError) logError(rehashError, { route: "auth.token.rehash", userId: user.id });
     }
 
     // Check if TOTP is required - if so, return a partial token that needs verification
@@ -94,13 +107,7 @@ export async function POST(req: NextRequest) {
     const expiresIn = 86400 * 30;
     const token = createClientJWT(user.workspace_id, user.id, user.email, user.role, expiresIn);
 
-    // Update last login info
-    const updateUrl = `${supabaseUrl}/rest/v1/workspace_users?id=eq.${user.id}`;
-    await fetch(updateUrl, {
-      method: "PATCH",
-      headers: { ...auth, "Prefer": "return=minimal" },
-      body: JSON.stringify({ last_login_at: new Date().toISOString(), last_login_ip: ip, last_login_user_agent: ua }),
-    }).catch(() => {});
+    await recordLogin(user.id, { ip, ua });
 
     logAudit({ workspace_id: user.workspace_id, user_id: user.id, action: AUDIT_ACTIONS.LOGIN, ip_address: ip, user_agent: ua });
 

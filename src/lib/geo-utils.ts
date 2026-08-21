@@ -81,12 +81,32 @@ export function haversineDistanceKm(
   return R * c;
 }
 
-export function getBaseUrl(req: { headers: Headers }): string {
-  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
-  const proto = req.headers.get("x-forwarded-proto") ?? "https";
-  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "";
-  return `${proto}://${host}`;
-}
+/*
+ * `getBaseUrl` has been removed. It read:
+ *
+ *     if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
+ *     ...otherwise the request host
+ *
+ * and NEXT_PUBLIC_APP_URL is set in production to the **frontend**, which has a
+ * catch-all rewrite to index.html. So every link it built answered 200 with
+ * text/html instead of reaching a route:
+ *
+ *   - open pixels returned the React app's HTML, so no open was ever recorded
+ *   - click links returned the React app instead of redirecting, so recipients
+ *     clicking a link in a newsletter landed on the dashboard, not the
+ *     destination, and no click was recorded
+ *   - the List-Unsubscribe target returned a page rather than unsubscribing
+ *
+ * Nothing errored anywhere, because a 200 is a 200.
+ *
+ * The docblock below already warned about exactly this - it was written when
+ * emailed lead-magnet links hit it - but the unsafe function was left in place
+ * and every campaign send path kept calling it. Deleting it is the only version
+ * of this fix that stays fixed, so the compiler now rejects the wrong choice.
+ *
+ * For a link a human opens in the dashboard (password reset, "go to
+ * dashboard"), use APP_URL directly - that genuinely is the frontend.
+ */
 
 /**
  * The origin that serves *this* API, taken from the request and nothing else.

@@ -6,6 +6,7 @@ import { drainCampaignJob } from "@/lib/send-queue";
 import { buildDispatcherConfig } from "@/lib/email/dispatcher";
 import { logError, logWarn } from "@/lib/logger";
 import { PLATFORM_FALLBACK_FROM_EMAIL } from "@/lib/platform-sender";
+import { getApiBaseUrl } from "@/lib/geo-utils";
 
 /**
  * GET /api/admin/campaigns/recover
@@ -116,7 +117,12 @@ export async function GET(req: NextRequest) {
         message: campaign.plain_text || "",
         messageHtml: campaign.editor_html || "",
         messageCss: campaign.editor_css || "",
-        baseUrl: process.env.NEXT_PUBLIC_APP_URL || "",
+        // Was `process.env.NEXT_PUBLIC_APP_URL || ""`, which is the frontend -
+        // so a campaign finished by recovery mailed the remainder of its
+        // audience with dead tracking, dead click-throughs and a dead
+        // unsubscribe link, and with "" as the fallback, links reading
+        // "/api/track/open?..." with no origin at all.
+        baseUrl: getApiBaseUrl(req),
         fromEmail: client.sender_email || process.env.SENDGRID_FROM_EMAIL || PLATFORM_FALLBACK_FROM_EMAIL,
         fromName: client.sender_name || "Veloce",
         dispatchConfig,
