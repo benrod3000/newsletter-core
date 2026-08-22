@@ -357,13 +357,37 @@ export async function drainCampaignJob(params: DrainParams): Promise<DrainResult
     await supabase.from("campaign_jobs").update({ sent_so_far: sentCount }).eq("id", jobId);
   }
 
-  const { data: progressRows } = await supabase.rpc("campaign_job_progress", {
-    p_job_id: jobId,
-  });
+  const { data: progressRows, error: progressError } = await supabase.rpc(
+    "campaign_job_progress",
+    { p_job_id: jobId }
+  );
+
+  if (progressError) {
+    logError(progressError, { scope: "send-queue.progress", jobId });
+  }
+
   const progress = (progressRows ?? [])[0] as
     | { pending: number; sent: number; failed: number }
     | undefined;
-  const remaining = progress?.pending ?? 0;
+
+  /*
+   * An unknown progress state must read as "unfinished", not "done".
+   *
+   * This was `progress?.pending ?? 0`, and the error was not checked. So a
+   * failed or empty progress query produced remaining = 0, finished = true, and
+   * the job was marked complete with recipients still pending. Recovery only
+   * looks for jobs in 'sending', so a job wrongly marked complete is never
+   * retried: those people are never mailed and the campaign reports success.
+   *
+   * Which is exactly what the comment below has always claimed to prevent. The
+   * guard was right and its default was backwards - the one direction where
+   * being wrong is silent and permanent.
+   *
+   * `1` rather than a real count because the number is unknown; it only has to
+   * be non-zero to keep the job open for the recovery cron, which recomputes
+   * from campaign_job_recipients rather than trusting this.
+   */
+  const remaining = progress ? progress.pending : 1;
 
   // Only terminal when nothing is left. An interrupted drain stays 'sending' so
   // the recovery cron can pick it up - the old code marked it complete, which

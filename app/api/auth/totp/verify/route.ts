@@ -4,6 +4,7 @@ import { verifyTOTP } from "@/lib/totp";
 import { getSupabaseClient } from "@/lib/supabase";
 import { logAudit, AUDIT_ACTIONS, extractRequestMeta } from "@/lib/audit-log";
 import { recordLogin } from "@/lib/record-login";
+import { rateLimit } from "@/lib/rate-limit";
 
 /**
  * POST /api/auth/totp/verify
@@ -26,6 +27,42 @@ export async function POST(req: NextRequest) {
     const payload = verifyPendingTOTPJWT(partial_token);
     if (!payload) {
       return NextResponse.json({ error: { code: "INVALID_TOKEN", message: "Session expired. Please log in again." } }, { status: 401 });
+    }
+
+    /*
+     * Bound the second factor, which was unbounded.
+     *
+     * /api/auth/token limits *password* attempts to five a minute. Nothing
+     * limited this, and the only ceiling on guessing was the partial token's
+     * five-minute life - during which a six-digit code could be attempted as
+     * fast as the endpoint would answer, and a fresh partial token could be
+     * minted by repeating the password step. An attacker holding a correct
+     * password could therefore grind the second factor at will, which is most
+     * of the value of having one.
+     *
+     * Keyed by user, not by IP: the account is what is under attack, and an IP
+     * key is defeated by spreading requests across addresses. Fails closed, for
+     * the same reason the login limiter does - a Redis outage must not quietly
+     * remove the ceiling.
+     *
+     * Placed after the token check so an unauthenticated caller cannot consume
+     * another account's budget: reaching here already requires a valid,
+     * unexpired partial token, which requires the password.
+     */
+    const rl = await rateLimit(`totp:${payload.userId}`, 5, 5 / 60, "closed");
+    if (!rl.allowed) {
+      logAudit({
+        workspace_id: payload.workspaceId,
+        user_id: payload.userId,
+        action: AUDIT_ACTIONS.LOGIN_FAILED,
+        details: { reason: "totp_rate_limited" },
+        ip_address: ip,
+        user_agent: ua,
+      });
+      return NextResponse.json(
+        { error: { code: "RATE_LIMITED", message: "Too many codes tried. Wait a moment and try again.", retryAfter: rl.retryAfter } },
+        { status: 429, headers: { "Retry-After": String(rl.retryAfter) } }
+      );
     }
 
     const supabase = getSupabaseClient();

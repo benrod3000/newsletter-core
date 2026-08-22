@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { signAdminHeaders } from "@/lib/admin-context";
+import { isCronPath } from "@/lib/cron-paths";
 
 const ALLOWED_ORIGINS = [
   "https://newsletter.brod3000.com",
@@ -98,14 +99,19 @@ export async function proxy(request: NextRequest) {
     });
   }
 
-  // Only require Basic Auth for admin routes; let API routes pass through
-  // Cron endpoints are exempt from auth (Vercel cron sends unauthenticated GETs)
+  // Only require Basic Auth for admin routes; let API routes pass through.
+  //
+  // Cron endpoints are exempt from *Basic* auth because a scheduler sends
+  // `Authorization: Bearer <CRON_SECRET>`, which this middleware would reject
+  // before the handler could check it. They are not unauthenticated: each one
+  // calls requireCronSecret() first thing.
+  //
+  // The list lives in one place now. It was three inline conditions here, and
+  // /api/admin/campaigns/recover was missing from them - so the cron that
+  // finishes interrupted sends was answered with a Basic-Auth challenge and had
+  // never once run. A cron that 401s looks exactly like a cron with no work.
   const isAdminRoute = pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
-  const isCronRoute =
-    pathname === "/api/admin/campaigns/process" ||
-    pathname === "/api/admin/health-scores/recalculate" ||
-    pathname.startsWith("/api/admin/automations/");
-  if (!isAdminRoute || isCronRoute) {
+  if (!isAdminRoute || isCronPath(pathname)) {
     const response = NextResponse.next();
     response.headers.set("Access-Control-Allow-Origin", getCorsOrigin(request));
     response.headers.set("Vary", "Origin");
