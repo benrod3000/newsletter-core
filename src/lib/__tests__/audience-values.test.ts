@@ -34,9 +34,24 @@ describe("FIXED_AUDIENCES", () => {
     // The frontend's AUDIENCE_OPTIONS, restated. It lives in the other repo and the
     // two deploy independently, so this cannot import it - but an audience the UI can
     // produce and the API rejects is exactly the bug this file exists for.
-    for (const offered of ["confirmed", "all", "pending", "geo"]) {
+    //
+    // `geo` was removed from the picker on 2026-08-21. It had never worked: the map
+    // it revealed wrote to a state nothing read, so a radius could be drawn on a
+    // campaign and the send went to everybody. Targeting an area is now done by
+    // building a list in Contacts, which is inspectable before an irreversible send
+    // and keeps one implementation of what a radius means.
+    for (const offered of ["confirmed", "all", "pending"]) {
       expect(FIXED_AUDIENCES as readonly string[]).toContain(offered);
     }
+  });
+
+  it("still accepts geo, which nothing produces any more", () => {
+    // Deliberately left valid rather than removed. The CHECK constraint allows it
+    // (migration 068), no campaign has ever stored it, and tightening both is churn
+    // for no benefit. Pinned so that if geo audiences are ever wired properly, the
+    // vocabulary is already there - and so that removing it is a deliberate act
+    // rather than a tidy-up.
+    expect(isValidAudience("geo")).toBe(true);
   });
 });
 
