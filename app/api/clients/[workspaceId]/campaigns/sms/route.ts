@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClientContextFromJWT, assertWorkspaceAccess } from "@/lib/client-context";
 import { logError } from "@/lib/logger";
+import { smsEnabled, smsDisabledResponse } from "@/lib/features";
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -10,6 +11,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ workspaceId: string }> }
 ) {
+  if (!smsEnabled()) return smsDisabledResponse();
   const { workspaceId } = await params;
   const ctx = getClientContextFromJWT(req);
   if (!ctx || !assertWorkspaceAccess(ctx, workspaceId))
@@ -37,6 +39,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ workspaceId: string }> }
 ) {
+  if (!smsEnabled()) return smsDisabledResponse();
   const { workspaceId } = await params;
   const ctx = getClientContextFromJWT(req);
   if (!ctx || !assertWorkspaceAccess(ctx, workspaceId))

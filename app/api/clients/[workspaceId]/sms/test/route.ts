@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClientContextFromJWT, assertWorkspaceAccess, isClientOwner } from "@/lib/client-context";
+import { smsEnabled, smsDisabledResponse } from "@/lib/features";
 
 const CORS = { "Access-Control-Allow-Origin": "*" };
 
@@ -12,6 +13,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ workspaceId: string }> }
 ) {
+  if (!smsEnabled()) return smsDisabledResponse();
   const { workspaceId } = await params;
   const ctx = getClientContextFromJWT(req);
   if (!ctx || !assertWorkspaceAccess(ctx, workspaceId))
