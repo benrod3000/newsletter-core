@@ -68,9 +68,16 @@ describe("SMS routes", () => {
     for (const rel of routes) {
       const lines = readFileSync(join(ROOT, rel), "utf8").split("\n");
 
+      // Both shapes: a bare route handler, and one wrapped in withWorkspace.
+      // The wrapped form is what these become as routes move onto the shared
+      // workspace guard, and this test failing on that migration was correct
+      // behaviour - it just needed to learn the second shape.
       const handlerStarts = lines
         .map((l, i) => ({ l, i }))
-        .filter(({ l }) => /^export (?:async )?function (?:POST|GET|PATCH|DELETE)\(/.test(l));
+        .filter(({ l }) =>
+          /^export (?:async )?function (?:POST|GET|PATCH|DELETE)\(/.test(l) ||
+          /^export const (?:POST|GET|PATCH|DELETE) = withWorkspace/.test(l)
+        );
 
       expect(handlerStarts.length, `${rel} exports no handlers - did the file move?`)
         .toBeGreaterThan(0);

@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getClientContextFromJWT, assertWorkspaceAccess, isClientOwner } from "@/lib/client-context";
+import { NextResponse } from "next/server";
+import { withWorkspace } from "@/lib/with-workspace";
 import { smsEnabled, smsDisabledResponse } from "@/lib/features";
 
 const CORS = { "Access-Control-Allow-Origin": "*" };
@@ -9,16 +9,10 @@ const CORS = { "Access-Control-Allow-Origin": "*" };
  * Send a test SMS using the workspace's Twilio credentials.
  * Body: { to: string }
  */
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> }
-) {
+export const POST = withWorkspace<{ workspaceId: string }>(
+  async ({ req, params }) => {
   if (!smsEnabled()) return smsDisabledResponse();
-  const { workspaceId } = await params;
-  const ctx = getClientContextFromJWT(req);
-  if (!ctx || !assertWorkspaceAccess(ctx, workspaceId))
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: CORS });
-
+    const { workspaceId } = params;
   let body: { to?: string };
   try { body = await req.json(); } catch {
     return NextResponse.json({ error: "Invalid body" }, { status: 400, headers: CORS });
@@ -93,4 +87,6 @@ export async function POST(
       { status: 500, headers: CORS }
     );
   }
-}
+},
+  { minRole: "owner" }
+);

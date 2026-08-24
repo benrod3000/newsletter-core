@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
-import { getClientContextFromJWT, assertWorkspaceAccess } from "@/lib/client-context";
+import { withWorkspace } from "@/lib/with-workspace";
 import { dispatchEmail } from "@/lib/email/dispatcher";
 import { getWorkspaceSender } from "@/lib/send-campaign";
 import { buildHtmlFromEditor } from "@/lib/campaign-personalization";
@@ -36,16 +36,9 @@ const CORS = {
  * A preview that renders differently from the campaign is worth very little; the
  * point is to see what recipients will see.
  */
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string; id: string }> }
-) {
-  const { workspaceId, id } = await params;
-
-  const ctx = getClientContextFromJWT(req);
-  if (!ctx || !assertWorkspaceAccess(ctx, workspaceId)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: CORS });
-  }
+export const POST = withWorkspace<{ workspaceId: string; id: string }>(
+  async ({ req, params }) => {
+  const { workspaceId, id } = params;
 
   const body = await req.json().catch(() => null);
   const email = body?.email;
@@ -121,7 +114,9 @@ export async function POST(
       { status: 500, headers: CORS }
     );
   }
-}
+  },
+  { minRole: "editor" }
+);
 
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS });

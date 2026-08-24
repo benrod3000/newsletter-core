@@ -1,19 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getClientContextFromJWT, assertWorkspaceAccess } from "@/lib/client-context";
-import { getSupabaseClient } from "@/lib/supabase";
+import { NextResponse } from "next/server";
+import { withWorkspace } from "@/lib/with-workspace";
 import { fetchAllRows } from "@/lib/paginate";
 import { logError } from "@/lib/logger";
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> }
-) {
-  const { workspaceId } = await params;
-  const ctx = getClientContextFromJWT(req);
-  if (!ctx || !assertWorkspaceAccess(ctx, workspaceId))
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export const GET = withWorkspace<{ workspaceId: string }>(
+  async ({ db, params }) => {
+    const { workspaceId } = params;
 
-  const supabase = getSupabaseClient();
+  // Scoped to this workspace by RLS - see withWorkspace/db-token.
+    const supabase = db;
 
   try {
     // One workspace-scoped query, rather than fetching every subscriber id and
@@ -69,4 +64,6 @@ export async function GET(
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Internal error" }, { status: 500 });
   }
-}
+},
+  { minRole: "viewer" }
+);

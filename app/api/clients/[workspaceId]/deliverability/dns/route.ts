@@ -7,21 +7,16 @@
  * Auth: client JWT.
  */
 
-import { NextRequest } from "next/server";
-import { getClientContextFromJWT, assertWorkspaceAccess } from "@/lib/client-context";
+import { withWorkspace } from "@/lib/with-workspace";
 import { checkAllDns } from "@/lib/deliverability/dns-checker";
 import { isValidDomain, getWorkspaceProvider } from "@/lib/deliverability/overview";
-import { apiSuccess, apiError, apiUnauthorized, apiInternalError } from "@/lib/api-response";
+import { apiSuccess, apiError, apiInternalError } from "@/lib/api-response";
 import { logError } from "@/lib/logger";
 import type { DnsCheckResponse } from "@/lib/deliverability/types";
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> }
-) {
-  const { workspaceId } = await params;
-  const ctx = getClientContextFromJWT(req);
-  if (!ctx || !assertWorkspaceAccess(ctx, workspaceId)) return apiUnauthorized();
+export const GET = withWorkspace<{ workspaceId: string }>(
+  async ({ req, params }) => {
+    const { workspaceId } = params;
 
   try {
     const domain = new URL(req.url).searchParams.get("domain")?.trim().toLowerCase();
@@ -51,4 +46,6 @@ export async function GET(
     logError(err, { route: "clients.deliverability.dns", workspaceId });
     return apiInternalError("DNS check failed");
   }
-}
+},
+  { minRole: "viewer" }
+);

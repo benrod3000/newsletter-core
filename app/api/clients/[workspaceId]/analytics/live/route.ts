@@ -1,6 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseClient } from "@/lib/supabase";
-import { getClientContextFromJWT, assertWorkspaceAccess } from "@/lib/client-context";
+import { NextResponse } from "next/server";
+import { withWorkspace } from "@/lib/with-workspace";
 import { logError } from "@/lib/logger";
 
 /**
@@ -28,17 +27,12 @@ import { logError } from "@/lib/logger";
  *    describes this project today: every engagement event in the database is a
  *    lead-magnet click, and those have no campaign.
  */
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> }
-) {
-  const { workspaceId } = await params;
-  const ctx = getClientContextFromJWT(req);
-  if (!ctx || !assertWorkspaceAccess(ctx, workspaceId)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+export const GET = withWorkspace<{ workspaceId: string }>(
+  async ({ db, params }) => {
+    const { workspaceId } = params;
 
-  const supabase = getSupabaseClient();
+    // Scoped to this workspace by RLS - see withWorkspace/db-token.
+    const supabase = db;
   const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
   try {
@@ -107,4 +101,6 @@ export async function GET(
     logError(err, { route: "clients.analytics.live", workspaceId });
     return NextResponse.json({ events: [], now: new Date().toISOString() });
   }
-}
+},
+  { minRole: "viewer" }
+);

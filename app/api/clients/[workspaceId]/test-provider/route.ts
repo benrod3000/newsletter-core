@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
-import { getClientContextFromJWT, assertWorkspaceAccess } from "@/lib/client-context";
+import { withWorkspace } from "@/lib/with-workspace";
 import { sendEmail, type ProviderConfig } from "@/lib/email-sender";
 import { PLATFORM_FALLBACK_FROM_EMAIL } from "@/lib/platform-sender";
 
@@ -8,13 +8,13 @@ import { PLATFORM_FALLBACK_FROM_EMAIL } from "@/lib/platform-sender";
  * POST /api/clients/{workspaceId}/test-provider
  * Tests the workspace's email provider by sending a test email to the user.
  */
-export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
-  const { workspaceId } = await params;
-  const context = getClientContextFromJWT(request);
-  if (!context || !assertWorkspaceAccess(context, workspaceId)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+export const POST = withWorkspace<{ workspaceId: string }>(
+  async ({ ctx, params }) => {
+  const { workspaceId } = params;
 
+  // Deliberately the service-role client: this reads provider credentials, and
+  // migration 049 withholds those columns from `authenticated` so a scoped
+  // token cannot see them. Authorization already happened in withWorkspace.
   const supabase = getSupabaseClient();
   const { data: client, error: fetchError } = await supabase
     .from("clients")
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     await sendEmail(
       {
-        to: context.email,
+        to: ctx.email,
         from: fromEmail,
         subject: "Veloce: Provider Test",
         html: `
@@ -91,7 +91,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     return NextResponse.json({
       success: true,
-      message: `Test email sent to ${context.email} via ${provider === "ses" ? "Amazon SES" : provider === "resend" ? "Resend" : "SendGrid"}.`,
+      message: `Test email sent to ${ctx.email} via ${provider === "ses" ? "Amazon SES" : provider === "resend" ? "Resend" : "SendGrid"}.`,
       provider,
     });
   } catch (err: any) {
@@ -100,4 +100,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       { status: 500 }
     );
   }
-}
+},
+  { minRole: "editor" }
+);

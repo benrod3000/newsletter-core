@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { withWorkspace } from "@/lib/with-workspace";
-import { getSupabaseClient } from "@/lib/supabase";
 import { logError } from "@/lib/logger";
 import { logAudit, extractRequestMeta, AUDIT_ACTIONS } from "@/lib/audit-log";
 import { quoteFilterValue } from "@/lib/postgrest";

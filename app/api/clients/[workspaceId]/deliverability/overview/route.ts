@@ -11,19 +11,14 @@
  * with the admin route via buildDeliverabilityOverview().
  */
 
-import { NextRequest } from "next/server";
-import { getClientContextFromJWT, assertWorkspaceAccess } from "@/lib/client-context";
+import { withWorkspace } from "@/lib/with-workspace";
 import { buildDeliverabilityOverview } from "@/lib/deliverability/overview";
-import { apiSuccess, apiError, apiUnauthorized, apiInternalError } from "@/lib/api-response";
+import { apiSuccess, apiError, apiInternalError } from "@/lib/api-response";
 import { logError } from "@/lib/logger";
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> }
-) {
-  const { workspaceId } = await params;
-  const ctx = getClientContextFromJWT(req);
-  if (!ctx || !assertWorkspaceAccess(ctx, workspaceId)) return apiUnauthorized();
+export const GET = withWorkspace<{ workspaceId: string }>(
+  async ({ params }) => {
+    const { workspaceId } = params;
 
   try {
     const result = await buildDeliverabilityOverview(workspaceId);
@@ -33,4 +28,6 @@ export async function GET(
     logError(err, { route: "clients.deliverability.overview", workspaceId });
     return apiInternalError("Failed to load deliverability overview");
   }
-}
+},
+  { minRole: "viewer" }
+);

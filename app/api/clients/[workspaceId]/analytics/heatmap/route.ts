@@ -1,17 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getClientContextFromJWT, assertWorkspaceAccess } from "@/lib/client-context";
-import { getSupabaseClient } from "@/lib/supabase";
+import { NextResponse } from "next/server";
+import { withWorkspace } from "@/lib/with-workspace";
 import { fetchAllRows } from "@/lib/paginate";
 import { logError } from "@/lib/logger";
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> }
-) {
-  const { workspaceId } = await params;
-  const ctx = getClientContextFromJWT(req);
-  if (!ctx || !assertWorkspaceAccess(ctx, workspaceId))
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export const GET = withWorkspace<{ workspaceId: string }>(
+  async ({ req, db, params }) => {
+    const { workspaceId } = params;
 
   const url = new URL(req.url);
   // Scope to the same window as the rest of the analytics page. Previously this
@@ -26,7 +20,8 @@ export async function GET(
   const tzRaw = parseInt(url.searchParams.get("tzOffset") || "", 10);
   const tzOffsetMin = Number.isFinite(tzRaw) ? Math.min(Math.max(tzRaw, -840), 840) : 0;
 
-  const supabase = getSupabaseClient();
+  // Scoped to this workspace by RLS - see withWorkspace/db-token.
+    const supabase = db;
 
   try {
     // Queried by workspace_id directly rather than by collecting campaign ids
@@ -103,4 +98,6 @@ export async function GET(
   } catch (e: any) {
     return NextResponse.json({ error: e?.message }, { status: 500 });
   }
-}
+},
+  { minRole: "viewer" }
+);

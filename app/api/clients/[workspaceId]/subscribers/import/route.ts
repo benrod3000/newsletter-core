@@ -1,10 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
-import {
-  getClientContextFromJWT,
-  assertWorkspaceAccess,
-  canEditAsClient,
-} from "@/lib/client-context";
+import { withWorkspace } from "@/lib/with-workspace";
 import type { TablesInsert } from "@/lib/database.types";
 import { logAudit, extractRequestMeta, AUDIT_ACTIONS } from "@/lib/audit-log";
 
@@ -50,20 +46,9 @@ export const maxDuration = 60;
 const CONSENT_ATTESTATION =
   "Imported by a workspace member who confirmed these contacts gave permission to be emailed.";
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> }
-) {
-  const { workspaceId } = await params;
-  const context = getClientContextFromJWT(req);
-
-  if (!context || !assertWorkspaceAccess(context, workspaceId)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  if (!canEditAsClient(context)) {
-    return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
-  }
+export const POST = withWorkspace<{ workspaceId: string }>(
+  async ({ req, ctx, params }) => {
+    const { workspaceId } = params;
 
   const body = await req.json();
   const { csv, confirmed = false, consent_confirmed = false } = body;
@@ -173,7 +158,7 @@ export async function POST(
       ...(consentConfirmed
         ? {
             consented_at: new Date().toISOString(),
-            consent_source: `import:${context.userId ?? context.email ?? "unknown"}`,
+            consent_source: `import:${ctx.userId ?? ctx.email ?? "unknown"}`,
             consent_text: CONSENT_ATTESTATION,
           }
         : {}),
@@ -256,7 +241,7 @@ export async function POST(
   const { ip, ua } = extractRequestMeta(req);
   await logAudit({
     workspace_id: workspaceId,
-    user_id: context.userId,
+    user_id: ctx.userId,
     action: AUDIT_ACTIONS.SUBSCRIBER_IMPORTED,
     details: { processed, duplicates, skipped: skipped.length },
     ip_address: ip,
@@ -269,7 +254,9 @@ export async function POST(
     skipped: skipped.length,
     skippedDetails: skipped.slice(0, 20),
   });
-}
+},
+  { minRole: "editor" }
+);
 
 function parseCSVLine(line: string): string[] {
   const result: string[] = [];

@@ -1,11 +1,6 @@
-import { NextRequest } from "next/server";
-import { getSupabaseClient } from "@/lib/supabase";
 import { fetchAllRows } from "@/lib/paginate";
-import {
-  getClientContextFromJWT,
-  assertWorkspaceAccess,
-} from "@/lib/client-context";
-import { apiSuccess, apiUnauthorized, apiInternalError } from "@/lib/api-response";
+import { withWorkspace } from "@/lib/with-workspace";
+import { apiSuccess, apiInternalError } from "@/lib/api-response";
 
 /**
  * GET /api/clients/[workspaceId]/analytics
@@ -41,14 +36,9 @@ type CampaignRow = {
 };
 type EventRow = { campaign_id: string; event_type: string; email: string };
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> }
-) {
-  const { workspaceId } = await params;
-  const context = getClientContextFromJWT(req);
-
-  if (!context || !assertWorkspaceAccess(context, workspaceId)) return apiUnauthorized();
+export const GET = withWorkspace<{ workspaceId: string }>(
+  async ({ req, db, params }) => {
+    const { workspaceId } = params;
 
   const url = new URL(req.url);
   const daysRaw = parseInt(url.searchParams.get("days") || "14", 10);
@@ -63,7 +53,8 @@ export async function GET(
   const startDate = new Date(now - windowMs);
   const priorStartDate = new Date(now - windowMs * 2);
 
-  const supabase = getSupabaseClient();
+  // Scoped to this workspace by RLS - see withWorkspace/db-token.
+    const supabase = db;
 
   try {
     // ── Subscribers ──────────────────────────────────────────────────────────
@@ -320,4 +311,6 @@ export async function GET(
     console.error("Analytics endpoint error:", error);
     return apiInternalError();
   }
-}
+},
+  { minRole: "viewer" }
+);

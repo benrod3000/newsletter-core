@@ -1,18 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getClientContextFromJWT, assertWorkspaceAccess } from "@/lib/client-context";
+import { NextResponse } from "next/server";
+import { withWorkspace } from "@/lib/with-workspace";
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const auth = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` };
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> }
-) {
-  const { workspaceId } = await params;
-  const ctx = getClientContextFromJWT(req);
-  if (!ctx || !assertWorkspaceAccess(ctx, workspaceId))
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export const GET = withWorkspace<{ workspaceId: string }>(
+  async ({ params }) => {
+    const { workspaceId } = params;
 
   try {
     // Get this workspace's subscriber IDs
@@ -65,4 +60,6 @@ export async function GET(
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Internal error" }, { status: 500 });
   }
-}
+},
+  { minRole: "viewer" }
+);

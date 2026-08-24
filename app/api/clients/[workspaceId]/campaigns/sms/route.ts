@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getClientContextFromJWT, assertWorkspaceAccess } from "@/lib/client-context";
+import { NextResponse } from "next/server";
+import { withWorkspace } from "@/lib/with-workspace";
 import { logError } from "@/lib/logger";
 import { smsEnabled, smsDisabledResponse } from "@/lib/features";
 
@@ -7,15 +7,10 @@ const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const auth = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` };
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> }
-) {
+export const GET = withWorkspace<{ workspaceId: string }>(
+  async ({ req, params }) => {
   if (!smsEnabled()) return smsDisabledResponse();
-  const { workspaceId } = await params;
-  const ctx = getClientContextFromJWT(req);
-  if (!ctx || !assertWorkspaceAccess(ctx, workspaceId))
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { workspaceId } = params;
 
   // Count SMS-reachable subscribers.
   //
@@ -33,17 +28,14 @@ export async function GET(
     reachable: countData?.[0]?.count ?? 0,
     message: "SMS/RCS campaigns use phone numbers with consent. Rich messaging (RCS) available for Android devices. SMS fallback for iOS.",
   });
-}
+  },
+  { minRole: "viewer" }
+);
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> }
-) {
+export const POST = withWorkspace<{ workspaceId: string }>(
+  async ({ req, params }) => {
   if (!smsEnabled()) return smsDisabledResponse();
-  const { workspaceId } = await params;
-  const ctx = getClientContextFromJWT(req);
-  if (!ctx || !assertWorkspaceAccess(ctx, workspaceId))
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { workspaceId } = params;
 
   const { message, image_urls } = await req.json();
   if (!message?.trim()) return NextResponse.json({ error: "Message body is required" }, { status: 400 });
@@ -129,4 +121,6 @@ export async function POST(
     total: subscribers.length,
     message: `SMS sent to ${sent} recipients${failed > 0 ? `, ${failed} failed` : ""}.`,
   }, { status: 200 });
-}
+  },
+  { minRole: "editor" }
+);
