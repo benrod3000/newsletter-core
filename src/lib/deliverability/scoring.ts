@@ -32,7 +32,7 @@ function dnsResultToScore(result: DnsCheckResult): number {
   }
 }
 
-/** Calculate DNS health sub-score (0–100) */
+/** Calculate DNS health sub-score (0 to 100) */
 export function calculateDnsScore(report: DnsHealthReport): number {
   const scores = [
     dnsResultToScore(report.spf),
@@ -46,7 +46,7 @@ export function calculateDnsScore(report: DnsHealthReport): number {
 
 // ── Bounce & complaint scoring ──
 
-/** Calculate bounce health sub-score (0–100).
+/** Calculate bounce health sub-score (0 to 100).
  *  0% bounces = 100, 10%+ bounces = 0. Linear between. */
 export function calculateBounceScore(bounceRate: number): number {
   if (bounceRate < 0) bounceRate = 0;
@@ -54,7 +54,7 @@ export function calculateBounceScore(bounceRate: number): number {
   return Math.round(Math.max(0, Math.min(100, score)));
 }
 
-/** Calculate complaint health sub-score (0–100).
+/** Calculate complaint health sub-score (0 to 100).
  *  0% complaints = 100, 0.5%+ complaints = 0. Linear between. */
 export function calculateComplaintScore(complaintRate: number): number {
   if (complaintRate < 0) complaintRate = 0;
@@ -64,7 +64,7 @@ export function calculateComplaintScore(complaintRate: number): number {
 
 // ── Overall score ──
 
-/** Calculate overall deliverability score (0–100) */
+/** Calculate overall deliverability score (0 to 100) */
 export function calculateOverallScore(
   dnsScore: number,
   bounceScore: number,

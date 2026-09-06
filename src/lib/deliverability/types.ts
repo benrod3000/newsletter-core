@@ -46,13 +46,13 @@ export interface Recommendation {
 
 /** Full deliverability overview returned by the API */
 export interface DeliverabilityOverview {
-  /** 0–100 overall score */
+  /** 0 to 100 overall score */
   score: number;
-  /** 0–100 DNS health sub-score */
+  /** 0 to 100 DNS health sub-score */
   dnsScore: number;
-  /** 0–100 bounce health sub-score */
+  /** 0 to 100 bounce health sub-score */
   bounceScore: number;
-  /** 0–100 complaint health sub-score */
+  /** 0 to 100 complaint health sub-score */
   complaintScore: number;
   /** DNS health breakdown by record type */
   dnsHealth: DnsHealthReport;
