@@ -265,7 +265,8 @@ export type Database = {
       campaign_events: {
         Row: {
           campaign_id: string | null
-          email: string
+          channel: string
+          email: string | null
           event_type: string
           id: string
           metadata: Json
@@ -276,7 +277,8 @@ export type Database = {
         }
         Insert: {
           campaign_id?: string | null
-          email: string
+          channel?: string
+          email?: string | null
           event_type: string
           id?: string
           metadata?: Json
@@ -287,7 +289,8 @@ export type Database = {
         }
         Update: {
           campaign_id?: string | null
-          email?: string
+          channel?: string
+          email?: string | null
           event_type?: string
           id?: string
           metadata?: Json
@@ -358,6 +361,7 @@ export type Database = {
         Row: {
           batch: number
           campaign_id: string | null
+          channel: string
           completed_at: string | null
           created_at: string | null
           id: string
@@ -370,6 +374,7 @@ export type Database = {
         Insert: {
           batch?: number
           campaign_id?: string | null
+          channel?: string
           completed_at?: string | null
           created_at?: string | null
           id?: string
@@ -382,6 +387,7 @@ export type Database = {
         Update: {
           batch?: number
           campaign_id?: string | null
+          channel?: string
           completed_at?: string | null
           created_at?: string | null
           id?: string
@@ -490,6 +496,7 @@ export type Database = {
       campaigns: {
         Row: {
           audience: string
+          channel: string
           created_at: string
           created_by: string | null
           editor_css: string | null
@@ -506,6 +513,7 @@ export type Database = {
           published_at: string | null
           scheduled_for: string | null
           sent_count: number
+          sms_body: string | null
           status: string
           subject: string
           title: string
@@ -515,6 +523,7 @@ export type Database = {
         }
         Insert: {
           audience?: string
+          channel?: string
           created_at?: string
           created_by?: string | null
           editor_css?: string | null
@@ -531,6 +540,7 @@ export type Database = {
           published_at?: string | null
           scheduled_for?: string | null
           sent_count?: number
+          sms_body?: string | null
           status?: string
           subject: string
           title?: string
@@ -540,6 +550,7 @@ export type Database = {
         }
         Update: {
           audience?: string
+          channel?: string
           created_at?: string
           created_by?: string | null
           editor_css?: string | null
@@ -556,6 +567,7 @@ export type Database = {
           published_at?: string | null
           scheduled_for?: string | null
           sent_count?: number
+          sms_body?: string | null
           status?: string
           subject?: string
           title?: string
@@ -1230,7 +1242,7 @@ export type Database = {
           collect_location: boolean
           created_at: string | null
           description: string | null
-          download_url: string
+          download_url: string | null
           email_body: string | null
           email_heading: string | null
           email_subject: string | null
@@ -1255,7 +1267,7 @@ export type Database = {
           collect_location?: boolean
           created_at?: string | null
           description?: string | null
-          download_url: string
+          download_url?: string | null
           email_body?: string | null
           email_heading?: string | null
           email_subject?: string | null
@@ -1280,7 +1292,7 @@ export type Database = {
           collect_location?: boolean
           created_at?: string | null
           description?: string | null
-          download_url?: string
+          download_url?: string | null
           email_body?: string | null
           email_heading?: string | null
           email_subject?: string | null
@@ -1449,6 +1461,7 @@ export type Database = {
           p_audience?: string
           p_center_lat?: number
           p_center_lng?: number
+          p_channel?: string
           p_cities?: string[]
           p_country?: string
           p_list_id?: string
@@ -1470,6 +1483,7 @@ export type Database = {
       }
       claim_campaign_recipients: {
         Args: {
+          p_channel?: string
           p_job_id: string
           p_limit?: number
           p_max_attempts?: number
@@ -1485,6 +1499,7 @@ export type Database = {
           phone_number: string
           region: string
           subscriber_id: string
+          timezone: string
           unsubscribe_token: string
         }[]
       }
@@ -1502,6 +1517,7 @@ export type Database = {
           p_audience?: string
           p_center_lat?: number
           p_center_lng?: number
+          p_channel?: string
           p_cities?: string[]
           p_country?: string
           p_list_id?: string
@@ -1530,6 +1546,7 @@ export type Database = {
           p_audience?: string
           p_center_lat?: number
           p_center_lng?: number
+          p_channel?: string
           p_cities?: string[]
           p_country?: string
           p_job_id: string
@@ -1634,12 +1651,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1663,11 +1680,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1688,11 +1705,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1713,11 +1730,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1730,11 +1747,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

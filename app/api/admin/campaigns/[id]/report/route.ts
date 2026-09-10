@@ -37,21 +37,39 @@ export async function GET(
   // Fetch all events for this campaign
   const { data: events } = await supabase
     .from("campaign_events")
-    .select("event_type, email, url, metadata")
+    .select("event_type, email, url, metadata, subscriber_id")
     .eq("campaign_id", campaignId);
 
   const rows = events ?? [];
 
-  function uniqueEmailCount(type: string) {
-    return new Set(rows.filter((r) => r.event_type === type).map((r) => r.email)).size;
+  /*
+   * Uniqueness keys on the subscriber, not the email address.
+   *
+   * `campaign_events.email` becomes nullable in migration 073, because an SMS
+   * event has no email address to record. Keying a Set on a nullable column
+   * collapses every null into one member, so a channel with no addresses would
+   * report exactly one unique open however many people opened it.
+   *
+   * `subscriber_id` is the thing actually being counted, and it is set on every
+   * open and click the tracking routes write. The email fallback keeps legacy rows
+   * that predate it counting as they always did.
+   */
+  function uniqueRecipientCount(type: string) {
+    const seen = new Set<string>();
+    for (const r of rows) {
+      if (r.event_type !== type) continue;
+      const who = r.subscriber_id ?? (r.email ? `email:${r.email}` : null);
+      if (who) seen.add(who);
+    }
+    return seen.size;
   }
 
   const sentCount = campaign.sent_count ?? 0;
-  const opens = uniqueEmailCount("open");
-  const clicks = uniqueEmailCount("click");
-  const bounces = uniqueEmailCount("bounce");
-  const complaints = uniqueEmailCount("complaint");
-  const unsubscribes = uniqueEmailCount("unsubscribe");
+  const opens = uniqueRecipientCount("open");
+  const clicks = uniqueRecipientCount("click");
+  const bounces = uniqueRecipientCount("bounce");
+  const complaints = uniqueRecipientCount("complaint");
+  const unsubscribes = uniqueRecipientCount("unsubscribe");
   const openRate = sentCount > 0 ? Math.round((opens / sentCount) * 100) : 0;
   const clickRate = sentCount > 0 ? Math.round((clicks / sentCount) * 100) : 0;
 

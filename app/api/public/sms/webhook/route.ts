@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { toE164 } from "@/lib/phone";
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -19,10 +20,28 @@ export async function POST(req: NextRequest) {
     if (!from) return NextResponse.json({ error: "Missing From" }, { status: 400 });
 
     if (body_text === "STOP" || body_text === "UNSUBSCRIBE" || body_text === "CANCEL") {
-      // Opt out this phone number
-      const normalized = from.replace(/^\+1/, "").replace(/\D/g, "");
-      await fetch(`${SUPABASE_URL}/rest/v1/subscribers?phone=ilike.*${normalized}&select=id`, { headers: auth });
-      const data = await fetch(`${SUPABASE_URL}/rest/v1/subscribers?phone=ilike.*${normalized}&select=id`, { headers: auth }).then(r => r.json());
+      // Twilio always sends `From` in E.164, and `phone_number` is stored in
+      // E.164 since migration 072, so this is now an exact match.
+      //
+      // It used to be `phone=ilike.*<digits>`, a trailing wildcard over a column
+      // whose format nothing guaranteed. A suffix match opts out whoever happens
+      // to share those trailing digits, which for an opt-out is the worst
+      // direction to be wrong in: the person who asked to be left alone keeps
+      // getting messages and someone who never asked stops.
+      //
+      // Two things here are still wrong and are M4's job, not this change:
+      // there is no `X-Twilio-Signature` check, so anyone can POST a number and
+      // opt that person out; and the lookup is not workspace-scoped, so a STOP
+      // lands on one arbitrary tenant's row.
+      const normalized = toE164(from);
+      if (!normalized) {
+        return NextResponse.json({ error: "Unreadable From number" }, { status: 400 });
+      }
+
+      const data = await fetch(
+        `${SUPABASE_URL}/rest/v1/subscribers?phone_number=eq.${encodeURIComponent(normalized)}&select=id`,
+        { headers: auth }
+      ).then((r) => r.json());
 
       if (Array.isArray(data) && data.length > 0) {
         await fetch(`${SUPABASE_URL}/rest/v1/subscribers?id=eq.${data[0].id}`, {

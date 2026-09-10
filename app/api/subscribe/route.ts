@@ -6,6 +6,7 @@ import { getClientIp } from "@/lib/client-ip";
 import { getApiBaseUrl } from "@/lib/geo-utils";
 import { sendConfirmationEmail } from "@/lib/email/confirmation-email";
 import type { SignupSnapshot } from "@/lib/email/confirmation-email";
+import { toE164 } from "@/lib/phone";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -93,14 +94,6 @@ function cleanDate(value: unknown): string | null {
   return trimmed;
 }
 
-function cleanPhone(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const normalized = trimmed.replace(/[^0-9+().\-\s]/g, "").slice(0, 32).trim();
-  return normalized || null;
-}
-
 function cleanUrl(value: unknown, maxLength = 500): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -159,7 +152,6 @@ export async function POST(req: NextRequest) {
     const first_name = cleanText(body.first_name, 80);
     const last_name = cleanText(body.last_name, 80);
     const date_of_birth = cleanDate(body.date_of_birth);
-    const phone_number = cleanPhone(body.phone_number);
     const lead_title = cleanText(body.lead_title, 120);
     const lead_url = cleanUrl(body.lead_url, 500);
     const consent_email_marketing = body.consent_email_marketing === true;
@@ -202,6 +194,12 @@ export async function POST(req: NextRequest) {
     const geoCountry = ipGeo?.country ?? geo.country;
     const geoRegion = ipGeo?.region ?? geo.region;
     const geoCity = ipGeo?.city ?? geo.city;
+
+    // Normalized here rather than with the other body fields above because it
+    // needs the resolved country to make sense of a bare national number. Stored
+    // as E.164 or not at all - see `src/lib/phone.ts` for why a guess is worse
+    // than a null.
+    const phone_number = toE164(body.phone_number, geoCountry);
 
     const snapshot: SignupSnapshot = {
       firstName: first_name,

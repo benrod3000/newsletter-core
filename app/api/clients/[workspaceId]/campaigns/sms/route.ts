@@ -18,8 +18,14 @@ export const GET = withWorkspace<{ workspaceId: string }>(
   // recipient count that does not match who is actually texted. `suppressed` is
   // one of them: unsubscribe used to delete the row, so an opt-out could not be
   // counted here; it now keeps the row and sets a flag.
+  //
+  // The count and the send had already drifted: this one omitted the "has a phone
+  // number" filter that the send applies, so it overcounted. Both now read
+  // `phone_number`, the single phone column since migration 072. Keeping two
+  // hand-written filter lists in step is the problem `campaign_audience()` exists
+  // to solve, and M3 replaces this with `count_campaign_recipients`.
   const countRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/subscribers?select=count&workspace_id=eq.${workspaceId}&sms_consent=is.true&suppressed=is.false`,
+    `${SUPABASE_URL}/rest/v1/subscribers?select=count&workspace_id=eq.${workspaceId}&sms_consent=is.true&suppressed=is.false&not.phone_number=is.null`,
     { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
   );
   const countData = await countRes.json();
@@ -60,7 +66,7 @@ export const POST = withWorkspace<{ workspaceId: string }>(
   // the count in GET above - an opt-out must not be texted, and the number the
   // operator was shown must be the number of people reached.
   const subsRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/subscribers?select=id,phone,first_name&workspace_id=eq.${workspaceId}&sms_consent=is.true&suppressed=is.false&not.phone=is.null&limit=500`,
+    `${SUPABASE_URL}/rest/v1/subscribers?select=id,phone_number,first_name&workspace_id=eq.${workspaceId}&sms_consent=is.true&suppressed=is.false&not.phone_number=is.null&limit=500`,
     { headers: auth, signal: AbortSignal.timeout(15000) }
   );
   const subscribers = await subsRes.json();
@@ -74,7 +80,7 @@ export const POST = withWorkspace<{ workspaceId: string }>(
 
   // Send via Twilio in batches (rate limit: 1 msg/sec per phone number)
   for (const sub of subscribers) {
-    const phone = sub.phone?.trim();
+    const phone = sub.phone_number?.trim();
     if (!phone) continue;
 
     // Expect E.164 format (+1...). Missing prefix defaults to US.

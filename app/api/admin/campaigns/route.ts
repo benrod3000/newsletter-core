@@ -109,19 +109,32 @@ export async function GET(req: NextRequest) {
   if (campaignIds.length > 0) {
     const { data: events, error: eventsError } = await supabase
       .from("campaign_events")
-      .select("campaign_id, event_type, email")
+      .select("campaign_id, event_type, email, subscriber_id")
       .in("campaign_id", campaignIds);
 
     if (eventsError) {
       return NextResponse.json({ error: `Failed to load campaign stats: ${eventsError.message}` }, { status: 500 });
     }
 
+    /*
+     * Uniqueness keys on the subscriber, not the email address.
+     *
+     * `campaign_events.email` becomes nullable in migration 073, because an SMS
+     * event has no email address to record. Keying a Set on a nullable column
+     * collapses every null into one member, so a channel with no addresses would
+     * report exactly one unique open however many people opened it.
+     *
+     * `subscriber_id` is the thing actually being counted, and it is set on every
+     * open and click the tracking routes write. The email fallback keeps legacy rows
+     * that predate it counting as they always did.
+     */
     const grouped = new Map<string, { opens: Set<string>; clicks: Set<string> }>();
     for (const event of events ?? []) {
-      if (!event.campaign_id || !event.email) continue;
+      const who = event.subscriber_id ?? (event.email ? `email:${event.email}` : null);
+      if (!event.campaign_id || !who) continue;
       const current = grouped.get(event.campaign_id) ?? { opens: new Set<string>(), clicks: new Set<string>() };
-      if (event.event_type === "open") current.opens.add(event.email);
-      if (event.event_type === "click") current.clicks.add(event.email);
+      if (event.event_type === "open") current.opens.add(who);
+      if (event.event_type === "click") current.clicks.add(who);
       grouped.set(event.campaign_id, current);
     }
 

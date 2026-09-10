@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
 import { getAdminContextFromHeaders } from "@/lib/admin-context";
+import { toE164 } from "@/lib/phone";
 import type { TablesInsert } from "@/lib/database.types";
 
 function parseCsvLine(line: string): string[] {
@@ -101,6 +102,15 @@ export async function POST(req: NextRequest) {
   };
 
   const skipped: string[] = [];
+  /**
+   * Rows that imported, but with something dropped along the way.
+   *
+   * Kept apart from `skipped` on purpose: "we did not import this person" and
+   * "we imported this person without their phone number" are different outcomes,
+   * and collapsing them into one count is how an operator concludes an import
+   * went cleanly when part of it did not.
+   */
+  const warnings: string[] = [];
   const rows: Record<string, unknown>[] = [];
 
   for (let i = 1; i < lines.length; i++) {
@@ -121,6 +131,23 @@ export async function POST(req: NextRequest) {
       const idx = headers.indexOf(csvField);
       if (idx !== -1 && cols[idx]?.trim()) {
         row[dbField] = cols[idx].trim();
+      }
+    }
+
+    // Phone numbers are stored as E.164 only, so a CSV value has to be resolved
+    // against the row's own country before it lands. A number that cannot be
+    // resolved is dropped rather than stored as typed: an unsendable number that
+    // looks valid is worse than an absent one, because it is invisible until a
+    // campaign silently reaches fewer people than the count promised.
+    if (row.phone_number) {
+      const normalized = toE164(row.phone_number, typeof row.country === "string" ? row.country : null);
+      if (normalized) {
+        row.phone_number = normalized;
+      } else {
+        warnings.push(
+          `Row ${i + 1}: imported without phone number, could not read "${String(row.phone_number)}"`
+        );
+        delete row.phone_number;
       }
     }
 
@@ -155,5 +182,7 @@ export async function POST(req: NextRequest) {
     processed,
     skipped: skipped.length,
     skippedDetails: skipped.slice(0, 20),
+    warnings: warnings.length,
+    warningDetails: warnings.slice(0, 20),
   });
 }

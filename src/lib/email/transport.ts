@@ -10,6 +10,8 @@
  * 3. Done. No other code changes needed.
  */
 
+import type { SendResult, ProviderHealth } from "../messaging/result";
+
 export interface EmailTransport {
   /** Provider identifier (sendgrid, resend, ses, postmark, mailgun, etc.) */
   readonly id: string;
@@ -48,34 +50,17 @@ export interface SendParams {
   workspaceId?: string;
 }
 
-export interface SendResult {
-  success: boolean;
-  /** Provider-assigned message ID for webhook reconciliation */
-  messageId?: string;
-  /** HTTP status code from the provider's API */
-  statusCode?: number;
-  /** Only present when success is false */
-  error?: SendError;
-}
-
-export interface SendError {
-  /** Machine-readable: RATE_LIMITED, INVALID_ADDRESS, AUTH_FAILED, NETWORK_ERROR, PROVIDER_ERROR */
-  code: string;
-  /** Human-readable description for logging */
-  message: string;
-  /** If true, the caller may retry (transient). If false, retry won't help (permanent). */
-  retryable: boolean;
-}
-
-export interface ProviderHealth {
-  healthy: boolean;
-  /** Unix timestamp of last health check */
-  lastChecked: number;
-  /** Error message from the last failed check, if any */
-  lastError?: string;
-  /** Response time in milliseconds */
-  latencyMs?: number;
-}
+/**
+ * Moved to `src/lib/messaging/result.ts` and re-exported here.
+ *
+ * Nothing in them was email-specific; they describe whether a provider accepted a
+ * message and whether a retry is worth making, which is identical for SMS. The
+ * SMS transport implements the same contract, so `sendWithRetry` in the send
+ * queue works for both without knowing which channel it is driving.
+ *
+ * Re-exported rather than relocated outright so no email import had to change.
+ */
+export type { SendResult, SendError, ProviderHealth } from "../messaging/result";
 
 export interface ProviderCredentials {
   sendgridApiKey?: string;

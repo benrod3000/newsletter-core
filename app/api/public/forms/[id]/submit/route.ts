@@ -10,6 +10,7 @@ import { getApiBaseUrl } from "@/lib/geo-utils";
 import { resolveBranding, BRANDING_COLUMNS } from "@/lib/branding";
 import { sendLeadMagnetEmail } from "@/lib/email/lead-magnet";
 import type { TablesUpdate } from "@/lib/database.types";
+import { toE164 } from "@/lib/phone";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -160,7 +161,12 @@ export async function POST(
   const finalPostalCode = ipGeo?.postal_code ?? null;
   const finalFirstName = body.first_name?.trim().slice(0, 80) || null;
   const finalLastName = body.last_name?.trim().slice(0, 80) || null;
-  const finalPhone = body.phone?.trim().slice(0, 20) || null;
+  // Normalized to E.164 on the way in, so the STOP webhook can match a number
+  // exactly rather than by trailing wildcard. A number that cannot be resolved is
+  // stored as null rather than as a guess: an unsendable number is visible and
+  // skippable, a wrongly guessed one texts a stranger. See `src/lib/phone.ts`.
+  const phoneCountry = ipGeo?.country ?? req.headers.get("x-vercel-ip-country") ?? null;
+  const finalPhone = toE164(body.phone, phoneCountry);
   const finalUserPostal = body.postal_code?.trim().slice(0, 20) || null;
   const finalMessage = body.message?.trim().slice(0, 2000) || null;
   const smsConsentGiven = body.sms_consent === true;
@@ -382,7 +388,7 @@ async function resolveSubscriber({
   // `unsubscribe_token` is read so the lead magnet email can carry a working
   // opt-out link. CAN-SPAM wants the mechanism in the message, not just a header.
   const EXISTING_COLUMNS =
-    "id, confirmed, suppressed, unsubscribe_token, first_name, last_name, phone, sms_consent, postal_code, latitude";
+    "id, confirmed, suppressed, unsubscribe_token, first_name, last_name, phone_number, sms_consent, postal_code, latitude";
 
   const { data: existing } = await supabase
     .from("subscribers")
@@ -405,7 +411,7 @@ async function resolveSubscriber({
         email,
         first_name: finalFirstName,
         last_name: finalLastName,
-        phone: finalPhone,
+        phone_number: finalPhone,
         sms_consent: smsConsentGiven,
         sms_consented_at: smsConsentGiven ? new Date().toISOString() : null,
         postal_code: finalPostalCode || finalUserPostal,
@@ -469,7 +475,7 @@ async function resolveSubscriber({
 
   if (finalFirstName && !current.first_name) updates.first_name = finalFirstName;
   if (finalLastName && !current.last_name) updates.last_name = finalLastName;
-  if (finalPhone && !current.phone) updates.phone = finalPhone;
+  if (finalPhone && !current.phone_number) updates.phone_number = finalPhone;
   if ((finalPostalCode || finalUserPostal) && !current.postal_code) {
     updates.postal_code = finalPostalCode || finalUserPostal;
   }
@@ -517,7 +523,16 @@ async function triggerSubscriberJoined(
   workspaceId: string,
   subscriberId: string,
   email: string,
-  downloadUrl: string,
+  // Nullable since migration 071 made `widgets.download_url` optional: four of
+  // the six widget types never had a download URL, and requiring one is why only
+  // lead magnets could be created. This signature still said `string`, and the
+  // mismatch stayed invisible until the generated types were refreshed - the
+  // same class of miss as the phantom columns, caught by the same safety net.
+  //
+  // Null is correct here rather than an empty string. `trigger_event` is jsonb
+  // read by the automation processor, and "" would read as a download URL that
+  // is present and blank.
+  downloadUrl: string | null,
   widgetSlug: string
 ) {
   try {

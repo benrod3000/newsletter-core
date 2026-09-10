@@ -5,6 +5,7 @@ import { logError } from "@/lib/logger";
 import { logAudit, extractRequestMeta, AUDIT_ACTIONS } from "@/lib/audit-log";
 import { quoteFilterValue } from "@/lib/postgrest";
 import { parseGeoAreas, fetchSubscribersInAreas } from "@/lib/geo-areas";
+import { toE164 } from "@/lib/phone";
 
 /** Subscriber ids are uuid primary keys (migration 001). */
 const bulkDeleteSchema = z.object({
@@ -136,6 +137,21 @@ export const POST = withWorkspace(async ({ req, ctx, db }) => {
     return NextResponse.json({ error: "Invalid email" }, { status: 400 });
   }
 
+  // Rejected rather than silently dropped. An operator who typed a number and got
+  // back a contact with no number would have no way to tell that from a contact
+  // saved correctly, and would find out when the SMS never arrived.
+  const normalizedPhone = phone_number ? toE164(phone_number, country) : null;
+  if (phone_number && !normalizedPhone) {
+    return NextResponse.json(
+      {
+        error:
+          "Could not read that phone number. Use international format (+15125550199), " +
+          "or set the contact's country so a local number can be resolved.",
+      },
+      { status: 400 }
+    );
+  }
+
   const { data, error } = await db
     .from("subscribers")
     .insert({
@@ -143,7 +159,7 @@ export const POST = withWorkspace(async ({ req, ctx, db }) => {
       email: email.toLowerCase().trim(),
       first_name: first_name || null,
       last_name: last_name || null,
-      phone_number: phone_number || null,
+      phone_number: normalizedPhone,
       date_of_birth: date_of_birth || null,
       country: country || null,
       region: region || null,

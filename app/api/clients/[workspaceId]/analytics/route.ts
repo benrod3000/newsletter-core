@@ -34,7 +34,12 @@ type CampaignRow = {
   last_sent_at: string | null;
   created_at: string;
 };
-type EventRow = { campaign_id: string; event_type: string; email: string };
+type EventRow = {
+  campaign_id: string;
+  event_type: string;
+  email: string | null;
+  subscriber_id: string | null;
+};
 
 export const GET = withWorkspace<{ workspaceId: string }>(
   async ({ req, db, params }) => {
@@ -170,7 +175,7 @@ export const GET = withWorkspace<{ workspaceId: string }>(
       for (;;) {
         const { data: page, error: evErr } = await supabase
           .from("campaign_events")
-          .select("campaign_id, event_type, email")
+          .select("campaign_id, event_type, email, subscriber_id")
           .in("campaign_id", relevantIds)
           .in("event_type", ["open", "click"])
           .range(from, from + EVENT_PAGE - 1);
@@ -187,12 +192,26 @@ export const GET = withWorkspace<{ workspaceId: string }>(
       }
     }
 
-    const uniq = new Map<string, Set<string>>(); // `${campaignId}:${type}` -> emails
+    /*
+     * Uniqueness keys on the subscriber, not the email address.
+     *
+     * `campaign_events.email` becomes nullable in migration 073, because an SMS
+     * event has no email address to record. Keying a Set on a nullable column
+     * collapses every null into one member, so a channel with no addresses would
+     * report exactly one unique open however many people opened it.
+     *
+     * `subscriber_id` is the thing actually being counted, and it is set on every
+     * open and click the tracking routes write. The email fallback keeps legacy rows
+     * that predate it counting as they always did.
+     */
+    const uniq = new Map<string, Set<string>>(); // `${campaignId}:${type}` -> subscribers
     for (const e of events) {
+      const who = e.subscriber_id ?? (e.email ? `email:${e.email}` : null);
+      if (!who) continue;
       const key = `${e.campaign_id}:${e.event_type}`;
       let set = uniq.get(key);
       if (!set) { set = new Set(); uniq.set(key, set); }
-      set.add(e.email);
+      set.add(who);
     }
     const countFor = (id: string, type: string) => uniq.get(`${id}:${type}`)?.size ?? 0;
 

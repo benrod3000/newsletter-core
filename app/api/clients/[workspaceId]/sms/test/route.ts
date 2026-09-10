@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withWorkspace } from "@/lib/with-workspace";
 import { smsEnabled, smsDisabledResponse } from "@/lib/features";
+import { toE164 } from "@/lib/phone";
 
 const CORS = { "Access-Control-Allow-Origin": "*" };
 
@@ -18,9 +19,15 @@ export const POST = withWorkspace<{ workspaceId: string }>(
     return NextResponse.json({ error: "Invalid body" }, { status: 400, headers: CORS });
   }
 
-  const to = body.to?.trim();
-  if (!to || !/^\+?1?\d{10,15}$/.test(to.replace(/[\s\-()]/g, ""))) {
-    return NextResponse.json({ error: "Valid US phone number required (e.g. +15125550199)" }, { status: 400, headers: CORS });
+  // One definition of what a phone number is. This route had its own, slightly
+  // different from the send loop's, which is how the same number could be
+  // accepted here and rejected there.
+  const formattedTo = toE164(body.to, "US");
+  if (!formattedTo) {
+    return NextResponse.json(
+      { error: "Valid phone number required, in international format (e.g. +15125550199)" },
+      { status: 400, headers: CORS }
+    );
   }
 
   // Load Twilio credentials from workspace branding
@@ -44,9 +51,6 @@ export const POST = withWorkspace<{ workspaceId: string }>(
       { status: 400, headers: CORS }
     );
   }
-
-  const cleanTo = to.replace(/[\s\-()]/g, "");
-  const formattedTo = cleanTo.startsWith("+") ? cleanTo : `+1${cleanTo}`;
 
   try {
     const twilioRes = await fetch(

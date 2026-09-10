@@ -16,7 +16,7 @@ export const GET = withWorkspace<{ workspaceId: string }>(
   try {
     // Count SMS-reachable subscribers
     const countRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/subscribers?select=count&workspace_id=eq.${workspaceId}&sms_consent=is.true&not.phone=is.null`,
+      `${SUPABASE_URL}/rest/v1/subscribers?select=count&workspace_id=eq.${workspaceId}&sms_consent=is.true&not.phone_number=is.null`,
       { headers: auth, signal: AbortSignal.timeout(10000) }
     );
     const countData = await countRes.json();
