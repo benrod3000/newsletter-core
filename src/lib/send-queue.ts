@@ -37,6 +37,7 @@ import {
   type SmsDispatchConfig,
 } from "@/lib/sms/dispatcher";
 import { OPTED_OUT_ERROR_CODE } from "@/lib/sms/twilio";
+import { partitionBySendableNow } from "@/lib/sms/quiet-hours";
 import { bus } from "@/lib/events";
 import { logError, logWarn } from "@/lib/logger";
 import type { Branding } from "@/lib/branding";
@@ -130,6 +131,8 @@ export interface DrainParams {
 export interface DrainResult {
   sentCount: number;
   failedCount: number;
+  /** Held back for quiet hours. Not failures - they are retried on a later run. */
+  deferredCount: number;
   /** Recipients still waiting. > 0 means the job is unfinished. */
   remaining: number;
   /** True when the drain stopped on its time budget rather than running dry. */
@@ -388,6 +391,21 @@ export async function drainCampaignJob(params: DrainParams): Promise<DrainResult
   let failedCount = 0;
   let interrupted = false;
 
+  /*
+   * Recipients held back for quiet hours, released once the drain stops.
+   *
+   * Deliberately NOT released as each batch is processed. Releasing immediately
+   * would set claimed_at back to NULL, and the very next claim - which orders by
+   * subscriber_id - would hand back the same rows, forever, until the time
+   * budget ran out. Leaving them claimed for the duration of this drain means
+   * the claim skips them and moves on to recipients it can actually send to.
+   *
+   * They keep status 'pending', so `campaign_job_progress` still counts them as
+   * remaining, the job stays 'sending', and the recovery cron comes back for
+   * them when the clock has moved.
+   */
+  const deferredIds: string[] = [];
+
   bus.emit({
     type: "campaign:sending",
     timestamp: Date.now(),
@@ -429,7 +447,21 @@ export async function drainCampaignJob(params: DrainParams): Promise<DrainResult
     const failedIds: string[] = [];
     let lastError: string | undefined;
 
-    const outcomes = await mapWithConcurrency(batch, concurrency, async (sub) => {
+    /*
+     * Quiet hours, per recipient, against their own local time.
+     *
+     * Email is exempt: an email arriving at 3am is not a statutory violation and
+     * sits in an inbox until it is read. A text wakes someone up, and the TCPA
+     * measures the hour where the recipient is, not where the server is.
+     */
+    const { sendable, deferred } =
+      channel === "sms"
+        ? partitionBySendableNow(batch)
+        : { sendable: batch, deferred: [] as ClaimedRecipient[] };
+
+    for (const sub of deferred) deferredIds.push(sub.subscriber_id);
+
+    const outcomes = await mapWithConcurrency(sendable, concurrency, async (sub) => {
       const recipient = {
         id: sub.subscriber_id,
         email: sub.email,
@@ -524,6 +556,26 @@ export async function drainCampaignJob(params: DrainParams): Promise<DrainResult
     await supabase.from("campaign_jobs").update({ sent_so_far: sentCount }).eq("id", jobId);
   }
 
+  /*
+   * Release the deferred claims before reading progress.
+   *
+   * Order matters. These rows are already 'pending' so they count as remaining
+   * either way, but leaving them claimed would mean waiting out the stale-claim
+   * window before anything could pick them up - on a daily cron that is a day
+   * lost for no reason.
+   */
+  if (deferredIds.length > 0) {
+    const { error: deferError } = await supabase.rpc("defer_campaign_recipients", {
+      p_job_id: jobId,
+      p_subscribers: deferredIds,
+    });
+    if (deferError) {
+      // Not fatal: the claims go stale on their own and the rows return to the
+      // pool. Worth knowing about, because until then the job looks stalled.
+      logError(deferError, { scope: "send-queue.defer", jobId, count: deferredIds.length });
+    }
+  }
+
   const { data: progressRows, error: progressError } = await supabase.rpc(
     "campaign_job_progress",
     { p_job_id: jobId }
@@ -591,5 +643,5 @@ export async function drainCampaignJob(params: DrainParams): Promise<DrainResult
     },
   });
 
-  return { sentCount, failedCount, remaining, interrupted };
+  return { sentCount, failedCount, deferredCount: deferredIds.length, remaining, interrupted };
 }

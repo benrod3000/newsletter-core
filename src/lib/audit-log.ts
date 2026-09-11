@@ -45,6 +45,15 @@ const AUDIT_ACTIONS = {
   CAMPAIGN_PUBLISHED: "campaign_published",
   CAMPAIGN_TEST_SENT: "campaign_test_sent",
   SMS_SENT: "sms_sent",
+  /**
+   * Set by the inbound webhook, not by a person, so these are the only audit
+   * actions with no user_id. An opt-out needs to be a record and not just a
+   * flag: `sms_consent = false` says what is true now, this says when it changed
+   * and that the subscriber asked for it, which is the part a compliance
+   * question actually turns on.
+   */
+  SMS_OPT_OUT: "sms_opt_out",
+  SMS_OPT_IN: "sms_opt_in",
   SUBSCRIBER_CREATED: "subscriber_created",
   SUBSCRIBER_TAGS_CHANGED: "subscriber_tags_changed",
   LIST_CREATED: "list_created",

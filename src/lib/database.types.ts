@@ -1541,6 +1541,10 @@ export type Database = {
         Returns: string
       }
       current_workspace_id: { Args: never; Returns: string }
+      defer_campaign_recipients: {
+        Args: { p_job_id: string; p_subscribers: string[] }
+        Returns: number
+      }
       enqueue_campaign_recipients: {
         Args: {
           p_audience?: string
