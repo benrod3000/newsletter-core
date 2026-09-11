@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
 
     const { data: jobs, error: jobsError } = await supabase
       .from("campaign_jobs")
-      .select("id, campaign_id, total, sent_so_far")
+      .select("id, campaign_id, total, sent_so_far, channel")
       .eq("status", "sending")
       .lt("started_at", staleTime)
       .order("started_at", { ascending: true })
@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
 
       const { data: campaign } = await supabase
         .from("campaigns")
-        .select("id, workspace_id, subject, editor_html, editor_css, plain_text")
+        .select("id, workspace_id, subject, editor_html, editor_css, plain_text, sms_body")
         .eq("id", job.campaign_id)
         .maybeSingle();
 
@@ -85,7 +85,7 @@ export async function GET(req: NextRequest) {
 
       const { data: client, error: clientError } = await supabase
         .from("clients")
-        .select("email_provider, fallback_provider, sandbox_mode, sendgrid_api_key, resend_api_key, sender_email, sender_name")
+        .select("email_provider, fallback_provider, sandbox_mode, sendgrid_api_key, resend_api_key, sender_email, sender_name, twilio_account_sid, twilio_auth_token, twilio_phone_number")
         .eq("id", campaign.workspace_id)
         .maybeSingle();
 
@@ -109,8 +109,44 @@ export async function GET(req: NextRequest) {
         sandbox: client.sandbox_mode === true,
       };
 
+      /*
+       * The channel comes off the JOB, not the campaign.
+       *
+       * That distinction is the reason `campaign_jobs.channel` is denormalized.
+       * Recovery runs hours or days after the job was queued, and reading the
+       * campaign would mean a campaign edited in between decides how its
+       * already-queued recipients are sent.
+       *
+       * Getting this wrong is not a cosmetic error. The drain passes the channel
+       * into `claim_campaign_recipients`, which re-checks opt-out at dispatch
+       * time against the consent column for that channel. Re-draining an SMS job
+       * as email would mark every recipient without separate email consent as
+       * permanently `failed`, and recovery is the one path where nobody is
+       * watching.
+       */
+      const channel = job.channel === "sms" ? "sms" : "email";
+
+      if (channel === "sms" && !campaign.sms_body) {
+        // The body it was queued with is gone. Nothing to re-render from, same
+        // as the missing-campaign case above.
+        await closeJob(supabase, job.id, "failed");
+        continue;
+      }
+
       const result = await drainCampaignJob({
         jobId: job.id,
+        channel,
+        smsBody: campaign.sms_body ?? undefined,
+        smsFrom: client.twilio_phone_number ?? undefined,
+        smsConfig: {
+          provider: "twilio",
+          credentials: {
+            twilioAccountSid: client.twilio_account_sid ?? undefined,
+            twilioAuthToken: client.twilio_auth_token ?? undefined,
+            twilioPhoneNumber: client.twilio_phone_number ?? undefined,
+          },
+          sandbox: client.sandbox_mode === true,
+        },
         workspaceId: campaign.workspace_id,
         campaignId: campaign.id,
         subject: campaign.subject || "Newsletter update",
