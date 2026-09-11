@@ -2,131 +2,154 @@ import { NextResponse } from "next/server";
 import { withWorkspace } from "@/lib/with-workspace";
 import { logError } from "@/lib/logger";
 import { smsEnabled, smsDisabledResponse } from "@/lib/features";
+import { getSupabaseClient } from "@/lib/supabase";
+import { sendCampaignBlast } from "@/lib/send-campaign";
+import { getApiBaseUrl, parseGeoFilter } from "@/lib/geo-utils";
+import { smsSegments, MAX_SMS_SEGMENTS } from "@/lib/sms/segments";
+import { SmsBodyTooLongError } from "@/lib/sms/recipient-sms";
+import { audit } from "@/lib/audit-log";
 
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const auth = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` };
+export const maxDuration = 120;
+
+/**
+ * SMS campaigns, on the same durable queue email uses.
+ *
+ * What used to be here: a `for` loop inside the request handler that fetched up
+ * to 500 subscribers without saying so, called Twilio one at a time, counted
+ * successes in a local variable and returned. No job row, no per-recipient
+ * state, no events, no idempotency key. A timeout partway through left nothing
+ * that knew who had already been texted, so a retry texted them again, and the
+ * 501st recipient was never contacted and never reported as missing.
+ *
+ * It now enqueues and drains exactly as a campaign send does, which brings the
+ * per-recipient rows, the SKIP LOCKED claim, the send-time consent recheck, the
+ * retry classification and the recovery cron with it.
+ */
 
 export const GET = withWorkspace<{ workspaceId: string }>(
-  async ({ req, params }) => {
-  if (!smsEnabled()) return smsDisabledResponse();
-  const { workspaceId } = params;
+  async ({ ctx, params }) => {
+    if (!smsEnabled()) return smsDisabledResponse();
+    const { workspaceId } = params;
 
-  // Count SMS-reachable subscribers.
-  //
-  // Must apply the same filters as the send below, or the operator is shown a
-  // recipient count that does not match who is actually texted. `suppressed` is
-  // one of them: unsubscribe used to delete the row, so an opt-out could not be
-  // counted here; it now keeps the row and sets a flag.
-  //
-  // The count and the send had already drifted: this one omitted the "has a phone
-  // number" filter that the send applies, so it overcounted. Both now read
-  // `phone_number`, the single phone column since migration 072. Keeping two
-  // hand-written filter lists in step is the problem `campaign_audience()` exists
-  // to solve, and M3 replaces this with `count_campaign_recipients`.
-  const countRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/subscribers?select=count&workspace_id=eq.${workspaceId}&sms_consent=is.true&suppressed=is.false&not.phone_number=is.null`,
-    { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
-  );
-  const countData = await countRes.json();
+    const supabase = getSupabaseClient();
 
-  return NextResponse.json({
-    reachable: countData?.[0]?.count ?? 0,
-    message: "SMS/RCS campaigns use phone numbers with consent. Rich messaging (RCS) available for Android devices. SMS fallback for iOS.",
-  });
+    // The same predicate the send uses, not a second hand-written filter list.
+    //
+    // These were two separate PostgREST queries and they had already drifted:
+    // the count omitted the "has a phone number" filter the send applied, so an
+    // operator was shown a number larger than the set that would actually be
+    // texted. Sharing `campaign_audience()` removes the possibility rather than
+    // fixing this instance of it.
+    const { data: reachable, error } = await supabase.rpc("count_campaign_recipients", {
+      p_workspace: workspaceId,
+      p_audience: "confirmed",
+      p_channel: "sms",
+    });
+
+    if (error) {
+      logError(error, { route: "clients.campaigns.sms.count", workspaceId: ctx.workspaceId });
+      return NextResponse.json({ error: "Could not count recipients" }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      reachable: reachable ?? 0,
+      // No claim about RCS. The previous copy here promised "RCS on Android, SMS
+      // fallback on iOS" while the code attached MediaUrl to an ordinary Twilio
+      // message, which is MMS. Real RCS needs a Google RBM agent, brand
+      // verification and carrier approval.
+      message:
+        "SMS campaigns reach contacts who gave SMS consent and have a phone number on file.",
+    });
   },
   { minRole: "viewer" }
 );
 
 export const POST = withWorkspace<{ workspaceId: string }>(
-  async ({ req, params }) => {
-  if (!smsEnabled()) return smsDisabledResponse();
-  const { workspaceId } = params;
+  async ({ req, ctx, params }) => {
+    if (!smsEnabled()) return smsDisabledResponse();
+    const { workspaceId } = params;
 
-  const { message, image_urls } = await req.json();
-  if (!message?.trim()) return NextResponse.json({ error: "Message body is required" }, { status: 400 });
-
-  const rcsImages = Array.isArray(image_urls) ? image_urls.filter((u: string) => u.startsWith('http')).slice(0, 10) : [];
-
-  // Load Twilio credentials
-  const credsRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/clients?select=twilio_account_sid,twilio_auth_token,twilio_phone_number&id=eq.${encodeURIComponent(workspaceId)}&limit=1`,
-    { headers: auth }
-  );
-  const creds = await credsRes.json();
-  if (!Array.isArray(creds) || creds.length === 0) {
-    return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
-  }
-  const { twilio_account_sid, twilio_auth_token, twilio_phone_number } = creds[0];
-  if (!twilio_account_sid || !twilio_auth_token || !twilio_phone_number) {
-    return NextResponse.json({ error: "SMS not configured. Add your Twilio credentials in Settings → SMS." }, { status: 400 });
-  }
-
-  // Fetch subscribers with phone + SMS consent. Keep these filters in step with
-  // the count in GET above - an opt-out must not be texted, and the number the
-  // operator was shown must be the number of people reached.
-  const subsRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/subscribers?select=id,phone_number,first_name&workspace_id=eq.${workspaceId}&sms_consent=is.true&suppressed=is.false&not.phone_number=is.null&limit=500`,
-    { headers: auth, signal: AbortSignal.timeout(15000) }
-  );
-  const subscribers = await subsRes.json();
-  if (!Array.isArray(subscribers) || subscribers.length === 0) {
-    return NextResponse.json({ error: "No subscribers with phone number and SMS consent" }, { status: 400 });
-  }
-
-  const basicAuth = Buffer.from(`${twilio_account_sid}:${twilio_auth_token}`).toString("base64");
-  let sent = 0;
-  let failed = 0;
-
-  // Send via Twilio in batches (rate limit: 1 msg/sec per phone number)
-  for (const sub of subscribers) {
-    const phone = sub.phone_number?.trim();
-    if (!phone) continue;
-
-    // Expect E.164 format (+1...). Missing prefix defaults to US.
-    const cleanPhone = phone.startsWith("+") ? phone : `+1${phone.replace(/[\s\-()]/g, "")}`;
-    if (cleanPhone.length < 10) { failed++; continue; }
-
-    const personalMsg = message
-      .replace(/\{\{first_name\}\}/g, sub.first_name || "there")
-      .replace(/\{\{name\}\}/g, sub.first_name || "there");
-
+    let body: { message?: string; audience?: string; campaign_id?: string | null };
     try {
-      const twilioBody = new URLSearchParams({
-        To: cleanPhone,
-        From: twilio_phone_number,
-        Body: personalMsg.slice(0, 1600),
-      });
-      rcsImages.forEach((url: string) => twilioBody.append('MediaUrl', url));
-
-      const twilioRes = await fetch(
-        `https://api.twilio.com/2010-04-01/Accounts/${twilio_account_sid}/Messages.json`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Basic ${basicAuth}`,
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: twilioBody,
-          signal: AbortSignal.timeout(15000),
-        }
-      );
-      if (twilioRes.ok) sent++;
-      else { failed++; logError(new Error(`Twilio send failed: ${twilioRes.status}`), { to: cleanPhone }) }
+      body = await req.json();
     } catch {
-      failed++;
+      return NextResponse.json({ error: "Invalid body" }, { status: 400 });
     }
 
-    // Throttle to avoid rate limits
-    if (subscribers.length > 10) await new Promise(r => setTimeout(r, 200));
-  }
+    const message = body.message?.trim();
+    if (!message) {
+      return NextResponse.json({ error: "Message body is required" }, { status: 400 });
+    }
 
-  return NextResponse.json({
-    sent,
-    failed,
-    total: subscribers.length,
-    message: `SMS sent to ${sent} recipients${failed > 0 ? `, ${failed} failed` : ""}.`,
-  }, { status: 200 });
+    // Cost is settled before anything is queued, not discovered on the invoice.
+    //
+    // Carriers bill per segment. A body is 160 characters in one segment if every
+    // character is GSM-7, and 70 if a single character is not - so one curly
+    // apostrophe pasted from a word processor can triple the cost of a send. The
+    // old code just truncated at 1600 characters, silently, mid-sentence.
+    const segments = smsSegments(message);
+    if (segments.segments > MAX_SMS_SEGMENTS) {
+      return NextResponse.json(
+        {
+          error:
+            `This message is ${segments.segments} segments per recipient, over the ` +
+            `${MAX_SMS_SEGMENTS} segment limit.`,
+          encoding: segments.encoding,
+          nonGsmCharacters: segments.nonGsmCharacters,
+        },
+        { status: 400 }
+      );
+    }
+
+    try {
+      const result = await sendCampaignBlast({
+        workspaceId,
+        channel: "sms",
+        smsBody: message,
+        campaignId: body.campaign_id ?? null,
+        audience: body.audience || "confirmed",
+        geoFilter: parseGeoFilter(null),
+        baseUrl: getApiBaseUrl(req),
+        // Unused by the SMS path, but required by the shared signature. An SMS
+        // job never renders an email shell.
+        subject: "",
+        message: "",
+        messageHtml: "",
+        messageCss: "",
+      });
+
+      await audit(req, ctx, "sms_sent", {
+        jobId: result.jobId,
+        queued: result.queued,
+        sent: result.sentCount,
+        segmentsPerRecipient: segments.segments,
+      });
+
+      return NextResponse.json({
+        job_id: result.jobId,
+        queued: result.queued,
+        sent: result.sentCount,
+        failed: result.failedCount,
+        remaining: result.remaining,
+        segments_per_recipient: segments.segments,
+        // Said plainly rather than reporting a completed send. A Twilio long code
+        // takes about a second per message, so a large audience spans more than
+        // one invocation by design and the recovery cron finishes it.
+        message:
+          result.remaining > 0
+            ? `Queued ${result.queued}. Sent ${result.sentCount} so far; ${result.remaining} still to go and will continue automatically.`
+            : `Sent to ${result.sentCount} recipient${result.sentCount === 1 ? "" : "s"}.`,
+      });
+    } catch (err) {
+      if (err instanceof SmsBodyTooLongError) {
+        return NextResponse.json({ error: err.message }, { status: 400 });
+      }
+      logError(err, { route: "clients.campaigns.sms.send", workspaceId: ctx.workspaceId });
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : "Could not send" },
+        { status: 500 }
+      );
+    }
   },
   { minRole: "editor" }
 );

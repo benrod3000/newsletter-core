@@ -4,11 +4,13 @@ import {
   enqueueCampaignJob,
   drainCampaignJob,
   DEFAULT_TIME_BUDGET_MS,
+  type Channel,
 } from "@/lib/send-queue";
 import type { GeoFilter } from "@/lib/geo-utils";
 import type { DispatchConfig } from "@/lib/email/dispatcher";
 import { resolveBranding, type Branding } from "@/lib/branding";
 import { PLATFORM_FALLBACK_FROM_EMAIL } from "@/lib/platform-sender";
+import type { SmsDispatchConfig } from "@/lib/sms/dispatcher";
 
 /**
  * Audience selector.
@@ -102,6 +104,63 @@ export async function getWorkspaceSender(
   };
 }
 
+/**
+ * Resolve a workspace's SMS sender.
+ *
+ * Separate from `getWorkspaceSender` rather than folded into it, because the two
+ * fail differently and an email campaign must not be blocked by absent Twilio
+ * credentials.
+ *
+ * Throws rather than defaulting, for the reason recorded on the email twin: a
+ * discarded error there once left `client` null, which silently rewrote a
+ * workspace's provider to SendGrid and its from-address to the platform
+ * fallback. Sending from the wrong number is worse than not sending, and more so
+ * for SMS - the sender number is what a recipient's STOP was recorded against,
+ * so texting them from a different one ignores an opt-out they already gave.
+ */
+export async function getWorkspaceSmsSender(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  workspaceId: string
+): Promise<{ smsFrom: string; smsConfig: SmsDispatchConfig }> {
+  const { data: client, error } = await supabase
+    .from("clients")
+    .select("sandbox_mode, twilio_account_sid, twilio_auth_token, twilio_phone_number")
+    .eq("id", workspaceId)
+    .maybeSingle();
+
+  if (error || !client) {
+    throw new Error(
+      `Could not load SMS configuration for workspace ${workspaceId}: ${
+        error?.message ?? "workspace not found"
+      }`
+    );
+  }
+
+  const sandbox = client.sandbox_mode === true;
+
+  // In sandbox nothing reaches a carrier, so a workspace can exercise the whole
+  // pipeline before it has a Twilio account. Outside sandbox, missing
+  // credentials fail here - before enqueue writes any recipient rows.
+  if (!sandbox && (!client.twilio_account_sid || !client.twilio_auth_token || !client.twilio_phone_number)) {
+    throw new Error(
+      "SMS is not configured for this workspace. Add Twilio credentials in Settings."
+    );
+  }
+
+  return {
+    smsFrom: client.twilio_phone_number || "+10000000000",
+    smsConfig: {
+      provider: "twilio",
+      sandbox,
+      credentials: {
+        twilioAccountSid: client.twilio_account_sid ?? undefined,
+        twilioAuthToken: client.twilio_auth_token ?? undefined,
+        twilioPhoneNumber: client.twilio_phone_number ?? undefined,
+      },
+    },
+  };
+}
+
 export interface SendCampaignBlastParams {
   workspaceId: string;
   subject: string;
@@ -114,6 +173,10 @@ export interface SendCampaignBlastParams {
   baseUrl: string;
   /** Override the drain time budget (defaults to the queue's own). */
   timeBudgetMs?: number;
+  /** Defaults to email. */
+  channel?: Channel;
+  /** The SMS body with merge tags. Required when channel is sms. */
+  smsBody?: string;
 }
 
 export interface SendCampaignBlastResult {
@@ -137,11 +200,19 @@ export async function sendCampaignBlast(
 ): Promise<SendCampaignBlastResult> {
   const supabase = getSupabaseClient();
   const { workspaceId, audience, geoFilter, campaignId } = params;
+  const channel: Channel = params.channel ?? "email";
+
+  if (channel === "sms" && !params.smsBody?.trim()) {
+    // Before enqueue, so this cannot leave recipient rows behind for the
+    // recovery cron to find.
+    throw new Error("An SMS campaign needs a message body");
+  }
 
   const { jobId, queued } = await enqueueCampaignJob({
     workspaceId,
     campaignId,
     audience,
+    channel,
     geo: {
       country: geoFilter.country,
       regions: geoFilter.regions,
@@ -181,9 +252,20 @@ export async function sendCampaignBlast(
   // now throws rather than silently defaulting the provider, and the job is
   // already 'sending' with recipient rows written. Left open, the recovery cron
   // would pick it up and hit the identical failure 15 minutes later, forever.
+  // Both senders resolve before the drain and both close the job on failure, for
+  // the reason spelled out above: the recipient rows already exist, so a job left
+  // in 'sending' is what the recovery cron hunts for, and it would hit the same
+  // configuration failure on every run forever.
   let sender: Awaited<ReturnType<typeof getWorkspaceSender>>;
+  let smsSender: Awaited<ReturnType<typeof getWorkspaceSmsSender>> | null = null;
   try {
+    // The email sender is resolved for both channels: it is cheap, and it also
+    // carries the branding the campaign shell needs. An SMS job additionally
+    // needs its Twilio configuration.
     sender = await getWorkspaceSender(supabase, workspaceId);
+    if (channel === "sms") {
+      smsSender = await getWorkspaceSmsSender(supabase, workspaceId);
+    }
   } catch (err) {
     await supabase
       .from("campaign_jobs")
@@ -197,6 +279,7 @@ export async function sendCampaignBlast(
     jobId,
     workspaceId,
     campaignId,
+    channel,
     subject: params.subject,
     message: params.message,
     messageHtml: params.messageHtml,
@@ -206,6 +289,9 @@ export async function sendCampaignBlast(
     fromName,
     dispatchConfig,
     branding,
+    smsBody: params.smsBody,
+    smsFrom: smsSender?.smsFrom,
+    smsConfig: smsSender?.smsConfig,
     timeBudgetMs: params.timeBudgetMs ?? DEFAULT_TIME_BUDGET_MS,
   });
 
