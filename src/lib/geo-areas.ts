@@ -1,4 +1,5 @@
 import { getSupabaseClient } from "./supabase";
+import { fetchAllRows } from "./paginate";
 import type { Tables } from "./database.types";
 
 /**
@@ -86,22 +87,107 @@ export async function fetchSubscribersInAreas(
   const byId = new Map<string, Tables<"subscribers">>();
 
   for (const area of areas) {
-    const { data, error } = await supabase.rpc("nearby_subscribers", {
-      p_workspace_id: workspaceId,
-      center_lat: area.lat,
-      center_lng: area.lng,
-      radius_km: area.radiusKm,
+    /*
+     * Paged, because an RPC answer is a PostgREST response like any other and
+     * the project's `max-rows` ceiling of 1,000 applies to it too - silently,
+     * with no error and no indication the set was cut. `nearby_subscribers`
+     * returns SETOF subscribers, so a circle containing more than 1,000
+     * contacts returned exactly 1,000 and the route reported that as the total.
+     *
+     * Measured on the current data: a 200-mile radius on New York covers New
+     * York, Philadelphia (80mi) and Boston (190mi), which is 1,500 contacts, and
+     * 500 of them were being dropped. Worth noting the 100-mile case too, which
+     * catches New York and Philadelphia for exactly 1,000 - the truncated answer
+     * and the true one are the same number there, so the bug was invisible at
+     * precisely the radius most likely to be tried first.
+     *
+     * `fetchAllRows` clamps the page size to that ceiling so a short page stays
+     * a truthful end-of-set signal; the cursor is `id`, ordered by PostgREST on
+     * top of the function's own ORDER BY.
+     *
+     * One failing area must not be reported as "nobody is nearby" - fetchAllRows
+     * throws, and the route answers 500, rather than handing back a partial
+     * union that looks like a complete one.
+     */
+    const rows = await fetchAllRows<Tables<"subscribers">>((afterId, pageSize) => {
+      let query = supabase
+        .rpc("nearby_subscribers", {
+          p_workspace_id: workspaceId,
+          center_lat: area.lat,
+          center_lng: area.lng,
+          radius_km: area.radiusKm,
+        })
+        .order("id", { ascending: true })
+        .limit(pageSize);
+
+      if (afterId !== null) query = query.gt("id", afterId);
+
+      return query as unknown as PromiseLike<{
+        data: Tables<"subscribers">[] | null;
+        error: { message: string } | null;
+      }>;
     });
 
-    // One failing area must not be reported as "nobody is nearby". Throw and let
-    // the route answer 500, rather than returning a partial union that looks
-    // like a complete one.
-    if (error) throw error;
-
-    for (const row of (data ?? []) as Tables<"subscribers">[]) {
+    for (const row of rows) {
       if (!byId.has(row.id)) byId.set(row.id, row);
     }
   }
 
   return [...byId.values()];
+}
+
+/**
+ * A plottable cluster of contacts: one distinct coordinate and its health split.
+ *
+ * The map used to plot the contacts table's current page, so a workspace of
+ * 10,312 was drawn from whichever fifty rows sorted to the top - and 500 people
+ * sharing a city centroid stacked into one pixel regardless. Aggregating in SQL
+ * sends about as many rows as there are places, and sizing a circle by `total`
+ * is the only way the difference between 4 contacts and 500 is visible.
+ */
+export interface GeoCluster {
+  lat: number;
+  lng: number;
+  total: number;
+  active: number;
+  at_risk: number;
+  cold: number;
+}
+
+/** Exact count of distinct subscribers inside any area. Zero areas counts nobody. */
+export async function countSubscribersInAreas(
+  workspaceId: string,
+  areas: GeoArea[]
+): Promise<number> {
+  if (areas.length === 0) return 0;
+
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.rpc("count_subscribers_in_areas", {
+    p_workspace_id: workspaceId,
+    p_areas: areas.map((a) => ({ lat: a.lat, lng: a.lng, radius_km: a.radiusKm })),
+  });
+
+  if (error) throw new Error(error.message);
+
+  // A scalar-returning function answers with the number itself. Guarded rather
+  // than trusted, because a null here would render as "NaN in range".
+  const n = typeof data === "number" ? data : Number(data);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Where a workspace's contacts are, grouped for plotting. */
+export async function fetchGeoClusters(
+  workspaceId: string,
+  opts: { precision?: number; limit?: number } = {}
+): Promise<GeoCluster[]> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.rpc("subscriber_geo_clusters", {
+    p_workspace_id: workspaceId,
+    p_precision: opts.precision ?? 2,
+    p_limit: opts.limit ?? 2000,
+  });
+
+  if (error) throw new Error(error.message);
+
+  return (data ?? []).filter((c) => Number.isFinite(c.lat) && Number.isFinite(c.lng));
 }

@@ -1527,6 +1527,10 @@ export type Database = {
         }
         Returns: number
       }
+      count_subscribers_in_areas: {
+        Args: { p_areas: Json; p_workspace_id: string }
+        Returns: number
+      }
       create_admin_user: {
         Args: {
           p_password: string
@@ -1635,6 +1639,17 @@ export type Database = {
       set_admin_user_active: {
         Args: { p_active: boolean; p_user_id: string }
         Returns: undefined
+      }
+      subscriber_geo_clusters: {
+        Args: { p_limit?: number; p_precision?: number; p_workspace_id: string }
+        Returns: {
+          active: number
+          at_risk: number
+          cold: number
+          lat: number
+          lng: number
+          total: number
+        }[]
       }
       uuid_generate_v4: { Args: never; Returns: string }
     }

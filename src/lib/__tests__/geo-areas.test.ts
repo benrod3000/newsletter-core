@@ -1,5 +1,13 @@
-import { describe, it, expect } from "vitest";
-import { parseGeoAreas } from "../geo-areas";
+import { describe, it, expect, vi } from "vitest";
+import { parseGeoAreas, fetchSubscribersInAreas } from "../geo-areas";
+
+/*
+ * The Supabase client is the seam. Mocking it here rather than threading an
+ * injectable client through fetchSubscribersInAreas keeps the production
+ * signature the one the routes actually want to call.
+ */
+let mockClient: unknown = null;
+vi.mock("../supabase", () => ({ getSupabaseClient: () => mockClient }));
 
 /**
  * Multi-area radius targeting.
@@ -69,5 +77,108 @@ describe("parseGeoAreas", () => {
   it("caps the number of areas", () => {
     const many = Array.from({ length: 40 }, (_, i) => `33.${i},-117,10`).join(";");
     expect(parseGeoAreas(q(`areas=${many}`)).length).toBeLessThanOrEqual(25);
+  });
+});
+
+/**
+ * Paging over `nearby_subscribers`.
+ *
+ * An RPC answer is a PostgREST response, so the project's `max-rows` ceiling of
+ * 1,000 applies to it - silently, with no error. `nearby_subscribers` returns
+ * SETOF subscribers, so a circle holding more than 1,000 contacts came back
+ * holding exactly 1,000 and the route published that as the total. Nothing
+ * threw, which is why it survived: these tests passed against the truncating
+ * version, because they only covered the parser.
+ *
+ * Measured against production data: a 200-mile radius on New York holds 1,500
+ * contacts and lost 500 of them. At 100 miles it holds exactly 1,000, where the
+ * truncated answer and the true one coincide - so the radius most likely to be
+ * tried first was the one that looked fine.
+ *
+ * The mock below is the PostgREST contract as the paging relies on it: a filter
+ * builder that honours `.limit()` up to the ceiling, `.gt("id", ...)` as the
+ * cursor, and awaits to `{ data, error }`.
+ */
+describe("fetchSubscribersInAreas", () => {
+  const MAX_ROWS = 1000;
+
+  /**
+   * A fake set-returning RPC that truncates at `max-rows`, as the real one does.
+   *
+   * Rows are keyed by centre rather than by call order: paging calls the RPC once
+   * per page, so an order-keyed mock would hand page two of the first area the
+   * second area's rows and then report the walk as finished.
+   */
+  function makeClient(rowsByArea: string[][]) {
+    const calls: { radiusKm: number; afterId: string | null; limit: number }[] = [];
+
+    function builder(rows: string[], radiusKm: number) {
+      let afterId: string | null = null;
+      let limit = MAX_ROWS;
+      const self = {
+        order: () => self,
+        limit: (n: number) => {
+          limit = n;
+          return self;
+        },
+        gt: (_col: string, value: string) => {
+          afterId = value;
+          return self;
+        },
+        then: (resolve: (r: { data: { id: string }[]; error: null }) => unknown) => {
+          const start = afterId === null ? 0 : rows.indexOf(afterId) + 1;
+          const page = rows.slice(start, start + Math.min(limit, MAX_ROWS));
+          calls.push({ radiusKm, afterId, limit });
+          return Promise.resolve(resolve({ data: page.map((id) => ({ id })), error: null }));
+        },
+      };
+      return self;
+    }
+
+    const centres = new Map<string, string[]>();
+    mockClient = {
+      rpc: (
+        _fn: string,
+        args: { center_lat: number; center_lng: number; radius_km: number }
+      ) => {
+        const key = `${args.center_lat},${args.center_lng}`;
+        if (!centres.has(key)) centres.set(key, rowsByArea[centres.size] ?? []);
+        return builder(centres.get(key)!, args.radius_km);
+      },
+    };
+    return { calls };
+  }
+
+  it("pages past the 1,000-row ceiling instead of truncating", async () => {
+    const rows = Array.from({ length: 1500 }, (_, i) => `s${String(i).padStart(4, "0")}`);
+    const { calls } = makeClient([rows]);
+
+    const got = await fetchSubscribersInAreas("ws", [{ lat: 40.7, lng: -74, radiusKm: 160 }]);
+
+    expect(got).toHaveLength(1500);
+    // Two pages: a full one, then a short one that ends the walk.
+    expect(calls).toHaveLength(2);
+    expect(calls[0].afterId).toBeNull();
+    expect(calls[1].afterId).toBe("s0999");
+  });
+
+  it("never asks for more than the ceiling, so a short page stays meaningful", async () => {
+    const { calls } = makeClient([["a", "b"]]);
+    await fetchSubscribersInAreas("ws", [{ lat: 1, lng: 2, radiusKm: 10 }]);
+    expect(calls[0].limit).toBeLessThanOrEqual(MAX_ROWS);
+  });
+
+  it("unions overlapping areas without double counting", async () => {
+    makeClient([
+      ["a", "b", "c"],
+      ["c", "d"],
+    ]);
+
+    const got = await fetchSubscribersInAreas("ws", [
+      { lat: 1, lng: 2, radiusKm: 10 },
+      { lat: 1.1, lng: 2.1, radiusKm: 10 },
+    ]);
+
+    expect(got.map((r) => r.id)).toEqual(["a", "b", "c", "d"]);
   });
 });

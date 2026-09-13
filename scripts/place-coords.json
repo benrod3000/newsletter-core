@@ -1,0 +1,114 @@
+{
+  "washington|district of columbia|us": {
+    "latitude": 38.8950982,
+    "longitude": -77.0363849
+  },
+  "detroit|michigan|us": {
+    "latitude": 42.3315509,
+    "longitude": -83.0466403
+  },
+  "portland|oregon|us": {
+    "latitude": 45.5202471,
+    "longitude": -122.674194
+  },
+  "san francisco|california|us": {
+    "latitude": 37.7879363,
+    "longitude": -122.4075201
+  },
+  "denver|colorado|us": {
+    "latitude": 39.7392364,
+    "longitude": -104.984862
+  },
+  "san antonio|texas|us": {
+    "latitude": 29.4246002,
+    "longitude": -98.4951405
+  },
+  "houston|texas|us": {
+    "latitude": 29.7589382,
+    "longitude": -95.3676974
+  },
+  "los angeles|california|us": {
+    "latitude": 34.0536909,
+    "longitude": -118.242766
+  },
+  "miami|florida|us": {
+    "latitude": 25.7741566,
+    "longitude": -80.1935973
+  },
+  "boston|massachusetts|us": {
+    "latitude": 42.3588336,
+    "longitude": -71.0578303
+  },
+  "phoenix|arizona|us": {
+    "latitude": 33.4484367,
+    "longitude": -112.074141
+  },
+  "philadelphia|pennsylvania|us": {
+    "latitude": 39.9527237,
+    "longitude": -75.1635262
+  },
+  "san diego|california|us": {
+    "latitude": 32.7174202,
+    "longitude": -117.162772
+  },
+  "austin|texas|us": {
+    "latitude": 30.2711286,
+    "longitude": -97.7436995
+  },
+  "dallas|texas|us": {
+    "latitude": 32.7762719,
+    "longitude": -96.7968559
+  },
+  "atlanta|georgia|us": {
+    "latitude": 33.7544657,
+    "longitude": -84.3898151
+  },
+  "new york|new york|us": {
+    "latitude": 40.7127281,
+    "longitude": -74.0060152
+  },
+  "las vegas|nevada|us": {
+    "latitude": 36.1674263,
+    "longitude": -115.1484131
+  },
+  "charlotte|north carolina|us": {
+    "latitude": 35.2272086,
+    "longitude": -80.8430827
+  },
+  "chicago|illinois|us": {
+    "latitude": 41.8755616,
+    "longitude": -87.6244212
+  },
+  "seattle|washington|us": {
+    "latitude": 47.6038321,
+    "longitude": -122.330062
+  },
+  "columbus|ohio|us": {
+    "latitude": 39.9622601,
+    "longitude": -83.0007065
+  },
+  "milwaukee|wisconsin|us": {
+    "latitude": 43.0386475,
+    "longitude": -87.9090751
+  },
+  "omaha|nebraska|us": {
+    "latitude": 41.2587459,
+    "longitude": -95.9383758
+  },
+  "salt lake city|utah|us": {
+    "latitude": 40.7596198,
+    "longitude": -111.886797
+  },
+  "louisville|kentucky|us": {
+    "latitude": 38.2542376,
+    "longitude": -85.759407
+  },
+  "oklahoma city|oklahoma|us": {
+    "latitude": 35.4729886,
+    "longitude": -97.5170536
+  },
+  "indianapolis|indiana|us": {
+    "latitude": 39.7683331,
+    "longitude": -86.1583502
+  }
+}
