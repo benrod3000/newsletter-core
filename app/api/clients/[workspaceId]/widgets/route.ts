@@ -70,7 +70,7 @@ export const POST = withWorkspace(
     }
 
     const {
-      name, slug, list_id, headline, description, download_url,
+      name, slug, list_id, headline, description, download_url, asset_id,
       button_text, success_message, placeholder, fields, styles,
       type, size, collect_location, email_subject, email_body, email_heading,
       subscribe_to_list,
@@ -95,12 +95,35 @@ export const POST = withWorkspace(
     const widgetType = (type as string) || "lead_magnet";
     const downloadUrl = typeof download_url === "string" ? download_url.trim() : "";
 
-    if (requiresDownloadUrl(widgetType) && !downloadUrl) {
+    /*
+     * A lead magnet may give away a library file instead of an external URL.
+     *
+     * Only a lead magnet: a coupon stores its discount code in download_url and
+     * prints it on the success screen, so an asset there would mean showing the
+     * subscriber a URL where a code should be. Migration 079 has a CHECK
+     * refusing both at once, so this is validated here to produce a sentence
+     * rather than a constraint violation.
+     */
+    const assetId = typeof asset_id === "string" && asset_id.trim() ? asset_id.trim() : null;
+    if (assetId && widgetType !== "lead_magnet") {
+      return NextResponse.json(
+        { error: "Only a lead magnet can give away a file from your library." },
+        { status: 400 }
+      );
+    }
+    if (assetId && downloadUrl) {
+      return NextResponse.json(
+        { error: "Give away either a library file or a link, not both." },
+        { status: 400 }
+      );
+    }
+
+    if (requiresDownloadUrl(widgetType) && !downloadUrl && !assetId) {
       return NextResponse.json(
         {
           error: widgetType === "coupon"
             ? "A coupon code is required for this widget type."
-            : "A download URL is required for this widget type.",
+            : "Choose a file from your library, or paste a download URL.",
         },
         { status: 400 }
       );
@@ -144,6 +167,7 @@ export const POST = withWorkspace(
         // truthy, so an empty string would be indistinguishable - but it would
         // still read as "this widget has a download that happens to be blank".
         download_url: downloadUrl || null,
+        asset_id: assetId,
         button_text: (button_text as string)?.trim() || "Send Me the Link",
         success_message: (success_message as string)?.trim() || "Check your inbox! The download link is on its way.",
         placeholder: (placeholder as string)?.trim() || "you@example.com",

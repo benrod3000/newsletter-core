@@ -55,6 +55,53 @@ export type Database = {
           },
         ]
       }
+      assets: {
+        Row: {
+          bytes: number
+          created_at: string
+          created_by: string | null
+          filename: string
+          id: string
+          mime: string
+          public_url: string
+          sha256: string | null
+          storage_path: string
+          workspace_id: string
+        }
+        Insert: {
+          bytes: number
+          created_at?: string
+          created_by?: string | null
+          filename: string
+          id?: string
+          mime: string
+          public_url: string
+          sha256?: string | null
+          storage_path: string
+          workspace_id: string
+        }
+        Update: {
+          bytes?: number
+          created_at?: string
+          created_by?: string | null
+          filename?: string
+          id?: string
+          mime?: string
+          public_url?: string
+          sha256?: string | null
+          storage_path?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assets_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_logs: {
         Row: {
           action: string
@@ -1238,6 +1285,7 @@ export type Database = {
       }
       widgets: {
         Row: {
+          asset_id: string | null
           button_text: string
           collect_location: boolean
           created_at: string | null
@@ -1263,6 +1311,7 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          asset_id?: string | null
           button_text?: string
           collect_location?: boolean
           created_at?: string | null
@@ -1288,6 +1337,7 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          asset_id?: string | null
           button_text?: string
           collect_location?: boolean
           created_at?: string | null
@@ -1313,6 +1363,13 @@ export type Database = {
           workspace_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "widgets_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "assets"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "widgets_list_id_fkey"
             columns: ["list_id"]
@@ -1652,6 +1709,10 @@ export type Database = {
         }[]
       }
       uuid_generate_v4: { Args: never; Returns: string }
+      workspace_storage_used: {
+        Args: { p_workspace_id: string }
+        Returns: number
+      }
     }
     Enums: {
       [_ in never]: never

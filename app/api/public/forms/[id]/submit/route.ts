@@ -128,7 +128,7 @@ export async function POST(
   // delivering rather than "your download".
   const { data: widget, error: widgetError } = await supabase
     .from("widgets")
-    .select("id, workspace_id, slug, list_id, download_url, is_active, type, name, headline, email_subject, email_body, email_heading, subscribe_to_list")
+    .select("id, workspace_id, slug, list_id, download_url, asset_id, is_active, type, name, headline, email_subject, email_body, email_heading, subscribe_to_list, assets(public_url)")
     .eq("id", id)
     .maybeSingle();
 
@@ -148,7 +148,24 @@ export async function POST(
     );
   }
 
-  const { workspace_id: workspaceId, list_id: listId, download_url: downloadUrl, slug } = widget;
+  const { workspace_id: workspaceId, list_id: listId, slug } = widget;
+
+  /*
+   * What this widget actually gives away.
+   *
+   * A giveaway is either a file from the workspace's library (`asset_id`) or a
+   * URL the operator hosts themselves (`download_url`); migration 079 has a
+   * CHECK making sure it is never both, so the order here settles nothing
+   * contentious. The library file wins if present only because a null
+   * download_url would otherwise send nothing at all.
+   *
+   * Everything downstream keeps taking a plain URL - the tracked link, the
+   * delivery email, the subscriber_joined automation - because an asset's
+   * public URL *is* a plain URL. That is what kept this change from reaching
+   * into /api/track/click or the email templates at all.
+   */
+  const linkedAsset = Array.isArray(widget.assets) ? widget.assets[0] : widget.assets;
+  const downloadUrl: string | null = linkedAsset?.public_url ?? widget.download_url ?? null;
   const leadTitle = widget.headline?.trim() || widget.name?.trim() || null;
 
   const userAgent = req.headers.get("user-agent") || null;

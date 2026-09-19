@@ -5,7 +5,9 @@ import { logError } from "@/lib/logger";
 import { isWidgetSize, WIDGET_SIZES } from "@/lib/widget-config";
 
 const ALLOWED_FIELDS = [
-  "name", "headline", "description", "download_url",
+  // `asset_id` is how a lead magnet points at a library file instead of an
+  // external URL. Migration 079 refuses both at once at the database level.
+  "name", "headline", "description", "download_url", "asset_id",
   "button_text", "success_message", "placeholder", "list_id", "is_active",
   "fields", "styles", "type", "size", "collect_location",
   // Operator-written copy for the lead magnet delivery email. Empty means "use
@@ -34,7 +36,7 @@ export const PATCH = withWorkspace<{ workspaceId: string; id: string }>(
 
     const { data: existing, error: fetchError } = await db
       .from("widgets")
-      .select("id")
+      .select("id, type, download_url, asset_id")
       .eq("id", id)
       .eq("workspace_id", ctx.workspaceId)
       .maybeSingle();
@@ -50,6 +52,34 @@ export const PATCH = withWorkspace<{ workspaceId: string; id: string }>(
     if (body.size !== undefined && !isWidgetSize(body.size)) {
       return NextResponse.json(
         { error: `Size must be one of: ${WIDGET_SIZES.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
+    /*
+     * A giveaway is a library file or a link, never both.
+     *
+     * Migration 079 enforces that with a CHECK, so without this the request
+     * would come back a 500 from a constraint violation rather than a sentence
+     * saying what is wrong. Checked against the merged result, not just the
+     * body: setting `asset_id` on a widget that already has a `download_url`
+     * conflicts even though the body only mentions one of them, and clearing
+     * the other in the same request is the intended way to switch.
+     */
+    const nextType = (body.type as string) ?? existing.type;
+    const nextAssetId = body.asset_id !== undefined ? body.asset_id : existing.asset_id;
+    const nextDownloadUrl =
+      body.download_url !== undefined ? body.download_url : existing.download_url;
+
+    if (nextAssetId && nextType !== "lead_magnet") {
+      return NextResponse.json(
+        { error: "Only a lead magnet can give away a file from your library." },
+        { status: 400 }
+      );
+    }
+    if (nextAssetId && nextDownloadUrl) {
+      return NextResponse.json(
+        { error: "Give away either a library file or a link, not both. Clear one to switch." },
         { status: 400 }
       );
     }
@@ -97,7 +127,7 @@ export const DELETE = withWorkspace<{ workspaceId: string; id: string }>(
 
     const { data: existing, error: fetchError } = await db
       .from("widgets")
-      .select("id")
+      .select("id, type, download_url, asset_id")
       .eq("id", id)
       .eq("workspace_id", ctx.workspaceId)
       .maybeSingle();

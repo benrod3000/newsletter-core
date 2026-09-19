@@ -66,6 +66,8 @@ const AUDIT_ACTIONS = {
   WIDGET_DELETED: "widget_deleted",
   SAVED_FILTER_CREATED: "saved_filter_created",
   SAVED_FILTER_DELETED: "saved_filter_deleted",
+  ASSET_UPLOADED: "asset_uploaded",
+  ASSET_DELETED: "asset_deleted",
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
