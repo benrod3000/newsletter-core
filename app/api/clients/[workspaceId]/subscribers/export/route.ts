@@ -51,6 +51,7 @@ function csvEscape(value: unknown): string {
  * - near_lat / near_lng / radius: the original single-area form, still accepted
  * - search: matches email, first or last name
  * - joined_after / joined_before: ISO dates
+ * - list_id: only members of that list
  *
  * `ids` exists so "export the rows I ticked" can mean that. The button used to live
  * among the bulk actions while exporting whatever the filter matched, so selecting
@@ -117,12 +118,76 @@ export const GET = withWorkspace(async ({ req, ctx, db }) => {
 
   const areas = parseGeoAreas(params);
   const search = params.get("search");
+
+  /*
+   * Membership in one list, as a filter like any other.
+   *
+   * Opening a list showed who was in it and offered no way to take it with you,
+   * so getting a list out meant rebuilding it as a Contacts filter and hoping
+   * the two agreed. Shape-checked for the same reason `ids` is: this endpoint
+   * reads personal data, and an unvalidated value reaching a PostgREST filter is
+   * how an injection surface appears.
+   */
+  const listId = params.get("list_id");
+  if (listId !== null && !UUID.test(listId)) {
+    return NextResponse.json({ error: "Invalid list id." }, { status: 400 });
+  }
   const joinedAfter = params.get("joined_after");
   const joinedBefore = params.get("joined_before");
 
   let subscribers: ExportRow[];
   try {
-    if (areas.length > 0) {
+    if (listId && areas.length === 0) {
+      /*
+       * A list export walks its memberships, not the whole workspace.
+       *
+       * The alternative - page every subscriber and keep the ones that are
+       * members - reads 10,000 rows to export 50. Driving from
+       * subscriber_list_memberships reads only what is being exported, and
+       * `!inner` on the embedded subscriber means a membership whose contact has
+       * since been deleted drops out rather than arriving as a null row.
+       *
+       * The cursor is the membership id, which is unique;
+       * `UNIQUE (list_id, subscriber_id)` means a contact cannot appear twice.
+       */
+      const rows = await fetchAllRows<{ id: string; subscriber: ExportRow | null }>(
+        (afterId, pageSize) => {
+          let q = db
+            .from("subscriber_list_memberships")
+            .select(
+              "id, subscriber:subscribers!inner(id, email, first_name, last_name, phone_number, date_of_birth, country, region, city, timezone, locale, utm_source, utm_medium, utm_campaign, consent_email_marketing, consent_analytics_tracking, confirmed, suppressed, suppressed_reason, created_at)"
+            )
+            .eq("list_id", listId)
+            .eq("workspace_id", ctx.workspaceId)
+            .order("id", { ascending: true })
+            .limit(pageSize);
+
+          if (ids) q = q.in("subscriber_id", ids);
+          if (status === "confirmed") q = q.eq("subscribers.confirmed", true);
+          else if (status === "pending") q = q.eq("subscribers.confirmed", false);
+          if (joinedAfter) q = q.gte("subscribers.created_at", joinedAfter);
+          if (joinedBefore) q = q.lte("subscribers.created_at", `${joinedBefore}T23:59:59`);
+          if (afterId) q = q.gt("id", afterId);
+
+          return q as unknown as PromiseLike<{
+            data: { id: string; subscriber: ExportRow | null }[] | null;
+            error: { message: string } | null;
+          }>;
+        }
+      );
+
+      const needle = search?.toLowerCase().trim();
+      subscribers = rows
+        .map((r) => r.subscriber)
+        .filter((s): s is ExportRow => s !== null)
+        // Applied here rather than as an embedded `or`, because the search is a
+        // three-column match and this path already holds its rows.
+        .filter((s) => {
+          if (!needle) return true;
+          const hay = `${s.email ?? ""} ${s.first_name ?? ""} ${s.last_name ?? ""}`.toLowerCase();
+          return hay.includes(needle);
+        });
+    } else if (areas.length > 0) {
       /*
        * The radius lives in a Postgres function, so it cannot be expressed as a
        * PostgREST filter and composed with the rest. nearby_subscribers returns
@@ -135,8 +200,34 @@ export const GET = withWorkspace(async ({ req, ctx, db }) => {
        */
       const rows = await fetchSubscribersInAreas(ctx.workspaceId, areas);
 
+      /*
+       * Membership is resolved to a set here rather than as a join, because this
+       * branch has already materialised its rows in JS - the radius lives in a
+       * Postgres function that cannot be composed with a PostgREST filter. The
+       * non-geo branch below uses an inner join instead, which is the same
+       * predicate expressed where that branch can push it into the database.
+       */
+      let memberIds: Set<string> | null = null;
+      if (listId) {
+        const memberships = await fetchAllRows<{ id: string; subscriber_id: string }>(
+          (afterId, pageSize) => {
+            let q = db
+              .from("subscriber_list_memberships")
+              .select("id, subscriber_id")
+              .eq("list_id", listId)
+              .eq("workspace_id", ctx.workspaceId)
+              .order("id", { ascending: true })
+              .limit(pageSize);
+            if (afterId) q = q.gt("id", afterId);
+            return q;
+          }
+        );
+        memberIds = new Set(memberships.map((m) => m.subscriber_id));
+      }
+
       const needle = search?.toLowerCase().trim();
       subscribers = rows.filter((s) => {
+        if (memberIds && !memberIds.has(s.id)) return false;
         if (ids && !ids.includes(s.id)) return false;
         if (status === "confirmed" && !s.confirmed) return false;
         if (status === "pending" && s.confirmed) return false;
