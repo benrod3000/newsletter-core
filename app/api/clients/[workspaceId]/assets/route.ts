@@ -19,22 +19,54 @@ import { ASSETS_BUCKET } from "./upload-url/route";
 export const GET = withWorkspace(async ({ ctx, db }) => {
   const supabase = getSupabaseClient();
 
-  const [{ data: assets, error }, { data: usedBytes, error: usageError }] = await Promise.all([
+  const [
+    { data: assets, error },
+    { data: usedBytes, error: usageError },
+    { data: usingWidgets, error: widgetError },
+  ] = await Promise.all([
     db
       .from("assets")
       .select("id, filename, mime, bytes, public_url, created_at")
       .eq("workspace_id", ctx.workspaceId)
       .order("created_at", { ascending: false }),
     supabase.rpc("workspace_storage_used", { p_workspace_id: ctx.workspaceId }),
+    /*
+     * Which giveaways point at which file.
+     *
+     * Sent with the list so the library can say what a file is being used for
+     * before somebody tries to delete it. Otherwise the only way to learn that
+     * is to attempt the delete and read the refusal, which is a worse way to
+     * find out - the answer was knowable the whole time.
+     *
+     * Read as a plain list rather than an embedded aggregate: a workspace's
+     * widgets are bounded by hand-authoring, so this is a handful of rows, and
+     * the names are wanted anyway rather than just a count.
+     */
+    db
+      .from("widgets")
+      .select("id, name, asset_id")
+      .eq("workspace_id", ctx.workspaceId)
+      .not("asset_id", "is", null),
   ]);
 
-  if (error || usageError) {
-    logError(error ?? usageError, { route: "clients.assets.list", workspaceId: ctx.workspaceId });
+  if (error || usageError || widgetError) {
+    logError(error ?? usageError ?? widgetError, {
+      route: "clients.assets.list",
+      workspaceId: ctx.workspaceId,
+    });
     return apiInternalError("Could not load the library");
   }
 
+  const byAsset = new Map<string, { id: string; name: string }[]>();
+  for (const w of usingWidgets ?? []) {
+    if (!w.asset_id) continue;
+    const list = byAsset.get(w.asset_id) ?? [];
+    list.push({ id: w.id, name: w.name });
+    byAsset.set(w.asset_id, list);
+  }
+
   return apiSuccess({
-    assets: assets ?? [],
+    assets: (assets ?? []).map((a) => ({ ...a, used_by: byAsset.get(a.id) ?? [] })),
     used_bytes: usedBytes ?? 0,
     quota_bytes: MAX_WORKSPACE_BYTES,
   });
