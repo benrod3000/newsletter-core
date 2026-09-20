@@ -1504,6 +1504,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      asset_claim_stats: {
+        Args: { p_since?: string; p_workspace_id: string }
+        Returns: {
+          asset_id: string
+          bytes_estimate: number
+          claims: number
+        }[]
+      }
       auth_admin_login: {
         Args: { p_password: string; p_username: string }
         Returns: {

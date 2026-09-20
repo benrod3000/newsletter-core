@@ -12,6 +12,7 @@
     "lint:ci": "eslint app src --max-warnings=80",
     "test": "vitest run",
     "geo:backfill": "node scripts/backfill-subscriber-geo.mjs",
+    "audit:security": "node scripts/audit-security.mjs",
     "types:generate": "supabase gen types typescript --project-id jdmtvkytidxpcyhnhgdo > src/lib/database.types.ts"
   },
   "dependencies": {

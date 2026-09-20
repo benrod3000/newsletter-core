@@ -32,3 +32,29 @@ or `supabase db push` fails closed instead of silently targeting production. Rul
 - If you ever need a real local/dev database, that means creating an actual second
   Supabase project (or running `supabase start` for a local Docker Postgres) - not
   linking the CLI to this one and being careful.
+
+## Every migration owes two things
+
+After applying one, run both:
+
+- `npm run types:generate` - the generated types are the project's safety net;
+  turning them on once surfaced four shipped bugs.
+- `npm run audit:security` - checks the invariants that have actually been
+  broken here: a workspace-scoped table without RLS and a policy, a
+  `SECURITY DEFINER` function callable by `anon` or `authenticated`, a public
+  storage bucket with no size limit or MIME allowlist. Clean exits 0; findings
+  exit 1 and name the object.
+
+**A new workspace-scoped table needs its `GRANT` and its RLS policy in the same
+migration that creates it.** They are one step, not two: grant without RLS is a
+silent cross-tenant leak, RLS without grant is a loud permission error. Getting
+the loud half is luck, not safety. The same applies to a new `SECURITY DEFINER`
+function - revoke from `PUBLIC, anon, authenticated` where you create it, rather
+than in a sweep later, which is how `count_campaign_recipients` sat exposed from
+056 until 081.
+
+Supabase's own advisors (`get_advisors`, type `security`) cover more ground and
+are worth reading too. `audit:security` is the project-specific half an advisor
+cannot know: that `workspace_id` means tenant data, and that the public `assets`
+bucket is a deliberate egress decision rather than an oversight.
+

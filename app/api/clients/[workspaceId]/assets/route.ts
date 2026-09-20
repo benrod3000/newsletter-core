@@ -4,7 +4,7 @@ import { apiSuccess, apiError, apiInternalError } from "@/lib/api-response";
 import { getSupabaseClient } from "@/lib/supabase";
 import { logError } from "@/lib/logger";
 import { logAudit, extractRequestMeta, AUDIT_ACTIONS } from "@/lib/audit-log";
-import { checkUpload, sanitizeFilename, MAX_WORKSPACE_BYTES } from "@/lib/assets";
+import { checkUpload, sanitizeFilename, MAX_WORKSPACE_BYTES, EGRESS_SOFT_LIMIT_BYTES } from "@/lib/assets";
 import { ASSETS_BUCKET } from "./upload-url/route";
 
 /**
@@ -23,6 +23,7 @@ export const GET = withWorkspace(async ({ ctx, db }) => {
     { data: assets, error },
     { data: usedBytes, error: usageError },
     { data: usingWidgets, error: widgetError },
+    { data: claimStats, error: claimError },
   ] = await Promise.all([
     db
       .from("assets")
@@ -47,6 +48,17 @@ export const GET = withWorkspace(async ({ ctx, db }) => {
       .select("id, name, asset_id")
       .eq("workspace_id", ctx.workspaceId)
       .not("asset_id", "is", null),
+    /*
+     * How much bandwidth the giveaways have spent this month.
+     *
+     * Storage used answers "how much room is left", which is the cheap
+     * question. The one that can take the platform down is egress: a 10 MB file
+     * well inside the size cap is still 10 MB every time somebody claims it,
+     * and the quota is shared with the database that serves the app. Every
+     * claim already passes through /api/track/click, so this is counted from
+     * rows that were being written anyway.
+     */
+    supabase.rpc("asset_claim_stats", { p_workspace_id: ctx.workspaceId }),
   ]);
 
   if (error || usageError || widgetError) {
@@ -57,6 +69,13 @@ export const GET = withWorkspace(async ({ ctx, db }) => {
     return apiInternalError("Could not load the library");
   }
 
+  // Claim stats are reported, not required. They are a warning signal layered on
+  // top of the library; failing to read them should not stop somebody seeing
+  // their files or uploading one.
+  if (claimError) {
+    logError(claimError, { route: "clients.assets.claims", workspaceId: ctx.workspaceId });
+  }
+
   const byAsset = new Map<string, { id: string; name: string }[]>();
   for (const w of usingWidgets ?? []) {
     if (!w.asset_id) continue;
@@ -65,10 +84,31 @@ export const GET = withWorkspace(async ({ ctx, db }) => {
     byAsset.set(w.asset_id, list);
   }
 
+  const claimsByAsset = new Map<string, { claims: number; bytes_estimate: number }>();
+  for (const row of claimStats ?? []) {
+    claimsByAsset.set(row.asset_id, {
+      claims: Number(row.claims ?? 0),
+      bytes_estimate: Number(row.bytes_estimate ?? 0),
+    });
+  }
+
+  const estimatedEgress = [...claimsByAsset.values()].reduce((sum, c) => sum + c.bytes_estimate, 0);
+
   return apiSuccess({
-    assets: (assets ?? []).map((a) => ({ ...a, used_by: byAsset.get(a.id) ?? [] })),
+    assets: (assets ?? []).map((a) => ({
+      ...a,
+      used_by: byAsset.get(a.id) ?? [],
+      claims: claimsByAsset.get(a.id)?.claims ?? 0,
+    })),
     used_bytes: usedBytes ?? 0,
     quota_bytes: MAX_WORKSPACE_BYTES,
+    /*
+     * An upper bound, not a measurement: the bucket is public so repeat
+     * downloads can be served from CDN cache, and a recorded click is a click
+     * rather than a completed download. The UI says "up to" for that reason.
+     */
+    estimated_egress_bytes: estimatedEgress,
+    egress_quota_bytes: EGRESS_SOFT_LIMIT_BYTES,
   });
 });
 
